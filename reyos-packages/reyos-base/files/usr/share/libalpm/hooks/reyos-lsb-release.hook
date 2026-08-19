@@ -1,0 +1,11 @@
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = reyos-base
+Target = lsb-release
+
+[Action]
+Description = Applying ReyOS lsb-release branding...
+When = PostTransaction
+Exec = /usr/share/reyos/bin/reyos-apply-lsb-release.sh

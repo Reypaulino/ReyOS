@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Install ReyOS
+Comment=Start the ReyOS installer in the live session
+Exec=/usr/share/reyos/bin/reyos-launch-installer
+Icon=drive-harddisk-install
+Terminal=false
+OnlyShowIn=KDE;
+X-KDE-autostart-after=panel
+X-KDE-StartupNotify=false

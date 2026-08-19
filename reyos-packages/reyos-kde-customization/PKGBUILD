@@ -1,0 +1,16 @@
+# Maintainer: Rey Paulino
+pkgname=reyos-kde-customization
+pkgver=1.0.0
+pkgrel=13
+pkgdesc="Optional ReyOS KDE desktop customization"
+arch=('any')
+license=('GPL-3.0-or-later')
+depends=('plasma-workspace' 'reyos-icons' 'reyos-wallpapers')
+source=()
+sha256sums=()
+
+package() {
+    cp -a "$startdir/files/usr" "$pkgdir/"
+    find "$pkgdir/usr/share/plasma/plasmoids" -type f -exec chmod 644 {} \;
+    chmod 755 "$pkgdir/usr/share/reyos/kde/reyos-apply-customization.sh"
+}

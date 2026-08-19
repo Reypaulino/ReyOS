@@ -1,0 +1,205 @@
+alsa-utils
+amd-ucode
+arch-install-scripts
+archinstall
+b43-fwcutter
+base
+bcachefs-tools
+bind
+bolt
+brltty
+broadcom-wl
+btrfs-progs
+cachyos-keyring
+clonezilla
+cloud-init
+cryptsetup
+darkhttpd
+ddrescue
+dhcpcd
+diffutils
+dmidecode
+dmraid
+dnsmasq
+dosfstools
+e2fsprogs
+edk2-shell
+efibootmgr
+espeakup
+ethtool
+exfatprogs
+f2fs-tools
+fatresize
+foot-terminfo
+fsarchiver
+ghostty-terminfo
+gpart
+gpm
+gptfdisk
+grml-zsh-config
+grub
+hdparm
+hyperv
+intel-ucode
+irssi
+iw
+iwd
+jfsutils
+kitty-terminfo
+kmscon-terminfo
+ldns
+less
+lftp
+libfido2
+libusb-compat
+limine
+linux
+linux-atm
+linux-firmware
+linux-firmware-marvell
+livecd-sounds
+lsscsi
+lvm2
+lynx
+man-db
+man-pages
+mc
+mdadm
+memtest86+
+memtest86+-efi
+mkinitcpio
+mkinitcpio-archiso
+mkinitcpio-nfs-utils
+mmc-utils
+modemmanager
+mtools
+nano
+nbd
+ndisc6
+nfs-utils
+nilfs-utils
+nmap
+ntfsprogs
+nvme-cli
+open-iscsi
+open-vm-tools
+openconnect
+openpgp-card-tools
+openssh
+openvpn
+wireguard-tools
+partclone
+parted
+partimage
+pcsclite
+ppp
+pptpclient
+pv
+qemu-guest-agent
+refind
+reflector
+rsync
+rxvt-unicode-terminfo
+screen
+sdparm
+sequoia-sq
+sg3_utils
+smartmontools
+sof-firmware
+squashfs-tools
+sudo
+syslinux
+systemd-resolvconf
+tcpdump
+terminus-font
+testdisk
+tmux
+tpm2-tools
+tpm2-tss
+udftools
+usb_modeswitch
+usbmuxd
+usbutils
+vim
+virtualbox-guest-utils-nox
+vpnc
+wireless-regdb
+wireless_tools
+wpa_supplicant
+wvdial
+xdg-utils
+xfsprogs
+xl2tpd
+zsh
+
+# --- ReyOS additions: KDE Plasma live/install desktop ---
+networkmanager
+plasma-desktop
+plasma-nm
+plasma-pa
+plasma-workspace
+# plasma-workspace only ships the Wayland session (kwin_wayland) --
+# plasma-x11-session provides kwin_x11 + the X11 xsession entry, which
+# is the only thing that can produce a real desktop in environments
+# without a GPU/DRM render node (e.g. VMs without 3D-accelerated video,
+# like the dev/test VMs this ISO gets validated in): kwin_wayland just
+# spins forever failing "Failed to open drm node" with no fallback.
+# Confirmed live on the dev VM 2026-08-11.
+plasma-x11-session
+# qt6-base (pulled in transitively by KDE frameworks like kxmlgui/kconfig)
+# depends on the virtual opengl-driver/libgl packages. With mesa/nvidia
+# variants available across the cachyos-v3/cachyos-extra-v3/cachyos/extra
+# repos, pacman can't auto-resolve the provider and mkarchiso hangs at an
+# interactive "Enter a number" prompt during a non-interactive build.
+# Pin the plain open-source mesa/libglvnd explicitly so it resolves without
+# asking -- matches what's already used on the dev/test VMs (virtio video,
+# no GPU passthrough). Confirmed blocking mkarchiso 2026-08-11.
+mesa
+libglvnd
+sddm
+# sddm's Depends are Qt6-only, but the breeze greeter theme needs Qt5
+# QML (libQt5Quick/Qml/Network/Gui/Core) -- qt5-declarative is only an
+# *optional* dep of sddm, so pacman never pulls it in on its own.
+# Without it the greeter binary fails to exec (dynamic linker can't
+# resolve those libs) and sddm crash-loops with "exited with 127" --
+# confirmed live on the dev VM 2026-08-11, ldd showed all 5 as "not found".
+qt5-declarative
+kwin
+konsole
+dolphin
+dolphin-plugins
+kate
+ark
+okular
+gwenview
+kscreen
+kdeplasma-addons
+bluedevil
+breeze
+breeze-gtk
+kdialog
+qt6-svg
+xdg-desktop-portal
+xdg-desktop-portal-kde
+reyos-browser
+neofetch
+git
+discover
+flatpak
+timeshift
+pciutils
+ufw
+bluez-utils
+reyos-base
+reyos-wallpapers
+reyos-welcome
+reyos-kde-customization
+reyos-icons
+reyos-themes
+reyos-sddm
+reyos-calamares
+reyos-terminal
+reyos-control-center
+reyos-control-center-gui
+plymouth
+reyos-plymouth

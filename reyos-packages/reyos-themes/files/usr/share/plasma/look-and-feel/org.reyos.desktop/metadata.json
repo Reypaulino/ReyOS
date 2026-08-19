@@ -1,0 +1,15 @@
+{
+    "KPackageStructure": "Plasma/LookAndFeel",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "Reyrubi"
+            }
+        ],
+        "Description": "ReyOS global theme — dark graphite colors, midnight copper accent, ReyOS splash screen",
+        "Icon": "preferences-desktop-theme-globals",
+        "Id": "org.reyos.desktop",
+        "Name": "ReyOS",
+        "Version": "0.1"
+    }
+}

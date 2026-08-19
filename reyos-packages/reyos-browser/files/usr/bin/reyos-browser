@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Start the native ReyOS Browser application.
+# Real hardware uses GPU acceleration by default. The VM fallback avoids
+# known VirtIO/virgl rendering failures during development and testing.
+if systemd-detect-virt -q; then
+    export QTWEBENGINE_CHROMIUM_FLAGS="${QTWEBENGINE_CHROMIUM_FLAGS:---disable-gpu}"
+    export QT_QUICK_BACKEND="${QT_QUICK_BACKEND:-software}"
+fi
+exec /usr/bin/python3 /usr/share/reyos/browser/main.py "$@"

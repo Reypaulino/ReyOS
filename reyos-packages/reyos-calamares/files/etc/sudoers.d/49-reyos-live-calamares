@@ -1,0 +1,2 @@
+# Permit only the Calamares executable for the disposable live account.
+liveuser ALL=(root) NOPASSWD: /usr/bin/calamares

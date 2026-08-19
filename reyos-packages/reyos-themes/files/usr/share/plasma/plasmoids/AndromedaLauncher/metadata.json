@@ -1,0 +1,29 @@
+{
+	"KPackageStructure": "Plasma/Applet",
+	"KPlugin": {
+		"Authors": [
+			{
+				"Email": "eliverlara@gmail.com",
+				"Name": "EliverLara"
+			}
+		],
+		"Category": "Application Launchers",
+		"Description": "The ReyOS application launcher",
+		"Description[el]": "Μοντέρνος Εκκινητής plasma",
+		"Description[fi]": "Moderni käynnistin Plasman työpöydälle!",
+		"Description[pl]": "Nowoczesne menu programów dla Plasmy!",
+		"EnabledByDefault": true,
+		"Icon": "reyos-logo",
+		"Id": "AndromedaLauncher",
+		"Name": "ReyOS Launcher",
+		"Name[el]": "ReyOS Launcher",
+		"Name[fi]": "ReyOS Launcher",
+		"Name[pl]": "ReyOS Launcher",
+		"Version": "0.6",
+		"Website": "https://github.com/EliverLara/AndromedaLauncher"
+	},
+	"X-Plasma-API-Minimum-Version": "6.0",
+	"X-Plasma-Provides": [
+		"org.kde.plasma.launchermenu"
+	]
+}

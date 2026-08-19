@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+  <defs>
+    <mask id="folder-mask">
+      <g fill="#ffffff">
+        <rect x="6" y="10" width="16" height="7" rx="2"/>
+        <rect x="6" y="14" width="36" height="24" rx="3"/>
+      </g>
+    </mask>
+  </defs>
+  <rect x="0" y="0" width="48" height="48" fill="#C97932" mask="url(#folder-mask)"/>
+</svg>

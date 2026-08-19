@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=ReyOS Welcome (first login)
+Exec=/usr/share/reyos/welcome/main.py
+Hidden=false
+X-GNOME-Autostart-enabled=true
+NoDisplay=true

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Install ReyOS
+Comment=Install ReyOS to this computer
+Exec=/usr/share/reyos/bin/reyos-launch-installer
+Icon=drive-harddisk-install
+Terminal=false
+Categories=System;Settings;
+Keywords=install;installer;calamares;ReyOS;

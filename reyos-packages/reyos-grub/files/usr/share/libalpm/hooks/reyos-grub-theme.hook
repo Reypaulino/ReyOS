@@ -1,0 +1,10 @@
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = reyos-grub
+
+[Action]
+Description = Applying ReyOS GRUB theme...
+When = PostTransaction
+Exec = /usr/share/reyos/bin/reyos-apply-grub-theme.sh

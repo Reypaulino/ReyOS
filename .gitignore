@@ -1,0 +1,9 @@
+pkg/
+src/
+*.pkg.tar.zst
+work/
+out/
+local-repo/
+*.iso
+__pycache__/
+*.pyc

@@ -1,0 +1,15 @@
+{
+    "KPackageStructure": "Plasma/LookAndFeel",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "Reyrubi"
+            }
+        ],
+        "Description": "ReyOS global theme — light colors, copper accent, ReyOS splash screen",
+        "Icon": "preferences-desktop-theme-globals",
+        "Id": "org.reyos.light.desktop",
+        "Name": "ReyOS Light",
+        "Version": "0.1"
+    }
+}

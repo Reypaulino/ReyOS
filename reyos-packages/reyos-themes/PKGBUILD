@@ -1,0 +1,19 @@
+# Maintainer: Rey Paulino
+pkgname=reyos-themes
+pkgver=1.0.0
+pkgrel=44
+pkgdesc="ReyOS Global Theme, color scheme, editable panel/taskbar layout, virtual desktops, and shortcuts"
+arch=('any')
+license=('MIT')
+depends=('plasma-workspace' 'kconfig' 'reyos-kde-customization' 'reyos-browser')
+source=()
+sha256sums=()
+
+package() {
+    cp -a "$startdir/files/etc" "$pkgdir/"
+    cp -a "$startdir/files/usr" "$pkgdir/"
+    rm -f "$pkgdir/usr/lib/systemd/user/reyos-edit-mode-guard.service" "$pkgdir/usr/lib/systemd/user-preset/90-reyos-edit-mode-guard.preset"
+    find "$pkgdir/etc" -type f -exec chmod 644 {} \;
+    find "$pkgdir/usr" -type f -exec chmod 644 {} \;
+    chmod 755 "$pkgdir/usr/share/reyos/bin/reyos-apply-branding.sh"
+}

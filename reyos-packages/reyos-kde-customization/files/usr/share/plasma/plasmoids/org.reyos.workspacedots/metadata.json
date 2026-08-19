@@ -1,0 +1,23 @@
+{
+  "KPackageStructure": "Plasma/Applet",
+  "KPlugin": {
+    "Authors": [
+      {
+        "Name": "ReyOS Contributors",
+        "Email": "maintainers@reyos.local"
+      }
+    ],
+    "Category": "Windows and Tasks",
+    "Description": "ReyOS workspace dots: a minimal virtual desktop indicator.",
+    "EnabledByDefault": true,
+    "FormFactors": ["horizontal", "vertical"],
+    "Icon": "preferences-desktop-virtual",
+    "Id": "org.reyos.workspacedots",
+    "License": "GPL-3.0-or-later",
+    "Name": "ReyOS Workspace Dots",
+    "Version": "1.0.0",
+    "Website": "https://reyos.local"
+  },
+  "X-Plasma-API-Minimum-Version": "6.6",
+  "X-Plasma-Provides": ["org.kde.plasma.virtualdesktops"]
+}

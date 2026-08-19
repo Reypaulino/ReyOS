@@ -1,0 +1,11 @@
+[Unit]
+Description=ReyOS Edit Mode guard — forces Plasma out of Edit Mode immediately
+PartOf=graphical-session.target
+After=plasma-plasmashell.service
+
+[Service]
+ExecStart=/usr/share/reyos/bin/reyos-edit-mode-guard.sh
+Restart=on-failure
+
+[Install]
+WantedBy=graphical-session.target

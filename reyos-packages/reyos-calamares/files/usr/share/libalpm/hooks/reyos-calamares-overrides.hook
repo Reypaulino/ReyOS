@@ -1,0 +1,11 @@
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = reyos-calamares
+Target = cachyos-calamares
+
+[Action]
+Description = Applying ReyOS Calamares config overrides...
+When = PostTransaction
+Exec = /usr/share/reyos/bin/reyos-apply-calamares-overrides.sh

@@ -1,0 +1,48 @@
+[General]
+ColorScheme=ReyOS
+
+[KDE]
+LookAndFeelPackage=org.reyos.desktop
+
+# Simplified System Settings — Ubuntu/GNOME-style scope, hiding KDE-specific
+# and advanced pages most users never touch. Uses the standard KIOSK action
+# restrictions mechanism ($i = immutable/system-enforced) — this hides the
+# page from System Settings, it doesn't remove or disable the underlying
+# feature, and is fully reversible by editing this file.
+[KDE Action Restrictions][$i]
+kcm_access=false
+kcm_activities=false
+kcm_animations=false
+kcm_baloofile=false
+kcm_bolt=false
+kcm_breezedecoration=false
+kcm_cellular_network=false
+kcm_desktoppaths=false
+kcm_external_plasma-systemmonitor=false
+kcm_filetypes=false
+kcm_fontinst=false
+kcm_kded=false
+ghns=false
+kcm_krunnersettings=false
+kcm_kwin_effects=false
+kcm_kwin_scripts=false
+kcm_kwindecoration=false
+kcm_kwinoptions=false
+kcm_kwinrules=false
+kcm_kwintabbox=false
+kcm_kwinxwayland=false
+kcm_mobile_hotspot=false
+kcm_mobile_power=false
+kcm_mobile_wifi=false
+kcm_mobile_wired=false
+kcm_netpref=false
+kcm_oxygendecoration=false
+kcm_plasmakeyboard=false
+kcm_plasmasearch=false
+kcm_smserver=false
+kcm_solid_actions=false
+kcm_soundtheme=false
+kcm_splashscreen=false
+kcm_touchscreen=false
+kcm_virtualkeyboard=false
+kcm_webshortcuts=false

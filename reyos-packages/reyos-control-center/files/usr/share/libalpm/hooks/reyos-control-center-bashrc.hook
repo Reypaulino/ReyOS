@@ -1,0 +1,11 @@
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = reyos-control-center
+Target = bash
+
+[Action]
+Description = Applying ReyOS skel .bashrc...
+When = PostTransaction
+Exec = /usr/share/reyos/bin/reyos-apply-skel-bashrc.sh

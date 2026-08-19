@@ -1,0 +1,15 @@
+# Maintainer: Rey Paulino
+pkgname=reyos-terminal
+pkgver=1.0.0
+pkgrel=5
+pkgdesc="ReyOS terminal branding — neofetch ASCII logo + system info, auto-run on shell open"
+arch=('any')
+license=('MIT')
+depends=('neofetch')
+source=()
+sha256sums=()
+
+package() {
+    cp -a "$startdir/files/etc" "$pkgdir/"
+    find "$pkgdir/etc/skel/.config/neofetch" -type f -exec chmod 644 {} \;
+}

@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if ! mountpoint -q /run/archiso/airootfs; then
+    kdialog --error "ReyOS Installer is available only from the live session."
+    exit 1
+fi
+
+exec sudo -n /usr/bin/calamares "$@"

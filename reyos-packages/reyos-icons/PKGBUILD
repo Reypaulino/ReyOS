@@ -1,0 +1,15 @@
+# Maintainer: Rey Paulino
+pkgname=reyos-icons
+pkgver=1.3.0
+pkgrel=8
+pkgdesc="ReyOS logo/icon assets + ReyOS icon theme (inherits Breeze Dark)"
+arch=('any')
+license=('MIT')
+depends=('breeze-icons')
+source=()
+sha256sums=()
+
+package() {
+    cp -a "$startdir/files/usr" "$pkgdir/"
+    find "$pkgdir/usr" -type f -exec chmod 644 {} \;
+}

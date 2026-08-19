@@ -1,0 +1,22 @@
+module ReyOSControlCenter
+singleton ReyOSStyle 1.0 ReyOSStyle.qml
+SystemInfoPage 1.0 SystemInfoPage.qml
+UpdatesPage 1.0 UpdatesPage.qml
+PerformancePage 1.0 PerformancePage.qml
+AppearancePage 1.0 AppearancePage.qml
+NetworkPage 1.0 NetworkPage.qml
+FirewallPage 1.0 FirewallPage.qml
+DriversPage 1.0 DriversPage.qml
+DiskPage 1.0 DiskPage.qml
+PermissionsPage 1.0 PermissionsPage.qml
+FlatpakPage 1.0 FlatpakPage.qml
+ServicesPage 1.0 ServicesPage.qml
+StartupPage 1.0 StartupPage.qml
+UsersPage 1.0 UsersPage.qml
+SoundPage 1.0 SoundPage.qml
+BluetoothPage 1.0 BluetoothPage.qml
+WifiPage 1.0 WifiPage.qml
+DateTimePage 1.0 DateTimePage.qml
+KeyboardPage 1.0 KeyboardPage.qml
+MousePage 1.0 MousePage.qml
+BackupPage 1.0 BackupPage.qml

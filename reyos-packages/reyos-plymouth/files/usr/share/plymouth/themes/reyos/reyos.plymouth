@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=ReyOS
+Description=ReyOS boot splash — navy background with the ReyOS mark
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/reyos
+ScriptFile=/usr/share/plymouth/themes/reyos/reyos.script

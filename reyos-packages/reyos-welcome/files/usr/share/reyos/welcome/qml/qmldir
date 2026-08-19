@@ -1,0 +1,8 @@
+module ReyOSWelcome
+singleton ReyOSStyle 1.0 ReyOSStyle.qml
+WelcomePage 1.0 WelcomePage.qml
+TimeRegionPage 1.0 TimeRegionPage.qml
+SoftwarePage 1.0 SoftwarePage.qml
+SummaryPage 1.0 SummaryPage.qml
+InstallPage 1.0 InstallPage.qml
+DonePage 1.0 DonePage.qml

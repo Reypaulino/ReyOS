@@ -1,0 +1,18 @@
+# Maintainer: Rey Paulino
+pkgname=reyos-grub
+pkgver=1.0.0
+pkgrel=11
+pkgdesc="ReyOS GRUB theme — dark navy + blue accent, dedicated background image"
+arch=('any')
+license=('MIT')
+depends=('grub')
+source=()
+sha256sums=()
+
+package() {
+    cp -a "$startdir/files/boot" "$pkgdir/"
+    cp -a "$startdir/files/usr" "$pkgdir/"
+    find "$pkgdir/boot/grub/themes/reyos" -type f -exec chmod 644 {} \;
+    chmod 644 "$pkgdir/usr/share/libalpm/hooks/reyos-grub-theme.hook"
+    chmod 755 "$pkgdir/usr/share/reyos/bin/reyos-apply-grub-theme.sh"
+}

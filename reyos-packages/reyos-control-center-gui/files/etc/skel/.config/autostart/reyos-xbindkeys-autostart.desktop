@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=ReyOS Custom Shortcuts
+Exec=/usr/bin/xbindkeys
+Hidden=false
+X-GNOME-Autostart-enabled=true
+NoDisplay=true

@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="copper" x1="20" y1="14" x2="108" y2="116" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F0B46A"/>
+      <stop offset="1" stop-color="#C97932"/>
+    </linearGradient>
+  </defs>
+  <circle cx="64" cy="64" r="58" fill="#15110E"/>
+  <circle cx="64" cy="64" r="48" fill="url(#copper)"/>
+  <ellipse cx="64" cy="80" rx="24" ry="26" fill="#FFF3E6"/>
+  <circle cx="64" cy="44" r="15" fill="#FFF3E6"/>
+  <ellipse cx="64" cy="84" rx="13" ry="17" fill="#15110E"/>
+  <path d="M75 44 87 40 75 37Z" fill="#15110E"/>
+  <circle cx="69" cy="41" r="2.5" fill="#15110E"/>
+  <circle cx="64" cy="64" r="58" fill="none" stroke="#F4D5A8" stroke-width="4"/>
+</svg>

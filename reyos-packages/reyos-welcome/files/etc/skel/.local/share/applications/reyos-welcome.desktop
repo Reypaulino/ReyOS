@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=ReyOS Welcome
+Comment=Pick and install software — Gaming, Dev Tools, Browsers, Creative
+Exec=/usr/share/reyos/welcome/main.py
+Icon=reyos-welcome
+Terminal=false
+Categories=System;

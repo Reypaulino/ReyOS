@@ -1,0 +1,37 @@
+# ReyOS GRUB theme
+# Reuses the ReyOS desktop wallpaper as the boot menu background — the
+# logo/ring artwork sits in the upper-center of that image, so the boot
+# menu itself is placed in the lower third to avoid overlapping it.
+
+title-text: ""
+desktop-image: "background.png"
+desktop-color: "#0A1428"
+terminal-font: "Unifont Regular 16"
+
++ boot_menu {
+    left = 15%
+    top = 66%
+    width = 70%
+    height = 22%
+    item_font = "Unifont Regular 16"
+    item_color = "#E0EEFF"
+    selected_item_color = "#0070FF"
+    item_height = 28
+    item_padding = 6
+    item_spacing = 6
+    scrollbar = false
+}
+
++ progress_bar {
+    id = "__timeout__"
+    left = 15%
+    top = 90%
+    width = 70%
+    height = 20
+    show_text = true
+    font = "Unifont Regular 12"
+    text_color = "#E0EEFF"
+    fg_color = "#0070FF"
+    bg_color = "#1A2744"
+    border_color = "#3A4A6A"
+}

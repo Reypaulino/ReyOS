@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=ReyOS Update Notify
+Exec=bash /usr/share/reyos/bin/reyos-update-notify.sh
+Hidden=false
+X-GNOME-Autostart-enabled=true
+X-GNOME-Autostart-Delay=15
+NoDisplay=true

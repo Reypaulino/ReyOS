@@ -1,0 +1,20 @@
+# Maintainer: Rey Paulino
+pkgname=reyos-base
+pkgver=1.1.0
+pkgrel=2
+pkgdesc="ReyOS core identity: os-release, hostname, lsb-release branding"
+arch=('any')
+license=('MIT')
+depends=()
+source=('os-release' 'hostname')
+sha256sums=('dc516bd1f1e9551c849a320e5c40aaf47cd59389f66802f8c3e28ee50c07afa3' 'de09a800677e9f62df5a823d6b5680cb35fdcb63311d62b777907e5d2915c7d1')
+
+package() {
+    install -Dm644 "$srcdir/os-release" "$pkgdir/etc/os-release"
+    install -Dm644 "$srcdir/hostname" "$pkgdir/etc/hostname"
+    cp -a "$startdir/files/etc" "$pkgdir/"
+    cp -a "$startdir/files/usr" "$pkgdir/"
+    chmod 644 "$pkgdir/etc/reyos/lsb-release"
+    chmod 644 "$pkgdir/usr/share/libalpm/hooks/reyos-lsb-release.hook"
+    chmod 755 "$pkgdir/usr/share/reyos/bin/reyos-apply-lsb-release.sh"
+}

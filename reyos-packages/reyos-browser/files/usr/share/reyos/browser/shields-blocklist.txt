@@ -1,0 +1,149 @@
+# ReyOS Shields fallback list, used only until the user runs "Update
+# filter list" (Settings) for the first time -- once that succeeds, the
+# maintained list cached at ~/.local/share/reyos-browser/ takes over.
+# Suffix-matched (blocking "example.com" also blocks "ads.example.com").
+# Not an EasyList/uBlock-compatible filter list -- no cosmetic filtering,
+# no persistent per-site rules. See docs/browser.md for known limitations.
+
+# Google / Alphabet ad tech
+doubleclick.net
+googlesyndication.com
+googleadservices.com
+google-analytics.com
+googletagmanager.com
+googletagservices.com
+adservice.google.com
+admob.com
+crashlytics.com
+
+# Meta / Facebook
+facebook.net
+an.facebook.com
+
+# Amazon
+amazon-adsystem.com
+
+# Microsoft / Bing
+bat.bing.com
+ads.microsoft.com
+clarity.ms
+
+# Adobe / Omniture
+demdex.net
+omtrdc.net
+2o7.net
+everesttech.net
+
+# Ad exchanges / networks
+adnxs.com
+adsrvr.org
+criteo.com
+criteo.net
+rubiconproject.com
+pubmatic.com
+openx.net
+casalemedia.com
+contextweb.com
+indexexchange.com
+smartadserver.com
+adform.net
+adroll.com
+bidswitch.net
+spotxchange.com
+spotx.tv
+media.net
+mgid.com
+revcontent.com
+adblade.com
+yieldmo.com
+sharethrough.com
+teads.tv
+triplelift.com
+smaato.com
+inmobi.com
+mopub.com
+flashtalking.com
+zedo.com
+adzerk.net
+gumgum.com
+lijit.com
+sovrn.com
+ml314.com
+33across.com
+adtechus.com
+advertising.com
+bidtheatre.com
+undertone.com
+yieldlab.net
+sonobi.com
+loopme.com
+
+# Content recommendation
+taboola.com
+outbrain.com
+
+# Analytics / session tracking
+scorecardresearch.com
+hotjar.com
+mixpanel.com
+segment.io
+quantserve.com
+amplitude.com
+fullstory.com
+mouseflow.com
+crazyegg.com
+chartbeat.com
+clicktale.net
+optimizely.com
+heap.io
+kissmetrics.com
+mparticle.com
+webtrends.com
+newrelic.com
+nr-data.net
+matomo.cloud
+piwik.pro
+
+# Social ad/tracking pixels
+ads.linkedin.com
+analytics.twitter.com
+ads-twitter.com
+ads.pinterest.com
+ads.tiktok.com
+analytics.tiktok.com
+analytics.snapchat.com
+tr.snapchat.com
+
+# Mobile / video ad SDKs
+adcolony.com
+applovin.com
+chartboost.com
+vungle.com
+unityads.unity3d.com
+moatads.com
+doubleverify.com
+adsafeprotected.com
+ironsrc.com
+tapjoy.com
+startapp.com
+supersonicads.com
+
+# Aggressive / pop / redirect ad networks
+exoclick.com
+popads.net
+propellerads.com
+adcash.com
+trafficjunky.net
+juicyads.com
+plugrush.com
+adsterra.com
+clickadu.com
+
+# Misc trackers
+branch.io
+appsflyer.com
+adjust.com
+kochava.com
+singular.net
+tune.com
+bugsnag.com

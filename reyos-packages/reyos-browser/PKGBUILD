@@ -1,0 +1,17 @@
+# Maintainer: Rey Paulino
+pkgname=reyos-browser
+pkgver=0.1.0
+pkgrel=70
+pkgdesc="ReyOS Browser — a native private-by-default Qt web application"
+arch=('any')
+license=('MPL-2.0')
+depends=('pyside6' 'qt6-webengine' 'kirigami' 'libnotify' 'kdialog')
+source=()
+sha256sums=()
+
+package() {
+    cp -a "$startdir/files/usr" "$pkgdir/"
+    chmod 755 "$pkgdir/usr/bin/reyos-browser"
+    chmod 755 "$pkgdir/usr/share/reyos/browser/main.py"
+    find "$pkgdir/usr/share" -type f -exec chmod 644 {} \;
+}

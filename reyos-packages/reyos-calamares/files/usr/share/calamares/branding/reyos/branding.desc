@@ -1,0 +1,44 @@
+# SPDX-FileCopyrightText: no
+# SPDX-License-Identifier: CC0-1.0
+#
+# ReyOS product branding for Calamares.
+---
+componentName:  reyos
+
+welcomeStyleCalamares:   false
+welcomeExpandingLogo: false
+
+windowExpanding:    normal
+windowSize: 1100px,520px
+windowPlacement: center
+
+sidebar: qml,bottom
+navigation: widget
+
+strings:
+    productName:         ReyOS
+    shortProductName:    ReyOS
+    version:             2026.08.08
+    shortVersion:        2026.08.08
+    versionedName:       ReyOS
+    shortVersionedName:  ReyOS
+    bootloaderEntryName: ReyOS
+
+images:
+    productLogo:         "logo.png"
+    productIcon:         "icon.png"
+    productWelcome:      "welcome.png"
+
+style:
+   SidebarBackground:        "#15110E"
+   SidebarText:              "#FFF3E6"
+   SidebarTextCurrent:       "#FFFFFF"
+   SidebarBackgroundCurrent: "#C97932"
+
+# CachyOS's own promotional slides aren't ours to ship under ReyOS branding,
+# and we don't have replacement content yet -- but Calamares treats this key
+# as *required*, not optional (confirmed: omitting it entirely crashes at
+# startup with "FATAL ... key not found: slideshow"). A single-image
+# "slideshow" is a safe minimal placeholder; there's no real exec step yet
+# for it to be shown during anyway (see settings.conf, exec: []).
+slideshow: [ "welcome.png" ]

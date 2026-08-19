@@ -1,0 +1,15 @@
+# Maintainer: Rey Paulino
+pkgname=reyos-branding
+pkgver=1.0.0
+pkgrel=4
+pkgdesc="ReyOS branding compatibility package"
+arch=('any')
+license=('MIT')
+depends=('reyos-base' 'reyos-wallpapers')
+source=()
+sha256sums=()
+
+package() {
+    # The dependent packages own the identity files and wallpaper.
+    install -d "$pkgdir/usr/share/reyos"
+}

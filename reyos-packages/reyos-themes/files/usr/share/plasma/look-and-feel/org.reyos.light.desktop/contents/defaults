@@ -1,0 +1,16 @@
+[kdeglobals][General]
+ColorScheme=ReyOSLight
+Name=ReyOS Light
+
+[kdeglobals][Icons]
+Theme=breeze
+
+[kdeglobals][KDE]
+LookAndFeelPackage=org.reyos.light.desktop
+
+[ksplashrc][KSplash]
+Engine=KSplashQML
+Theme=org.reyos.light.desktop
+
+[Wallpaper]
+Image=/usr/share/backgrounds/reyos-wallpaper.jpg
