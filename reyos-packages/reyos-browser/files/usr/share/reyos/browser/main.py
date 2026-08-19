@@ -394,7 +394,7 @@ def main():
         return 1
     profile.setUrlRequestInterceptor(interceptor)
     window.initializeFirstTab()
-    window.setIcon(QIcon.fromTheme("reyos-browser"))
+    window.setIcon(QIcon.fromTheme("reyos-browser", QIcon(str(APP_DIR / "assets" / "reyos-r-penguin.png"))))
     return app.exec()
 
 if __name__ == "__main__":
