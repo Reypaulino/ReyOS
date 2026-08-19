@@ -1,7 +1,7 @@
 # Maintainer: Rey Paulino
 pkgname=reyos-browser
 pkgver=0.1.0
-pkgrel=72
+pkgrel=74
 pkgdesc="ReyOS Browser — a native private-by-default Qt web application"
 arch=('any')
 license=('MPL-2.0')

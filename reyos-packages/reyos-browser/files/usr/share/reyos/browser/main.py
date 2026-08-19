@@ -18,14 +18,22 @@ from PySide6.QtWebEngineQuick import QQuickWebEngineProfile, QtWebEngineQuick
 
 APP_DIR = Path(__file__).resolve().parent
 
-# StevenBlack's unified hosts list: actively maintained, MIT-licensed,
-# merges several well-known ad/tracking/malware blocklists into one file.
+# Two actively-maintained, permissively-licensed, plain ad/tracking hosts
+# lists -- no opinionated content categories (gambling/social/etc. variants
+# some of these projects also offer are deliberately not used here, since
+# that would silently change what a user can reach, not just what tracks
+# them). StevenBlack's is itself already a merge of several well-known
+# lists; Dan Pollock's someonewhocares.org list is added as a second,
+# independently-maintained source for coverage that alone might miss.
 # Picked over bundling a single static snapshot forever (the old v1
 # behavior) so Shields' domain coverage doesn't silently go stale --
 # still an explicit, user-triggered fetch, never automatic/background, to
 # keep with the "nothing happens without you asking" design elsewhere in
 # this browser.
-SHIELDS_LIST_URL = "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
+SHIELDS_LIST_URLS = [
+    "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts",
+    "https://someonewhocares.org/hosts/zero/hosts",
+]
 SHIELDS_STATE_DIR = Path.home() / ".local" / "share" / "reyos-browser"
 SHIELDS_CACHE_PATH = SHIELDS_STATE_DIR / "shields-blocklist-cache.txt"
 SHIELDS_META_PATH = SHIELDS_STATE_DIR / "shields-meta.json"
@@ -340,21 +348,30 @@ class ShieldsUpdateWorker(QThread):
     finished_ok = Signal(bool, str, int)
 
     def run(self) -> None:
-        try:
-            request = urllib.request.Request(SHIELDS_LIST_URL, headers={"User-Agent": "ReyOS-Browser-Shields"})
-            with urllib.request.urlopen(request, timeout=20) as response:
-                raw = response.read().decode("utf-8", errors="replace")
-        except (urllib.error.URLError, OSError, TimeoutError) as error:
-            self.finished_ok.emit(False, f"Could not reach the filter list server: {error}", 0)
-            return
+        domains: set[str] = set()
+        fetched_sources = []
+        for url in SHIELDS_LIST_URLS:
+            try:
+                request = urllib.request.Request(url, headers={"User-Agent": "ReyOS-Browser-Shields"})
+                with urllib.request.urlopen(request, timeout=20) as response:
+                    raw = response.read().decode("utf-8", errors="replace")
+            except (urllib.error.URLError, OSError, TimeoutError):
+                # One source being unreachable shouldn't sink the whole
+                # update -- merge whatever else succeeds, report only if
+                # every source fails.
+                continue
+            parsed = _parse_domain_lines(raw)
+            if len(parsed) < 500:
+                # A genuine fetch of any of these lists is thousands of
+                # domains -- a short/empty result means something upstream
+                # broke (redirect to an HTML error page, truncated
+                # response, wrong URL), not a real, safe-to-use list.
+                continue
+            domains |= parsed
+            fetched_sources.append(url)
 
-        domains = _parse_domain_lines(raw)
-        if len(domains) < 1000:
-            # A genuine fetch of this list is tens of thousands of
-            # domains -- a short/empty result means something upstream
-            # broke (redirect to an HTML error page, truncated
-            # response, wrong URL), not a real, safe-to-use list.
-            self.finished_ok.emit(False, "The downloaded filter list looked incomplete or invalid -- kept the previous list.", 0)
+        if not fetched_sources:
+            self.finished_ok.emit(False, "Could not reach any filter list server, or every response looked invalid -- kept the previous list.", 0)
             return
 
         try:
@@ -363,7 +380,7 @@ class ShieldsUpdateWorker(QThread):
             temp_path.write_text("\n".join(sorted(domains)) + "\n", encoding="utf-8")
             os.replace(temp_path, SHIELDS_CACHE_PATH)
             meta = {
-                "source": SHIELDS_LIST_URL,
+                "source": ", ".join(fetched_sources),
                 "lastUpdated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                 "domainCount": len(domains),
             }
@@ -372,7 +389,9 @@ class ShieldsUpdateWorker(QThread):
             self.finished_ok.emit(False, f"Downloaded the list but could not save it: {error}", 0)
             return
 
-        self.finished_ok.emit(True, f"Filter list updated: {len(domains)} domains.", len(domains))
+        skipped = len(SHIELDS_LIST_URLS) - len(fetched_sources)
+        note = f" ({skipped} source{'s' if skipped != 1 else ''} unreachable, merged the rest)" if skipped else ""
+        self.finished_ok.emit(True, f"Filter list updated: {len(domains)} domains{note}.", len(domains))
 
 
 def main():
