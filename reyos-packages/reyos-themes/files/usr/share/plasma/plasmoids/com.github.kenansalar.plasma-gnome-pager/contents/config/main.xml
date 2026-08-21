@@ -8,7 +8,7 @@
   Each <entry name="X"> becomes plasmoid.configuration.X, read live in main.qml (with a `?? <default>`
   guard) and passed down as a plain value. Three keys use a `0 = auto` sentinel — their natural default is
   theme/HiDPI-derived, which a fixed KConfigXT literal can't hold, so it's resolved in the widget: dotSize,
-  pillSize (→ match the dots), animationDuration (→ Kirigami.Units.longDuration). See CLAUDE.md "Config flow".
+  pillSize (→ match the dots), animationDuration (→ Kirigami.Units.longDuration).
 -->
 <kcfg xmlns="http://www.kde.org/standards/kcfg/1.0"
       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
