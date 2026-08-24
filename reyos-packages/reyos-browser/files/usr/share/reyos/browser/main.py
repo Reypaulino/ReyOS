@@ -37,6 +37,13 @@ SHIELDS_LIST_URLS = [
 SHIELDS_STATE_DIR = Path.home() / ".local" / "share" / "reyos-browser"
 SHIELDS_CACHE_PATH = SHIELDS_STATE_DIR / "shields-blocklist-cache.txt"
 SHIELDS_META_PATH = SHIELDS_STATE_DIR / "shields-meta.json"
+# Lifetime blocked-request total, persisted once per session (on quit, not
+# per-block -- writing a file on every single ad/tracker hit would be real
+# I/O overhead for no benefit) so something outside this one running
+# process -- namely Control Center's Security dashboard -- has a real,
+# durable number to show instead of nothing. The in-memory per-session
+# count (blockedRequestCount) was never written anywhere before this.
+SHIELDS_STATS_PATH = SHIELDS_STATE_DIR / "shields-stats.json"
 _HOSTS_LINE_RE = re.compile(r"^(?:0\.0\.0\.0|127\.0\.0\.1)\s+([a-z0-9.-]+)\s*$", re.IGNORECASE)
 
 
@@ -276,6 +283,29 @@ class BrowserBackend(QObject):
     def _record_blocked(self, first_party: str) -> None:
         self._blocked_request_count += 1
         self.blockedRequestCountChanged.emit()
+
+    @Slot()
+    def persistShieldsStats(self) -> None:
+        # Called once, on app quit -- rolls this session's in-memory count
+        # into the durable lifetime total rather than replacing it, since
+        # this method fires exactly once per session close, not per block.
+        if self._blocked_request_count == 0:
+            return
+        try:
+            existing = json.loads(SHIELDS_STATS_PATH.read_text(encoding="utf-8"))
+            lifetime = existing.get("lifetimeBlocked", 0)
+            if not isinstance(lifetime, int):
+                lifetime = 0
+        except (OSError, json.JSONDecodeError):
+            lifetime = 0
+        try:
+            SHIELDS_STATE_DIR.mkdir(parents=True, exist_ok=True)
+            SHIELDS_STATS_PATH.write_text(
+                json.dumps({"lifetimeBlocked": lifetime + self._blocked_request_count}),
+                encoding="utf-8",
+            )
+        except OSError:
+            pass
     @Property(str, notify=searchEngineChanged)
     def searchEngine(self) -> str:
         return self._search_engine
@@ -403,6 +433,7 @@ def main():
     engine = QQmlApplicationEngine()
     interceptor = ShieldsInterceptor(load_blocked_domains())
     backend = BrowserBackend(interceptor)
+    app.aboutToQuit.connect(backend.persistShieldsStats)
     engine.rootContext().setContextProperty("browserBackend", backend)
     engine.load(QUrl.fromLocalFile(str(APP_DIR / "qml" / "Main.qml")))
     if not engine.rootObjects():
