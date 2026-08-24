@@ -89,4 +89,4 @@ modules:
     sources:
       - type: git
         url: https://github.com/Reypaulino/ReyOS.git
-        commit: 605d89b4e906f97f0d176421948edaaf9a6109a6  # placeholder: this predates the flatpak/ dir itself, corrected in the next commit
+        commit: 7cefa2c9016331e610f3246a87b33be5d49c8621
