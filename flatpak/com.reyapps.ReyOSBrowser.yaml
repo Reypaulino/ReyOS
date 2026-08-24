@@ -1,0 +1,92 @@
+app-id: com.reyapps.ReyOSBrowser
+runtime: org.kde.Platform
+runtime-version: "6.9"
+sdk: org.kde.Sdk
+base: io.qt.qtwebengine.BaseApp
+base-version: "6.9"
+command: com.reyapps.ReyOSBrowser
+
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --share=network
+  - --filesystem=xdg-download
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.freedesktop.secrets
+
+cleanup-commands:
+  - /app/cleanup-BaseApp.sh
+
+build-options:
+  env:
+    QTWEBENGINEPROCESS_PATH: /app/bin/QtWebEngineProcess
+    QTWEBENGINE_DICTIONARIES_PATH: /app/resources/qtwebengine_dictionaries
+
+modules:
+  - name: python-deps
+    buildsystem: simple
+    build-commands:
+      - pip3 install --no-index --find-links="file://${PWD}" --prefix=/app PySide6==6.9.2 secretstorage==3.5.0
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/12/df/cb84f802df3dcc1d196d2f9f37dbb8227761826f936987c9386b8ae1ffcc/pyside6-6.9.2-cp39-abi3-manylinux_2_28_x86_64.whl
+        sha256: 64a9e2146e207d858e00226f68d7c1b4ab332954742a00dcabb721bb9e4aa0cd
+      - type: file
+        url: https://files.pythonhosted.org/packages/14/48/0b16e9dabd4cafe02d59531832bc30b6f0e14c92076e90dd02379d365cb2/pyside6_addons-6.9.2-cp39-abi3-manylinux_2_28_x86_64.whl
+        sha256: 24350e5415317f269e743d1f7b4933fe5f59d90894aa067676c9ce6bfe9e7988
+      - type: file
+        url: https://files.pythonhosted.org/packages/3e/02/e38ff18f3d2d8d3071aa6823031aad6089267aa4668181db65ce9948bfc0/pyside6_essentials-6.9.2-cp39-abi3-manylinux_2_28_x86_64.whl
+        sha256: 84b8ca4fa56506e2848bdb4c7a0851a5e7adcb916bef9bce25ce2eeb6c7002cc
+      - type: file
+        url: https://files.pythonhosted.org/packages/3b/bb/72a8ed0f0542d9ea935f385b396ee6a4bbd94749c817cbf2be34e80a16d3/shiboken6-6.9.2-cp39-abi3-manylinux_2_28_x86_64.whl
+        sha256: 3b54c0a12ea1b03b9dc5dcfb603c366e957dc75341bf7cb1cc436d0d848308ee
+      - type: file
+        url: https://files.pythonhosted.org/packages/b7/46/f5af3402b579fd5e11573ce652019a67074317e18c1935cc0b4ba9b35552/secretstorage-3.5.0-py3-none-any.whl
+        sha256: 0ce65888c0725fcb2c5bc0fdb8e5438eece02c523557ea40ce0703c266248137
+      - type: file
+        url: https://files.pythonhosted.org/packages/da/3a/f05e32c99d440c9bb891ea0e36c9091891e36be5a9a87ab2ee6ea20729f6/cryptography-50.0.0-cp311-abi3-manylinux_2_34_x86_64.whl
+        sha256: 82148ec5bddac30b51a5b3c1945075f896fa022cb93f8e4a01e9f6ee95292c5f
+      - type: file
+        url: https://files.pythonhosted.org/packages/b2/a3/e137168c9c44d18eff0376253da9f1e9234d0239e0ee230d2fee6cea8e55/jeepney-0.9.0-py3-none-any.whl
+        sha256: 97e5714520c16fc0a45695e5365a2e11b81ea79bba796e26f9f1d178cb182683
+      - type: file
+        url: https://files.pythonhosted.org/packages/b1/db/dceb9dd5b231e1da801793f8acc9f3c52a7e1afe40bb1aae37e02b0faad5/cffi-2.1.1-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl
+        sha256: c1453022f490d2459a11819d83ad1d586e9ff65a12ac3e705ffebd46d3685dcf
+      - type: file
+        url: https://files.pythonhosted.org/packages/0c/c3/44f3fbbfa403ea2a7c779186dc20772604442dde72947e7d01069cbe98e3/pycparser-3.0-py3-none-any.whl
+        sha256: b727414169a36b7d524c1c3e31839a521725078d7b2ff038656844266160a992
+
+  # WIP only. This scaffold now aligns the bundled PySide6 wheel set with the
+  # KDE 6.9 runtime and Qt WebEngine base app, but it still needs a proper
+  # Flathub-ready dependency strategy before submission.
+  - name: reyos-browser
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 flatpak/reyos-browser-launcher /app/bin/com.reyapps.ReyOSBrowser
+      - install -Dm644 flatpak/com.reyapps.ReyOSBrowser.desktop /app/share/applications/com.reyapps.ReyOSBrowser.desktop
+      - install -Dm644 flatpak/com.reyapps.ReyOSBrowser.metainfo.xml /app/share/metainfo/com.reyapps.ReyOSBrowser.metainfo.xml
+      - install -Dm644 reyos-packages/reyos-browser/files/usr/share/reyos/browser/main.py /app/share/reyos/browser/main.py
+      - install -Dm644 reyos-packages/reyos-browser/files/usr/share/reyos/browser/home.html /app/share/reyos/browser/home.html
+      - install -Dm644 reyos-packages/reyos-browser/files/usr/share/reyos/browser/shields-blocklist.txt /app/share/reyos/browser/shields-blocklist.txt
+      - install -Dm644 reyos-packages/reyos-browser/files/usr/share/reyos/browser/qml/Main.qml /app/share/reyos/browser/qml/Main.qml
+      - install -Dm644 reyos-packages/reyos-browser/files/usr/share/reyos/browser/assets/reyos-r-penguin.png /app/share/reyos/browser/assets/reyos-r-penguin.png
+      - install -Dm644 reyos-packages/reyos-browser/files/usr/share/icons/hicolor/scalable/apps/reyos-browser.svg /app/share/icons/hicolor/scalable/apps/com.reyapps.ReyOSBrowser.svg
+      - install -Dm644 reyos-packages/reyos-browser/files/usr/share/reyos/browser/icons/reyos-back.svg /app/share/reyos/browser/icons/reyos-back.svg
+      - install -Dm644 reyos-packages/reyos-browser/files/usr/share/reyos/browser/icons/reyos-bookmark.svg /app/share/reyos/browser/icons/reyos-bookmark.svg
+      - install -Dm644 reyos-packages/reyos-browser/files/usr/share/reyos/browser/icons/reyos-download.svg /app/share/reyos/browser/icons/reyos-download.svg
+      - install -Dm644 reyos-packages/reyos-browser/files/usr/share/reyos/browser/icons/reyos-find.svg /app/share/reyos/browser/icons/reyos-find.svg
+      - install -Dm644 reyos-packages/reyos-browser/files/usr/share/reyos/browser/icons/reyos-forward.svg /app/share/reyos/browser/icons/reyos-forward.svg
+      - install -Dm644 reyos-packages/reyos-browser/files/usr/share/reyos/browser/icons/reyos-history.svg /app/share/reyos/browser/icons/reyos-history.svg
+      - install -Dm644 reyos-packages/reyos-browser/files/usr/share/reyos/browser/icons/reyos-memory.svg /app/share/reyos/browser/icons/reyos-memory.svg
+      - install -Dm644 reyos-packages/reyos-browser/files/usr/share/reyos/browser/icons/reyos-menu.svg /app/share/reyos/browser/icons/reyos-menu.svg
+      - install -Dm644 reyos-packages/reyos-browser/files/usr/share/reyos/browser/icons/reyos-pin.svg /app/share/reyos/browser/icons/reyos-pin.svg
+      - install -Dm644 reyos-packages/reyos-browser/files/usr/share/reyos/browser/icons/reyos-reader.svg /app/share/reyos/browser/icons/reyos-reader.svg
+      - install -Dm644 reyos-packages/reyos-browser/files/usr/share/reyos/browser/icons/reyos-refresh.svg /app/share/reyos/browser/icons/reyos-refresh.svg
+      - install -Dm644 reyos-packages/reyos-browser/files/usr/share/reyos/browser/icons/reyos-settings.svg /app/share/reyos/browser/icons/reyos-settings.svg
+      - install -Dm644 reyos-packages/reyos-browser/files/usr/share/reyos/browser/icons/reyos-shields.svg /app/share/reyos/browser/icons/reyos-shields.svg
+    sources:
+      - type: git
+        url: https://github.com/Reypaulino/ReyOS.git
+        commit: 605d89b4e906f97f0d176421948edaaf9a6109a6  # placeholder: this predates the flatpak/ dir itself, corrected in the next commit

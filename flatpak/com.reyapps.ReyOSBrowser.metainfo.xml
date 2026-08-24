@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.reyapps.ReyOSBrowser</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MPL-2.0</project_license>
+  <name>ReyOS Browser</name>
+  <summary>Private-by-default web browser built for ReyOS</summary>
+
+  <developer id="com.reyapps">
+    <name>ReyApps</name>
+  </developer>
+
+  <launchable type="desktop-id">com.reyapps.ReyOSBrowser.desktop</launchable>
+
+  <description>
+    <p>
+      ReyOS Browser is a native Qt WebEngine browser with a private, session-only
+      profile by default, built-in Shields filtering, reader mode, download
+      management, and saved-password support.
+    </p>
+    <p>
+      This Flatpak packaging is intended for running the browser outside ReyOS
+      while preserving the same application behavior and visual identity.
+    </p>
+  </description>
+
+  <url type="homepage">https://reyapps.com</url>
+  <url type="bugtracker">https://github.com/Reypaulino/ReyOS/issues</url>
+  <url type="vcs-browser">https://github.com/Reypaulino/ReyOS</url>
+
+  <categories>
+    <category>Network</category>
+    <category>WebBrowser</category>
+  </categories>
+
+  <provides>
+    <binary>com.reyapps.ReyOSBrowser</binary>
+  </provides>
+
+  <releases>
+    <release version="0.1.0" date="2026-08-22">
+      <description>
+        <p>Initial Flatpak metadata scaffold for ReyOS Browser.</p>
+      </description>
+    </release>
+  </releases>
+
+  <content_rating type="oars-1.1"/>
+</component>
