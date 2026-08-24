@@ -13,10 +13,17 @@ from datetime import datetime, timezone
 from html.parser import HTMLParser
 from pathlib import Path
 
+IS_WINDOWS = sys.platform == "win32"
+
 try:
     import secretstorage
 except ModuleNotFoundError:
     secretstorage = None
+
+try:
+    import keyring
+except ModuleNotFoundError:
+    keyring = None
 
 from PySide6.QtCore import QFile, QIODevice, QObject, Property, QThread, QUrl, QUrlQuery, Signal, Slot
 from PySide6.QtGui import QIcon
@@ -26,7 +33,10 @@ from PySide6.QtWebEngineQuick import QQuickWebEngineProfile, QtWebEngineQuick
 from PySide6.QtWidgets import QApplication, QFileDialog
 
 APP_DIR = Path(__file__).resolve().parent
-BROWSER_STATE_DIR = Path.home() / ".local" / "share" / "reyos-browser"
+if IS_WINDOWS:
+    BROWSER_STATE_DIR = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming")) / "ReyOS Browser"
+else:
+    BROWSER_STATE_DIR = Path.home() / ".local" / "share" / "reyos-browser"
 PASSWORD_BLOCKLIST_PATH = BROWSER_STATE_DIR / "password-blocklist.json"
 PASSWORD_AUTOFILL_SCRIPT_PATH = APP_DIR / "password-autofill.js"
 FINGERPRINT_PROTECTION_SCRIPT_PATH = APP_DIR / "fingerprint-protection.js"
@@ -181,7 +191,7 @@ class ShieldsInterceptor(QWebEngineUrlRequestInterceptor):
             info.redirect(target_url)
 
 
-class PasswordVault:
+class _LinuxPasswordVault:
     def __init__(self) -> None:
         self._connection = None
         self._collection = None
@@ -252,6 +262,86 @@ class PasswordVault:
             for item in collection.search_items({"application": "reyos-browser"})
         }
         return sorted(origin for origin in origins if origin)
+
+
+class _WindowsPasswordVault:
+    """Stores secrets in Windows Credential Manager via `keyring`.
+
+    `keyring` only supports one password per (service, username) pair, so it
+    can't answer "list every saved login for this origin" on its own. A small
+    local index (origin -> usernames, no secrets) fills that gap; the actual
+    passwords never leave Credential Manager.
+    """
+
+    def __init__(self) -> None:
+        self._index_path = BROWSER_STATE_DIR / "password-index.json"
+
+    @staticmethod
+    def _service_name(origin: str) -> str:
+        return f"reyos-browser:{origin}"
+
+    def _require_keyring(self) -> None:
+        if keyring is None:
+            raise RuntimeError("The keyring package is not installed.")
+
+    def _load_index(self) -> dict[str, list[str]]:
+        try:
+            data = json.loads(self._index_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+        return data if isinstance(data, dict) else {}
+
+    def _save_index(self, index: dict[str, list[str]]) -> None:
+        self._index_path.parent.mkdir(parents=True, exist_ok=True)
+        temp_path = self._index_path.with_suffix(".tmp")
+        with temp_path.open("w", encoding="utf-8") as handle:
+            json.dump(index, handle, ensure_ascii=False, indent=2)
+        os.replace(temp_path, self._index_path)
+
+    def save_credential(self, origin: str, username: str, password: str) -> None:
+        self._require_keyring()
+        keyring.set_password(self._service_name(origin), username, password)
+        index = self._load_index()
+        usernames = index.setdefault(origin, [])
+        if username not in usernames:
+            usernames.append(username)
+            self._save_index(index)
+
+    def get_credentials(self, origin: str) -> list[dict]:
+        if keyring is None:
+            return []
+        index = self._load_index()
+        credentials = []
+        for username in index.get(origin, []):
+            password = keyring.get_password(self._service_name(origin), username)
+            if password is None:
+                continue
+            credentials.append({"origin": origin, "username": username, "password": password})
+        credentials.sort(key=lambda entry: entry["username"].lower())
+        return credentials
+
+    def delete_credential(self, origin: str, username: str) -> None:
+        self._require_keyring()
+        try:
+            keyring.delete_password(self._service_name(origin), username)
+        except keyring.errors.PasswordDeleteError:
+            pass
+        index = self._load_index()
+        usernames = index.get(origin, [])
+        if username in usernames:
+            usernames.remove(username)
+            if usernames:
+                index[origin] = usernames
+            else:
+                index.pop(origin, None)
+            self._save_index(index)
+
+    def list_all_origins(self) -> list[str]:
+        index = self._load_index()
+        return sorted(origin for origin, usernames in index.items() if usernames)
+
+
+PasswordVault = _WindowsPasswordVault if IS_WINDOWS else _LinuxPasswordVault
 
 
 def normalize_origin(value: str) -> str:
@@ -785,7 +875,12 @@ class BrowserBackend(QObject):
 
     @Slot(str, str)
     def notify(self, title: str, message: str) -> None:
-        """Send a KDE notification without retaining session data."""
+        """Send a desktop notification without retaining session data."""
+        if IS_WINDOWS:
+            # No native toast notifier is wired up yet on Windows (would need
+            # win10toast/plyer or a WinRT toast call) — silently skip rather
+            # than block on a missing dependency.
+            return
         subprocess.Popen(
             ["notify-send", "-a", "ReyOS Browser", "-i", "reyos-browser", title, message],
             stdout=subprocess.DEVNULL,
@@ -794,6 +889,16 @@ class BrowserBackend(QObject):
 
     @Slot(result=bool)
     def openSystemPasswordManager(self) -> bool:
+        if IS_WINDOWS:
+            try:
+                subprocess.Popen(["control.exe", "/name", "Microsoft.CredentialManager"])
+                return True
+            except OSError:
+                self.notify(
+                    "Password manager unavailable",
+                    "Couldn't open Windows Credential Manager. Use Passwords in the browser menu instead.",
+                )
+                return False
         launch_commands = (
             ["kwalletmanager6"],
             ["kwalletmanager5"],
