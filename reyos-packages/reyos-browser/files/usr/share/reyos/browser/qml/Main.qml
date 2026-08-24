@@ -1624,6 +1624,15 @@ ApplicationWindow {
                 webChannel: WebChannel {
                     registeredObjects: [passwordBridgeChannelObject]
                 }
+                userScripts.collection: [
+                    {
+                        name: "reyos-fingerprint-protection",
+                        sourceCode: browserBackend.fingerprintScriptSource,
+                        injectionPoint: WebEngineScript.DocumentCreation,
+                        worldId: WebEngineScript.MainWorld,
+                        runsOnSubFrames: true
+                    }
+                ]
                 url: pageUrl
                 settings.javascriptCanOpenWindows: false
                 settings.pdfViewerEnabled: true

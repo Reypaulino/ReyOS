@@ -3,6 +3,7 @@ import csv
 import json
 import os
 import re
+import secrets
 import shutil
 import subprocess
 import sys
@@ -28,6 +29,7 @@ APP_DIR = Path(__file__).resolve().parent
 BROWSER_STATE_DIR = Path.home() / ".local" / "share" / "reyos-browser"
 PASSWORD_BLOCKLIST_PATH = BROWSER_STATE_DIR / "password-blocklist.json"
 PASSWORD_AUTOFILL_SCRIPT_PATH = APP_DIR / "password-autofill.js"
+FINGERPRINT_PROTECTION_SCRIPT_PATH = APP_DIR / "fingerprint-protection.js"
 QWEBCHANNEL_JS_PATHS = (
     Path("/usr/share/qt6/webchannel/qwebchannel.js"),
     APP_DIR / "qwebchannel.js",
@@ -339,6 +341,7 @@ class BrowserBackend(QObject):
         self._interceptor = interceptor
         self._password_vault = password_vault
         self._password_script_source = password_script_source
+        self._fingerprint_script_source = load_fingerprint_protection_script_source(secrets.token_hex(16))
         self._password_bridge = PasswordBridge(self)
         self._low_memory_mode = True
         self._blocked_request_count = 0
@@ -360,6 +363,10 @@ class BrowserBackend(QObject):
     @Property(str, constant=True)
     def passwordScriptSource(self) -> str:
         return self._password_script_source
+
+    @Property(str, constant=True)
+    def fingerprintScriptSource(self) -> str:
+        return self._fingerprint_script_source
 
     @Property(bool, notify=shieldsListInfoChanged)
     def shieldsUpdating(self) -> bool:
@@ -874,6 +881,11 @@ def load_password_script_source() -> str:
         "window.console && console.warn('ReyOS Browser: qwebchannel.js could not be loaded; password autofill is disabled.');\n\n"
         + autofill_source
     )
+
+
+def load_fingerprint_protection_script_source(session_key: str) -> str:
+    source = FINGERPRINT_PROTECTION_SCRIPT_PATH.read_text(encoding="utf-8")
+    return source.replace("%%SESSION_KEY%%", session_key)
 
 
 class ShieldsUpdateWorker(QThread):
