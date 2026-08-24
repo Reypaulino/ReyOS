@@ -17,10 +17,10 @@ try:
 except ModuleNotFoundError:
     secretstorage = None
 
-from PySide6.QtCore import QFile, QIODevice, QObject, Property, QThread, QUrl, Signal, Slot
+from PySide6.QtCore import QFile, QIODevice, QObject, Property, QThread, QUrl, QUrlQuery, Signal, Slot
 from PySide6.QtGui import QIcon
 from PySide6.QtQml import QQmlApplicationEngine
-from PySide6.QtWebEngineCore import QWebEngineUrlRequestInterceptor
+from PySide6.QtWebEngineCore import QWebEngineUrlRequestInfo, QWebEngineUrlRequestInterceptor
 from PySide6.QtWebEngineQuick import QQuickWebEngineProfile, QtWebEngineQuick
 from PySide6.QtWidgets import QApplication, QFileDialog
 
@@ -113,6 +113,28 @@ class BookmarkImportParser(HTMLParser):
                 self._folder_stack.pop()
 
 
+TRACKING_QUERY_PARAMS = {
+    "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "utm_id", "utm_name",
+    "fbclid", "gclid", "gclsrc", "dclid", "msclkid", "twclid", "yclid", "igshid",
+    "mc_eid", "mc_cid", "ref_src", "vero_id", "mkt_tok", "_hsenc", "_hsmi", "oly_anon_id", "oly_enc_id",
+}
+
+
+def _strip_tracking_params(url: QUrl) -> QUrl | None:
+    if not url.hasQuery():
+        return None
+    query = QUrlQuery(url)
+    items = query.queryItems(QUrl.ComponentFormattingOption.FullyDecoded)
+    kept = [(key, value) for key, value in items if key.lower() not in TRACKING_QUERY_PARAMS]
+    if len(kept) == len(items):
+        return None
+    cleaned_query = QUrlQuery()
+    cleaned_query.setQueryItems(kept)
+    cleaned_url = QUrl(url)
+    cleaned_url.setQuery(cleaned_query)
+    return cleaned_url
+
+
 class ShieldsInterceptor(QWebEngineUrlRequestInterceptor):
     blocked = Signal(str)
 
@@ -135,10 +157,26 @@ class ShieldsInterceptor(QWebEngineUrlRequestInterceptor):
         first_party = info.firstPartyUrl().host().lower().rstrip(".")
         if not self.enabled or not self.site_enabled(first_party):
             return
-        host = info.requestUrl().host().lower().rstrip(".")
+
+        request_url = info.requestUrl()
+        host = request_url.host().lower().rstrip(".")
         if any(host == domain or host.endswith("." + domain) for domain in self.blocked_domains):
             info.block(True)
             self.blocked.emit(first_party)
+            return
+
+        target_url = request_url
+        if target_url.scheme() == "http" and target_url.host():
+            target_url = QUrl(target_url)
+            target_url.setScheme("https")
+
+        if info.resourceType() == QWebEngineUrlRequestInfo.ResourceType.ResourceTypeMainFrame:
+            stripped = _strip_tracking_params(target_url)
+            if stripped is not None:
+                target_url = stripped
+
+        if target_url != request_url:
+            info.redirect(target_url)
 
 
 class PasswordVault:
