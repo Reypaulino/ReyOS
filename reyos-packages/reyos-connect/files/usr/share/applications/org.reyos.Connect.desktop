@@ -1,0 +1,12 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=ReyOS Connect
+Comment=Connect your phone to ReyOS — files, links, and notifications, powered by KDE Connect
+Exec=reyos-connect
+Icon=org.reyos.Connect
+Terminal=false
+Categories=Network;Utility;
+StartupNotify=true
+StartupWMClass=reyos-connect
+Keywords=kdeconnect;phone;android;iphone;sync;

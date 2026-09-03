@@ -8,7 +8,7 @@ bcachefs-tools
 bind
 bolt
 brltty
-broadcom-wl
+broadcom-wl-dkms
 btrfs-progs
 cachyos-keyring
 clonezilla
@@ -55,6 +55,7 @@ libusb-compat
 limine
 linux
 linux-atm
+linux-headers
 linux-firmware
 linux-firmware-marvell
 livecd-sounds
@@ -172,6 +173,7 @@ kate
 ark
 okular
 gwenview
+reyos-screenshot
 kscreen
 kdeplasma-addons
 bluedevil
@@ -183,6 +185,12 @@ qt6-svg
 xdg-desktop-portal
 xdg-desktop-portal-kde
 reyos-browser
+reyos-reader
+reyos-connect
+krdp
+python-ebooklib
+python-rarfile
+unrar
 neofetch
 git
 discover
@@ -190,6 +198,9 @@ flatpak
 timeshift
 pciutils
 ufw
+usbguard
+arch-audit
+zram-generator
 bluez-utils
 reyos-base
 reyos-wallpapers
@@ -202,5 +213,10 @@ reyos-calamares
 reyos-terminal
 reyos-control-center
 reyos-control-center-gui
+reyos-distrobox-gui
+distrobox
+podman
 plymouth
 reyos-plymouth
+reyos-preload
+reyos-grub
