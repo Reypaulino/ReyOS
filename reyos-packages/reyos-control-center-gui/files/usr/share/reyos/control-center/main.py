@@ -40,6 +40,28 @@ def _run(cmd, progress_emit=None):
     return proc.wait()
 
 
+def _wait_for_pacman_lock(progress_emit=None, timeout=60):
+    """pacman's db lock (/var/lib/pacman/db.lck) is exclusive -- a second
+    concurrent pacman invocation (this app's own Full Update still running
+    while a manual `pacman -S` happens in a terminal, or two Control Center
+    actions overlapping) fails outright with a raw "unable to lock database"
+    error instead of queueing. Wait for the lock to clear rather than
+    failing immediately; still give up after `timeout` so a genuinely stuck
+    lock (a crashed pacman) doesn't hang this app forever."""
+    lock_path = Path("/var/lib/pacman/db.lck")
+    if not lock_path.exists():
+        return True
+    if progress_emit:
+        progress_emit("Waiting for another package operation to finish...")
+    waited = 0
+    while lock_path.exists() and waited < timeout:
+        time.sleep(1)
+        waited += 1
+    if lock_path.exists() and progress_emit:
+        progress_emit(f"Still locked after {timeout}s -- proceeding anyway.")
+    return not lock_path.exists()
+
+
 def _purge_stale_download_sandboxes():
     # pacman's download sandboxing (the unprivileged `alpm` user) makes a
     # per-download temp dir under the cache and removes it when the download
@@ -158,10 +180,12 @@ class PkgWorker(QThread):
                 else:
                     self.finished_ok.emit(False, "Could not check updates. Verify your network connection.")
             elif self.action == "upgrade":
+                _wait_for_pacman_lock(emit)
                 emit("$ sudo pacman -Syu")
                 rc = _run(["sudo", "pacman", "-Syu"], emit)
                 self.finished_ok.emit(rc == 0, "Updates installed." if rc == 0 else "Update failed.")
             elif self.action == "full":
+                _wait_for_pacman_lock(emit)
                 emit("[1/3] Syncing + upgrading...")
                 rc = _run(["sudo", "pacman", "-Syu", "--noconfirm"], emit)
                 if rc != 0:
@@ -172,8 +196,10 @@ class PkgWorker(QThread):
                     ["pacman", "-Qtdq"], capture_output=True, text=True
                 ).stdout.split()
                 if orphans:
+                    _wait_for_pacman_lock(emit)
                     _run(["sudo", "pacman", "-Rns", "--noconfirm"] + orphans, emit)
                 _purge_stale_download_sandboxes()
+                _wait_for_pacman_lock(emit)
                 _run(["sudo", "pacman", "-Sc", "--noconfirm"], emit)
                 emit("[3/3] Flatpak update...")
                 _run(["flatpak", "update", "-y"], emit)
@@ -184,10 +210,12 @@ class PkgWorker(QThread):
                 ).stdout.split()
                 if orphans:
                     emit("Removing: " + " ".join(orphans))
+                    _wait_for_pacman_lock(emit)
                     _run(["sudo", "pacman", "-Rns", "--noconfirm"] + orphans, emit)
                 else:
                     emit("No orphaned packages.")
                 _purge_stale_download_sandboxes()
+                _wait_for_pacman_lock(emit)
                 _run(["sudo", "pacman", "-Sc", "--noconfirm"], emit)
                 self.finished_ok.emit(True, "Cache cleaned.")
         except Exception as e:
@@ -862,6 +890,7 @@ class Backend(QObject):
     @Slot(str)
     def removePackage(self, pkgname):
         def task(emit):
+            _wait_for_pacman_lock(emit)
             rc = _run(["sudo", "pacman", "-Rns", "--noconfirm", pkgname], emit)
             return rc == 0, (
                 f"Removed: {pkgname}" if rc == 0

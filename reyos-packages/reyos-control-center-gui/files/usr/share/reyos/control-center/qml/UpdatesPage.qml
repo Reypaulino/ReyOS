@@ -7,15 +7,20 @@ Kirigami.ScrollablePage {
     title: "Updates"
 
     property bool running: false
+    property string logText: ""
+
+    function appendLog(line) {
+        logText += line + "\n"
+    }
 
     Connections {
         target: backend
         function onPkgProgress(line) {
-            logArea.append(line)
+            appendLog(line)
         }
         function onPkgFinished(ok, message) {
             running = false
-            logArea.append(ok ? "\n✓ " + message : "\n✗ " + message)
+            appendLog(ok ? "\n✓ " + message : "\n✗ " + message)
         }
         function onOrphansListed(list) {
             orphansLabel.text = list.length > 0
@@ -106,18 +111,18 @@ Kirigami.ScrollablePage {
             Controls.Button {
                 text: "Check for updates"
                 enabled: !running
-                onClicked: { running = true; logArea.text = ""; backend.runPkgAction("check") }
+                onClicked: { running = true; logText = ""; backend.runPkgAction("check") }
             }
             Controls.Button {
                 text: "Install updates"
                 enabled: !running
-                onClicked: { running = true; logArea.text = ""; backend.runPkgAction("upgrade") }
+                onClicked: { running = true; logText = ""; backend.runPkgAction("upgrade") }
             }
             Controls.Button {
                 text: "Full update"
                 highlighted: true
                 enabled: !running
-                onClicked: { running = true; logArea.text = ""; backend.runPkgAction("full") }
+                onClicked: { running = true; logText = ""; backend.runPkgAction("full") }
             }
         }
 
@@ -133,7 +138,7 @@ Kirigami.ScrollablePage {
             Controls.Button {
                 text: "Remove orphans + clean cache"
                 enabled: !running
-                onClicked: { running = true; logArea.text = ""; backend.runPkgAction("clean") }
+                onClicked: { running = true; logText = ""; backend.runPkgAction("clean") }
             }
         }
 
@@ -203,19 +208,50 @@ Kirigami.ScrollablePage {
             visible: running
         }
 
+        RowLayout {
+            Layout.fillWidth: true
+            Kirigami.Heading { text: "Log"; level: 4; Layout.fillWidth: true }
+            Controls.Button {
+                text: "Expand"
+                icon.name: "view-fullscreen"
+                onClicked: logDialog.open()
+            }
+        }
+
         Controls.ScrollView {
             Layout.fillWidth: true
             Layout.preferredHeight: 320
             Controls.TextArea {
                 id: logArea
+                text: logText
                 readOnly: true
                 wrapMode: TextEdit.Wrap
                 font.family: "monospace"
                 font.pointSize: 9
-                function append(line) {
-                    text += line + "\n"
-                    cursorPosition = text.length
-                }
+                onTextChanged: cursorPosition = text.length
+            }
+        }
+    }
+
+    Controls.Dialog {
+        id: logDialog
+        title: "Update log"
+        modal: true
+        anchors.centerIn: Controls.Overlay.overlay
+        width: Math.min(parent ? parent.width * 0.9 : 800, 900)
+        height: Math.min(parent ? parent.height * 0.9 : 700, 750)
+        standardButtons: Controls.Dialog.Close
+
+        Controls.ScrollView {
+            anchors.fill: parent
+            Controls.TextArea {
+                id: expandedLogArea
+                text: logText
+                readOnly: true
+                wrapMode: TextEdit.Wrap
+                font.family: "monospace"
+                font.pointSize: 9
+                onTextChanged: cursorPosition = text.length
             }
         }
     }

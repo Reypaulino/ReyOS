@@ -1,7 +1,7 @@
 # Maintainer: Rey Paulino
 pkgname=reyos-control-center-gui
 pkgver=1.0.0
-pkgrel=38
+pkgrel=39
 pkgdesc="ReyOS Control Center — Kirigami/QML GUI for updates, performance, network, disk and permissions"
 arch=('any')
 license=('MIT')
