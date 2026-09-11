@@ -12,7 +12,7 @@ Rectangle {
     signal remove()
 
     Layout.preferredWidth: 170
-    Layout.preferredHeight: 260
+    Layout.preferredHeight: 296
     color: Kirigami.Theme.backgroundColor
     border.color: Qt.rgba(0, 0, 0, 0.25)
     border.width: 1
@@ -56,19 +56,6 @@ Rectangle {
                 }
                 onClicked: card.toggleFavorite()
             }
-            Controls.ToolButton {
-                anchors.top: parent.top
-                anchors.left: parent.left
-                icon.name: "edit-delete"
-                icon.color: "white"
-                background: Rectangle {
-                    radius: width / 2
-                    color: Qt.rgba(0, 0, 0, 0.45)
-                }
-                Controls.ToolTip.visible: hovered
-                Controls.ToolTip.text: "Remove from library (keeps the file)"
-                onClicked: card.remove()
-            }
         }
 
         Controls.Label {
@@ -97,6 +84,17 @@ Rectangle {
             text: "File not found"
             color: Reader.ReyOSStyle.bad
             font.pointSize: Kirigami.Theme.smallFont.pointSize
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            Item { Layout.fillWidth: true }
+            Controls.ToolButton {
+                icon.name: "edit-delete"
+                Controls.ToolTip.visible: hovered
+                Controls.ToolTip.text: "Remove from library (keeps the file)"
+                onClicked: card.remove()
+            }
         }
     }
 
