@@ -22,7 +22,6 @@ APP_PACMAN = {
     "retroarch": "retroarch",
     "perf-tools": "gamemode lib32-gamemode mangohud lib32-mangohud",
     "wine": "wine wine-mono wine-gecko winetricks",
-    "git": "git",
     "docker": "docker",
     "neovim": "neovim",
     "base-devel": "base-devel",
@@ -35,11 +34,6 @@ APP_PACMAN = {
     # okular/gwenview (PDF+image viewing) already ship in the base image —
     # LibreOffice is the one genuinely heavy piece worth keeping opt-in.
     "libreoffice": "libreoffice-fresh",
-    # System-restore utility -- rsync-based snapshots work on any
-    # filesystem (including the ext4 this image currently ships with);
-    # switches to faster Btrfs-snapshot mode automatically if the target
-    # is ever installed on Btrfs later, no reconfiguration needed.
-    "timeshift": "timeshift",
     "btop": "btop",
     "partitionmanager": "partitionmanager",
     "fwupd": "fwupd",
@@ -54,13 +48,37 @@ APP_FLATPAK = {
 }
 
 
+class BrandingWorker(QThread):
+    """Runs the same branding command apply_branding_on_exit used to fire
+    detached — but synchronously, so the UI can show real progress instead
+    of quitting instantly and leaving the user staring at a panel-less
+    desktop for up to ~90s with no indication anything is happening."""
+    finished_ok = Signal(bool, str)
+
+    def run(self):
+        customization_request = Path.home() / ".config" / "reyos-kde-customization-requested"
+        command = ["/usr/share/reyos/bin/reyos-apply-branding.sh"]
+        if customization_request.exists():
+            command = ["/bin/bash", "-c",
+                       "/usr/share/reyos/bin/reyos-apply-branding.sh && "
+                       "/usr/share/reyos/kde/reyos-apply-customization.sh && "
+                       "rm -f ~/.config/reyos-kde-customization-requested"]
+        log_path = Path.home() / ".cache" / "reyos" / "welcome-branding.log"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        with log_path.open("a") as log:
+            log.write(f"\n=== branding requested {datetime.now().isoformat(timespec='seconds')} ===\n")
+            log.flush()
+            rc = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT).returncode
+        self.finished_ok.emit(rc == 0, "" if rc == 0 else "Desktop setup finished with warnings.")
+
+
 class InstallWorker(QThread):
     progress = Signal(str)
     finished_ok = Signal(bool, str)
 
-    def __init__(self, pacman_pkgs, flatpak_ids):
+    def __init__(self, pacman_groups, flatpak_ids):
         super().__init__()
-        self.pacman_pkgs = pacman_pkgs
+        self.pacman_groups = pacman_groups
         self.flatpak_ids = flatpak_ids
 
     def _run(self, cmd):
@@ -80,8 +98,9 @@ class InstallWorker(QThread):
             with LOG_FILE.open("a") as log:
                 log.write(f"\n=== ReyOS Welcome install run ===\n")
 
-            if self.pacman_pkgs:
-                if "wine" in self.pacman_pkgs or "steam" in self.pacman_pkgs:
+            if self.pacman_groups:
+                joined = " ".join(self.pacman_groups)
+                if "wine" in joined or "steam" in joined:
                     self._ensure_multilib()
                 # The live session never runs `pacman -Sy` on its own, so the
                 # sync databases don't exist yet — any -S install fails
@@ -89,22 +108,19 @@ class InstallWorker(QThread):
                 # this runs at least once.
                 self.progress.emit("Syncing package databases...")
                 self._run(["sudo", "pacman", "-Sy", "--noconfirm"])
-                self.progress.emit(f"Installing: {self.pacman_pkgs}")
-                rc = self._run(["sudo", "pacman", "-S", "--needed", "--noconfirm"] + self.pacman_pkgs.split())
-                if rc != 0:
-                    self.finished_ok.emit(False, "Package install failed — see log.")
-                    return
-                if "wine" in self.pacman_pkgs:
+                # One `pacman -S` call per selected app, not all combined into
+                # one -- each call's argv then matches a fixed, individually
+                # listed NOPASSWD sudoers line (see
+                # shellprocess_sudoers_reyos_menu.conf) instead of an
+                # unpredictable combined argv sudoers could never match.
+                for group in self.pacman_groups:
+                    self.progress.emit(f"Installing: {group}")
+                    rc = self._run(["sudo", "pacman", "-S", "--needed", "--noconfirm"] + group.split())
+                    if rc != 0:
+                        self.finished_ok.emit(False, f"Package install failed ({group}) — see log.")
+                        return
+                if "wine" in joined:
                     self._run(["sudo", "systemctl", "restart", "systemd-binfmt"])
-                if "timeshift" in self.pacman_pkgs:
-                    # Baseline safety-net snapshot right after install, not
-                    # left fully manual -- --scripted skips Timeshift's
-                    # interactive first-run wizard; with no existing config
-                    # it defaults to rsync mode, which works on any
-                    # filesystem (this image ships ext4).
-                    self.progress.emit("Creating initial Timeshift snapshot...")
-                    self._run(["sudo", "timeshift", "--create", "--scripted",
-                               "--comments", "ReyOS factory default"])
 
             if self.flatpak_ids:
                 # A fresh user has no --user-scoped flathub remote yet, even
@@ -128,8 +144,14 @@ class InstallWorker(QThread):
         conf = Path("/etc/pacman.conf").read_text()
         if "#[multilib]" in conf:
             self.progress.emit("Enabling multilib repository...")
+            # Calls a fixed helper script (no arguments) instead of a raw
+            # sed one-liner, since sed's own regex escaping plus sudoers'
+            # glob metacharacters both fighting over the same `[`/`]`
+            # characters made a hand-escaped sudoers rule too risky to get
+            # right blind -- a wrong rule here breaks `visudo -c` for the
+            # whole sudoers file, not just this one line.
             subprocess.run(
-                ["sudo", "sed", "-i", "/^#\\[multilib\\]/,/^#Include/ s/^#//", "/etc/pacman.conf"],
+                ["sudo", "/usr/share/reyos/welcome/enable-multilib.sh"],
                 check=False,
             )
             # The unconditional -Sy right after this call in run() picks up
@@ -139,10 +161,26 @@ class InstallWorker(QThread):
 class Backend(QObject):
     progressLine = Signal(str)
     installFinished = Signal(bool, str)
+    brandingFinished = Signal(bool, str)
 
     def __init__(self):
         super().__init__()
         self._worker = None
+        self._branding_worker = None
+        self.branding_started = False
+
+    @Slot()
+    def startBranding(self):
+        # Idempotent -- both DonePage buttons call this, and the
+        # aboutToQuit fallback (for someone who closes the window via the
+        # X button instead) checks this flag before running its own
+        # detached copy, so branding never runs twice.
+        if self.branding_started:
+            return
+        self.branding_started = True
+        self._branding_worker = BrandingWorker()
+        self._branding_worker.finished_ok.connect(self.brandingFinished.emit)
+        self._branding_worker.start()
 
     @Slot()
     def openDiscover(self):
@@ -181,14 +219,20 @@ class Backend(QObject):
 
     @Slot("QVariantList")
     def startInstall(self, appIds):
-        pacman_pkgs = " ".join(APP_PACMAN[a] for a in appIds if a in APP_PACMAN)
+        # Kept as one group per selected app (not joined into a single
+        # combined pacman call) so each `pacman -S` invocation's argv
+        # matches one of the fixed, individually-listed NOPASSWD sudoers
+        # lines Calamares writes for this user -- see
+        # shellprocess_sudoers_reyos_menu.conf. A combined multi-app call
+        # would produce an unpredictable argv sudoers could never match.
+        pacman_groups = [APP_PACMAN[a] for a in appIds if a in APP_PACMAN]
         flatpak_ids = " ".join(APP_FLATPAK[a] for a in appIds if a in APP_FLATPAK)
 
-        if not pacman_pkgs and not flatpak_ids:
+        if not pacman_groups and not flatpak_ids:
             self.installFinished.emit(True, "Nothing selected — skipped.")
             return
 
-        self._worker = InstallWorker(pacman_pkgs, flatpak_ids)
+        self._worker = InstallWorker(pacman_groups, flatpak_ids)
         self._worker.progress.connect(self.progressLine.emit)
         self._worker.finished_ok.connect(self.installFinished.emit)
         self._worker.start()
@@ -209,10 +253,15 @@ def hide_panels_on_start():
     )
 
 
-def apply_branding_on_exit():
-    # Keep this detached so Welcome can close promptly, but preserve stdout
-    # and stderr. A failed branding run is otherwise invisible to the user
-    # and impossible to diagnose after the Welcome window has exited.
+def apply_branding_on_exit(backend):
+    # Fallback only, for a window closed via the X button (or anything else
+    # that skips DonePage's buttons) rather than the normal Finish/Check-
+    # for-Updates flow, which already runs branding synchronously with real
+    # progress UI via Backend.startBranding(). Guarded by branding_started
+    # so it never runs a second time on top of that.
+    if backend.branding_started:
+        return
+    backend.branding_started = True
     customization_request = Path.home() / ".config" / "reyos-kde-customization-requested"
     command = ["/usr/share/reyos/bin/reyos-apply-branding.sh"]
     if customization_request.exists():
@@ -220,14 +269,26 @@ def apply_branding_on_exit():
     log_path = Path.home() / ".cache" / "reyos" / "welcome-branding.log"
     log_path.parent.mkdir(parents=True, exist_ok=True)
     with log_path.open("a") as log:
-        log.write(f"\n=== branding requested {datetime.now().isoformat(timespec="seconds")} ===\n")
+        log.write(f"\n=== branding requested {datetime.now().isoformat(timespec='seconds')} ===\n")
         log.flush()
         subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT,
                          stdin=subprocess.DEVNULL, start_new_session=True)
 
+def _is_live_session():
+    # /run/archiso/airootfs no longer exists on current archiso builds --
+    # confirmed live (2026-08-31). Same fix as reyos-control-center-gui's
+    # main.py: check the kernel cmdline's archiso parameters instead, the
+    # actual stable marker mkarchiso sets for a live boot.
+    try:
+        cmdline = Path("/proc/cmdline").read_text()
+    except OSError:
+        return False
+    return "archisobasedir=" in cmdline or "archisolabel=" in cmdline
+
+
 def main():
     # The live ISO opens Calamares only; Welcome is for the installed desktop.
-    if Path("/run/archiso/airootfs").is_mount():
+    if _is_live_session():
         return
 
     # Only runs automatically once — after this, it's launched manually from the app menu.
@@ -237,16 +298,17 @@ def main():
 
     app = QGuiApplication(sys.argv)
     app.setApplicationName("ReyOS Welcome")
-    # Was previously a separate autostart entry racing against this app for
-    # the same Plasma config file — confirmed source of the panel/shortcuts
-    # clobbering bugs. Triggering it only once Welcome actually closes
-    # (Skip, Finish, or the window's own close button all fire this)
-    # removes the concurrency instead of surviving it.
-    app.aboutToQuit.connect(apply_branding_on_exit)
     engine = QQmlApplicationEngine()
 
     backend = Backend()
     engine.rootContext().setContextProperty("backend", backend)
+    # Was previously a separate autostart entry racing against this app for
+    # the same Plasma config file — confirmed source of the panel/shortcuts
+    # clobbering bugs. Triggering it only once Welcome actually closes
+    # removes the concurrency instead of surviving it. The normal Finish/
+    # Check-for-Updates path already starts branding itself (with progress
+    # UI) before quitting; this is just the fallback for an abrupt close.
+    app.aboutToQuit.connect(lambda: apply_branding_on_exit(backend))
 
     qml_file = APP_DIR / "qml" / "Main.qml"
     engine.load(QUrl.fromLocalFile(str(qml_file)))

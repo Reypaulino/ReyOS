@@ -188,7 +188,7 @@ show_cpu_hogs() {
     clear
     borders
     printf '%s\n' "$TOP"
-    crow "  ${WHT}CPU HOGS${RST}   ${DIM}$(date '+%H:%M:%S')${RST}    ${YLW}[R]${RST} refresh   ${RED}[Q]${RST} quit"
+    crow "  ${WHT}CPU HOGS${RST}   ${DIM}$(date '+%H:%M:%S')${RST}    ${YLW}[R]${RST} refresh   ${YLW}[K]${RST} kill   ${RED}[Q]${RST} quit"
     printf '%s\n' "$MID"
     crow "  ${WHT}$(printf '%-7s  %-12s  %-6s  %-6s  %-6s  %-9s  %s' 'PID' 'USER' 'CPU%' 'MEM%' 'STAT' 'TIME' 'COMMAND')${RST}"
     printf '%s\n' "$MID"
@@ -200,11 +200,78 @@ show_cpu_hogs() {
     done < <(ps aux --sort=-%cpu | awk 'NR>1 {print $1,$2,$3,$4,$8,$10,$11}' | head -20)
     printf '%s\n' "$BOT"
     echo ""
-    printf "  ${YLW}Press R to refresh, Q to quit:${RST} "
+    printf "  ${YLW}Press R to refresh, K to kill a process, Q to quit:${RST} "
     read -rn1 key
     echo ""
-    [[ "$key" =~ ^[Qq]$ ]] && break
+    case "$key" in
+      [Qq]) break ;;
+      [Kk]) kill_process ;;
+    esac
   done
+}
+
+# Guard rails mirror the pattern already used elsewhere in this script (see
+# the Users page's self-delete/system-account refusals in
+# reyos-manage-users.sh): refuse PID 1 (killing init takes the whole system
+# down) and refuse this script's own process tree (the menu itself, its sudo
+# keepalive loop, and its parent shell) so a mistyped PID can't strand the
+# session that's driving the menu.
+kill_process() {
+  local pid pname powner confirm sig target_pgid
+  echo ""
+  printf "  ${YLW}PID to kill (blank to cancel):${RST} "
+  read -r pid
+  [ -z "$pid" ] && return
+  if ! [[ "$pid" =~ ^[0-9]+$ ]]; then
+    printf "  ${RED}Not a valid PID.${RST}\n"; sleep 1; return
+  fi
+  if ! kill -0 "$pid" 2>/dev/null && ! sudo kill -0 "$pid" 2>/dev/null; then
+    printf "  ${RED}No such process (PID %s).${RST}\n" "$pid"; sleep 1; return
+  fi
+  if [ "$pid" -eq 1 ]; then
+    printf "  ${RED}Refusing to kill PID 1 (init) -- this would take down the whole system.${RST}\n"; sleep 2; return
+  fi
+  # Walk up from this menu's own PID through its parents (shell, sudo
+  # keepalive) -- refuses killing any process this session's own control
+  # flow depends on, not just an exact-PID match on $$.
+  target_pgid=$$
+  while [ -n "$target_pgid" ] && [ "$target_pgid" -ne 0 ]; do
+    if [ "$pid" -eq "$target_pgid" ]; then
+      printf "  ${RED}Refusing to kill PID %s -- it's part of this menu's own process tree.${RST}\n" "$pid"; sleep 2; return
+    fi
+    target_pgid=$(ps -o ppid= -p "$target_pgid" 2>/dev/null | tr -d ' ')
+  done
+
+  pname=$(ps -o comm= -p "$pid" 2>/dev/null)
+  powner=$(ps -o user= -p "$pid" 2>/dev/null)
+  printf "  ${GRN}PID %s${RST}  %s  ${DIM}(owner: %s)${RST}\n" "$pid" "${pname:-?}" "${powner:-?}"
+  printf "  ${YLW}Send SIGTERM? (y/N):${RST} "
+  read -r confirm
+  [[ "$confirm" =~ ^[Yy]$ ]] || { printf "  ${DIM}Cancelled.${RST}\n"; sleep 1; return; }
+
+  sig=TERM
+  if [ "$powner" != "$(whoami)" ]; then
+    ensure_sudo || return
+    sudo kill "-$sig" "$pid" 2>/dev/null
+  else
+    kill "-$sig" "$pid" 2>/dev/null
+  fi
+  sleep 1
+  if kill -0 "$pid" 2>/dev/null || sudo kill -0 "$pid" 2>/dev/null; then
+    printf "  ${YLW}Still running after SIGTERM. Force with SIGKILL? (y/N):${RST} "
+    read -r confirm
+    if [[ "$confirm" =~ ^[Yy]$ ]]; then
+      if [ "$powner" != "$(whoami)" ]; then
+        sudo kill -KILL "$pid" 2>/dev/null
+      else
+        kill -KILL "$pid" 2>/dev/null
+      fi
+      printf "  ${GRN}Sent SIGKILL.${RST}\n"
+    fi
+  else
+    printf "  ${GRN}Terminated.${RST}\n"
+  fi
+  sleep 1
 }
 
 copy_network() {
@@ -414,6 +481,117 @@ package_inspector() {
   done
 }
 
+show_service_list() {
+  local state="$1" key title
+  [ "$state" = "enabled" ] && title="ENABLED SERVICES" || title="DISABLED SERVICES"
+  while true; do
+    clear
+    borders
+    printf '%s\n' "$TOP"
+    crow "  ${WHT}${title}${RST}   ${DIM}$(date '+%H:%M:%S')${RST}    ${YLW}[R]${RST} refresh   ${RED}[Q]${RST} quit"
+    printf '%s\n' "$MID"
+    crow "  $(printf '%-45s  %s' 'UNIT' 'RUNNING NOW')"
+    printf '%s\n' "$MID"
+    while IFS= read -r unit; do
+      [ -z "$unit" ] && continue
+      local active_state col
+      active_state=$(systemctl is-active "$unit" 2>/dev/null)
+      [ "$active_state" = "active" ] && col=$GRN || col=$DIM
+      crow "  $(printf '%-45s' "$unit")  ${col}${active_state:-inactive}${RST}"
+    done < <(systemctl list-unit-files --type=service --type=socket --type=timer --state="$state" --no-legend --plain 2>/dev/null | awk '{print $1}' | sort)
+    printf '%s\n' "$BOT"
+    echo ""
+    printf "  ${YLW}Press R to refresh, Q to quit:${RST} "
+    read -rn1 key
+    [[ "$key" =~ ^[Qq]$ ]] && break
+  done
+}
+
+toggle_service() {
+  local action="$1" svc_input matches count idx choice unit confirm cur_state verb
+  echo ""
+  printf "  ${YLW}Service name (or part of it): ${RST}"
+  read -r svc_input
+  [ -z "$svc_input" ] && { printf "  ${DIM}Cancelled.${RST}\n"; return; }
+
+  # service+socket+timer covers everything normally toggled by hand
+  # (mount/path/device/slice units are managed by their owning service, not
+  # directly by a person, so leaving those out keeps the match list from
+  # filling with noise). Sockets matter here specifically -- e.g. libvirtd
+  # is socket-activated, so the *service* can show enabled while the thing
+  # that actually lets anything connect to it (libvirtd.socket) sits
+  # masked, an unrelated state from the service's own.
+  mapfile -t matches < <(systemctl list-unit-files --type=service --type=socket --type=timer --no-legend --plain 2>/dev/null | awk '{print $1}' | grep -i -- "$svc_input")
+  count=${#matches[@]}
+  if [ "$count" -eq 0 ]; then
+    printf "  ${RED}No unit matches \"%s\".${RST}\n" "$svc_input"
+    return
+  elif [ "$count" -eq 1 ]; then
+    unit="${matches[0]}"
+  else
+    echo ""
+    printf "  ${YLW}%d matches:${RST}\n" "$count"
+    for idx in "${!matches[@]}"; do
+      printf "  ${CYN}[%2d]${RST}  %s\n" "$((idx + 1))" "${matches[$idx]}"
+    done
+    printf "  ${RED}[ 0]${RST}  Cancel\n\n  Select: "
+    read -r choice
+    [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "$count" ] || { printf "  ${DIM}Cancelled.${RST}\n"; return; }
+    unit="${matches[$((choice - 1))]}"
+  fi
+
+  cur_state=$(systemctl is-enabled -- "$unit" 2>/dev/null)
+  printf "  ${GRN}Selected:${RST} %s  ${DIM}(currently: %s)${RST}\n" "$unit" "${cur_state:-unknown}"
+
+  if [ "$action" = "enable" ]; then verb="Enable and start"; else verb="Disable and stop"; fi
+  # A masked unit refuses a plain "enable" outright -- unmask first, folded
+  # into the same confirmation prompt rather than a separate one.
+  if [ "$action" = "enable" ] && [ "$cur_state" = "masked" ]; then
+    printf "  ${YLW}%s is masked. Unmask, enable, and start it now? (y/N):${RST} " "$unit"
+  else
+    printf "  ${YLW}%s %s now? (y/N):${RST} " "$verb" "$unit"
+  fi
+  read -r confirm
+  [[ "$confirm" =~ ^[Yy]$ ]] || { printf "  ${DIM}Cancelled.${RST}\n"; return; }
+
+  ensure_sudo || return
+  if [ "$action" = "enable" ] && [ "$cur_state" = "masked" ]; then
+    sudo systemctl unmask -- "$unit"
+  fi
+  if sudo systemctl "$action" --now -- "$unit"; then
+    if [ "$action" = "enable" ]; then
+      printf "  ${GRN}Enabled and started: %s${RST}\n" "$unit"
+    else
+      printf "  ${GRN}Disabled and stopped: %s${RST}\n" "$unit"
+    fi
+  else
+    printf "  ${RED}Failed -- see systemctl's output above.${RST}\n"
+  fi
+  read -rp "  Press Enter to return..."
+}
+
+services_menu() {
+  local svc_choice
+  while true; do
+    echo ""
+    printf "  ${WHT}Services${RST}\n\n"
+    printf "  ${YLW}[1]${RST}  List enabled services\n"
+    printf "  ${YLW}[2]${RST}  List disabled services\n"
+    printf "  ${YLW}[3]${RST}  Enable a service (by name)\n"
+    printf "  ${YLW}[4]${RST}  Disable a service (by name)\n"
+    printf "  ${RED}[0]${RST}  Back\n\n  Select: "
+    read -r svc_choice
+    case $svc_choice in
+      1) show_service_list enabled ;;
+      2) show_service_list disabled ;;
+      3) toggle_service enable ;;
+      4) toggle_service disable ;;
+      0|"") return ;;
+      *) printf "  ${RED}Invalid selection.${RST}\n" ;;
+    esac
+  done
+}
+
 firewall_menu() {
   local fw_choice rule_input confirm status_line
   while true; do
@@ -564,6 +742,7 @@ draw_menu() {
   msec "SECURITY"
   crow  "  ${CYN}[15]${RST}  Package inspector — view info, delete"
   crow  "  ${CYN}[16]${RST}  Firewall — enable/disable, allow/deny, remove rules"
+  crow  "  ${CYN}[17]${RST}  Services — enable/disable by name, view enabled/disabled"
 
   border_line "$MID"
   crow "  ${RED}[ 0]${RST}  Exit"
@@ -724,6 +903,7 @@ while true; do
     14) show_disk ;;
     15) package_inspector ;;
     16) firewall_menu ;;
+    17) services_menu ;;
     r|R) echo ""
        printf "  ${RED}Restart machine? (y/N):${RST} "
        read -r confirm

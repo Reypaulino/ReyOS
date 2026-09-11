@@ -1,0 +1,20 @@
+# Maintainer: Rey Paulino
+pkgname=reyos-reader
+pkgver=1.0.0
+pkgrel=19
+pkgdesc="ReyOS Reader — native EPUB/PDF/CBZ/CBR book and manga reader, with PDF merge/split tools"
+arch=('any')
+license=('MIT')
+# kirigami dropped 2026-09-10: the QML UI no longer uses it at all (rewritten
+# onto plain QtQuick Controls, via the qml/kirishim/ compat shim) so Reader
+# can be packaged for Ubuntu, which has no Qt6/KF6 Kirigami available.
+depends=('pyside6' 'qt6-webengine' 'qt6-webchannel' 'python-ebooklib' 'python-rarfile' 'unrar' 'python-pypdf')
+source=()
+sha256sums=()
+
+package() {
+    cp -a "$startdir/files/usr" "$pkgdir/"
+    find "$pkgdir/usr/share" -type f -exec chmod 644 {} \;
+    chmod 755 "$pkgdir/usr/bin/reyos-reader"
+    chmod 755 "$pkgdir/usr/share/reyos/reader/main.py"
+}

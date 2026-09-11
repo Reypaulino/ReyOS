@@ -27,7 +27,6 @@ Kirigami.Page {
         {
             label: "Dev Tools",
             apps: [
-                { id: "git", label: "Git", desc: "Version control", checked: false },
                 { id: "docker", label: "Docker", desc: "Containers", checked: false },
                 { id: "neovim", label: "Neovim", desc: "Terminal text editor", checked: false },
                 { id: "base-devel", label: "Base Dev Tools", desc: "Compilers & build tools", checked: false },
@@ -59,7 +58,6 @@ Kirigami.Page {
         {
             label: "System",
             apps: [
-                { id: "timeshift", label: "Timeshift", desc: "System restore — create & roll back to snapshots", checked: false },
                 { id: "btop", label: "btop", desc: "System monitor — CPU, GPU, RAM, disk, network", checked: false },
                 { id: "partitionmanager", label: "KDE Partition Manager", desc: "Disk & partition management", checked: false },
                 { id: "fwupd", label: "Firmware Updater", desc: "BIOS/SSD/peripheral firmware updates", checked: false },

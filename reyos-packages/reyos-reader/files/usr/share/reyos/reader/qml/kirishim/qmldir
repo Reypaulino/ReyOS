@@ -1,0 +1,18 @@
+module ReyOSReader.kirishim
+singleton Units 1.0 Units.qml
+singleton Theme 1.0 Theme.qml
+MessageType 1.0 MessageType.qml
+Heading 1.0 Heading.qml
+Icon 1.0 Icon.qml
+Separator 1.0 Separator.qml
+LinkButton 1.0 LinkButton.qml
+InlineMessage 1.0 InlineMessage.qml
+PlaceholderMessage 1.0 PlaceholderMessage.qml
+SearchField 1.0 SearchField.qml
+AbstractCard 1.0 AbstractCard.qml
+Page 1.0 Page.qml
+ScrollablePage 1.0 ScrollablePage.qml
+OverlaySheet 1.0 OverlaySheet.qml
+Action 1.0 Action.qml
+GlobalDrawer 1.0 GlobalDrawer.qml
+ApplicationWindow 1.0 ApplicationWindow.qml

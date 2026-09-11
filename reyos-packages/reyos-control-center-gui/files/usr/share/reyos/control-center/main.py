@@ -26,7 +26,21 @@ PKG_ACTIONS = {
 
 
 def _is_live_session():
-    return os.path.ismount("/run/archiso/airootfs")
+    # /run/archiso/airootfs (the old check here) no longer exists on current
+    # archiso builds -- confirmed live on a genuine live boot (2026-08-31,
+    # ls /run/archiso: "No such file or directory"), which silently broke
+    # this function into always returning False. That disabled two real
+    # safety guards (blocking package updates and Steam installs on the live
+    # session) with no visible symptom, since a False-negative here just lets
+    # the disabled action run instead of erroring. The kernel command line's
+    # archiso parameters are the actual stable, version-independent marker
+    # mkarchiso sets for a live boot -- confirmed absent on a real installed
+    # system's cmdline the same session.
+    try:
+        cmdline = Path("/proc/cmdline").read_text()
+    except OSError:
+        return False
+    return "archisobasedir=" in cmdline or "archisolabel=" in cmdline
 
 
 def _run(cmd, progress_emit=None):
@@ -277,6 +291,11 @@ class Backend(QObject):
     aboutInfoReady = Signal("QVariantMap")
     driverStatusReady = Signal("QVariantMap")
     firewallStatusReady = Signal("QVariantMap")
+    vpnStatusReady = Signal("QVariantMap")
+    vpnConfigSelected = Signal(str)
+    securityOverviewReady = Signal("QVariantMap")
+    usbGuardStatusReady = Signal("QVariantMap")
+    securityUpdatesReady = Signal("QVariantList")
     usersListed = Signal("QVariantList")
     packagesFound = Signal("QVariantList")
     packageInfoReady = Signal(str, str)
@@ -293,6 +312,11 @@ class Backend(QObject):
     mouseInfoReady = Signal("QVariantMap")
     customShortcutsListed = Signal("QVariantList")
     pageRequested = Signal(str)
+    gamingProgress = Signal(str)
+    gamingFinished = Signal(bool, str)
+    printersListed = Signal("QVariantList")
+    printerDevicesFound = Signal("QVariantList")
+    scannersListed = Signal("QVariantList")
 
     def __init__(self):
         super().__init__()
@@ -317,6 +341,7 @@ class Backend(QObject):
         self._timezones_worker = None
         self._keyboard_worker = None
         self._mouse_worker = None
+        self._gaming_worker = None
         self._stats_worker = StatsWorker()
         self._stats_worker.statsReady.connect(self.statsUpdated.emit)
         self._stats_worker.start()
@@ -359,6 +384,27 @@ class Backend(QObject):
         self._action_worker = ActionWorker(fn)
         self._action_worker.finished_ok.connect(self.actionFinished.emit)
         self._action_worker.start()
+
+    @Slot(result="QVariantMap")
+    def gamingStatus(self):
+        def installed(pkg):
+            return subprocess.run(["pacman", "-Q", pkg], capture_output=True).returncode == 0
+        return {"steamInstalled": installed("steam"), "gamemodeInstalled": installed("gamemode")}
+
+    @Slot()
+    def installGaming(self):
+        if _is_live_session():
+            self.gamingFinished.emit(False, "Installing Steam is disabled in the live session -- install ReyOS first.")
+            return
+
+        def task(emit):
+            emit("$ sudo pacman -S --needed --noconfirm steam gamemode lib32-gamemode")
+            rc = _run(["sudo", "pacman", "-S", "--needed", "--noconfirm", "steam", "gamemode", "lib32-gamemode"], emit)
+            return rc == 0, ("Steam and GameMode installed." if rc == 0 else "Install failed -- check your network connection and try again.")
+        self._gaming_worker = ActionWorker(task)
+        self._gaming_worker.progress.connect(self.gamingProgress.emit)
+        self._gaming_worker.finished_ok.connect(self.gamingFinished.emit)
+        self._gaming_worker.start()
 
     @Slot(str)
     def setGovernor(self, gov):
@@ -453,9 +499,21 @@ class Backend(QObject):
     # kbuildsycoca6 and a plasmashell restart. Works fine for stock org.kde.*
     # packages, so this only affects our own themes. Apply their constituent
     # pieces (colorscheme + icon theme + the bookkeeping key) directly instead.
+    # Fourth element: whether KWin's blur effect should stay enabled under
+    # this look-and-feel. Both entries keep the same branded (dark) wallpaper
+    # -- no light-toned wallpaper art exists yet -- so under the Light scheme,
+    # popup menus blur-reveal that dark wallpaper behind them while Breeze's
+    # popup style still computes icon/text colors assuming a light
+    # background. Confirmed live: this specifically breaks palette-tinted
+    # icons like the desktop context menu's "Create New"/"Icons" entries
+    # (washed out to near-invisible) while full-color icons stay fine,
+    # exactly matching the reported bug -- and disabling blur entirely
+    # while colors/wallpaper were otherwise unchanged fixed it immediately.
+    # Dark keeps blur on since a dark wallpaper behind a dark-styled popup
+    # doesn't have the same mismatch.
     _REYOS_LOOKANDFEEL = {
-        "org.reyos.desktop": ("ReyOS", "breeze-dark", None),
-        "org.reyos.light.desktop": ("ReyOSLight", "breeze", None),
+        "org.reyos.desktop": ("ReyOS", "breeze-dark", None, True),
+        "org.reyos.light.desktop": ("ReyOSLight", "breeze", None, False),
     }
 
     @Slot(result=str)
@@ -473,12 +531,27 @@ class Backend(QObject):
     def applyLookAndFeel(self, package_id):
         def task(emit):
             if package_id in self._REYOS_LOOKANDFEEL:
-                colorscheme, icons, wallpaper = self._REYOS_LOOKANDFEEL[package_id]
+                colorscheme, icons, wallpaper, blur_enabled = self._REYOS_LOOKANDFEEL[package_id]
                 rc = subprocess.run(["plasma-apply-colorscheme", colorscheme]).returncode
                 if wallpaper:
                     subprocess.run(["plasma-apply-wallpaperimage", wallpaper])
                 subprocess.run(["kwriteconfig6", "--file", "kdeglobals", "--group", "Icons", "--key", "Theme", icons])
                 subprocess.run(["kwriteconfig6", "--file", "kdeglobals", "--group", "KDE", "--key", "LookAndFeelPackage", package_id])
+                subprocess.run(["kwriteconfig6", "--file", "kwinrc", "--group", "Plugins", "--key", "blurEnabled",
+                                 "true" if blur_enabled else "false"])
+                # `qdbus6 .../KWin reconfigure` alone re-reads config for
+                # already-loaded effects but doesn't reliably (re)load one
+                # that's currently unloaded -- confirmed live going
+                # false->true left blur config'd on but still unloaded.
+                # loadEffect/unloadEffect on the live /Effects interface
+                # act immediately and correctly either direction; the
+                # config write above is still needed so the choice sticks
+                # across the next full KWin restart/login.
+                subprocess.run([
+                    "qdbus6", "org.kde.KWin", "/Effects",
+                    "org.kde.kwin.Effects.loadEffect" if blur_enabled else "org.kde.kwin.Effects.unloadEffect",
+                    "blur",
+                ], capture_output=True)
                 # kwriteconfig6 alone only changes the file on disk -- it
                 # doesn't tell any already-running app (including this one)
                 # to re-resolve icons, so items that had already been drawn
@@ -490,10 +563,47 @@ class Backend(QObject):
                 # point on, though icons already painted before the switch
                 # may still need the page/app reopened to fully repaint.
                 QIcon.setThemeName(icons)
+                # The panel/taskbar/systray icons are drawn by plasmashell,
+                # a separate already-running process -- confirmed live that
+                # neither the kwriteconfig6 write nor a KGlobalSettings
+                # notifyChange D-Bus broadcast makes it re-resolve them (they
+                # stayed on the old theme's icons, unreadable against the
+                # new panel color). A full plasmashell restart is the only
+                # thing that actually refreshed them in testing; brief
+                # flicker is an acceptable tradeoff for icons that are
+                # otherwise invisible against the new background.
+                subprocess.run(["kquitapp6", "plasmashell"], capture_output=True)
+                subprocess.Popen(
+                    ["kstart", "plasmashell"],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    start_new_session=True,
+                )
                 return rc == 0, ("Look and feel applied; matching wallpaper set when available." if rc == 0 else "Failed to apply color scheme.")
             rc = subprocess.run(["plasma-apply-lookandfeel", "--apply", package_id]).returncode
             return rc == 0, ("Look and feel applied." if rc == 0 else "Failed to apply look and feel.")
-        self._run_action(task)
+        worker = ActionWorker(task)
+        worker.finished_ok.connect(self.actionFinished.emit)
+        # A running app's own Qt platform style/window chrome doesn't
+        # hot-reload on a live color-scheme switch (confirmed: sidebar
+        # icons refresh fine via QIcon.setThemeName() above, but the
+        # window's own chrome stays on the old style until reopened) --
+        # relaunching this app is the same fix already applied to
+        # plasmashell above for the same class of "already-running
+        # process doesn't repaint" problem. REYOS_CC_INITIAL_PAGE brings
+        # the new window back to this same Appearance page.
+        worker.finished_ok.connect(lambda ok, _msg: ok and self._relaunch_self())
+        self._lookandfeel_worker = worker
+        worker.start()
+
+    def _relaunch_self(self):
+        env = dict(os.environ)
+        env["REYOS_CC_INITIAL_PAGE"] = "AppearancePage.qml"
+        subprocess.Popen(
+            [str(APP_DIR / "main.py")],
+            env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        QTimer.singleShot(300, QGuiApplication.quit)
 
     @Slot()
     def pickWallpaperImage(self):
@@ -544,6 +654,40 @@ class Backend(QObject):
                 return False, f"File not found: {image}"
             rc = subprocess.run(["plasma-apply-wallpaperimage", image]).returncode
             return rc == 0, ("Wallpaper applied." if rc == 0 else "Failed to set wallpaper — is it a valid image?")
+        self._run_action(task)
+
+    @Slot()
+    def unlockPanelEditing(self):
+        # Same immutability write reyos-apply-branding.sh's unlock_panel_layout()
+        # does when a user opts in via Welcome's first-run toggle -- exposed
+        # here too since that toggle only ever gets a first-run chance, with
+        # no way back for someone who skipped it then and wants panel editing
+        # unlocked later.
+        #
+        # reyos-edit-mode-guard.service polls PlasmaShell's editMode and forces
+        # it back off every 0.3s regardless of immutability, so unlocking
+        # immutability alone still leaves Plasma's Edit Mode toggle non-functional
+        # -- the guard must be stopped too whenever editing is unlocked.
+        def task(emit):
+            script = "var e=panels(); for (var p=0; p<e.length; p++) { e[p].immutability=1; }"
+            rc = subprocess.run(
+                ["qdbus6", "org.kde.plasmashell", "/PlasmaShell",
+                 "org.kde.PlasmaShell.evaluateScript", script]
+            ).returncode
+            subprocess.run(["systemctl", "--user", "disable", "--now", "reyos-edit-mode-guard.service"])
+            return rc == 0, ("Panel editing unlocked." if rc == 0 else "Failed to unlock panels.")
+        self._run_action(task)
+
+    @Slot()
+    def lockPanelEditing(self):
+        def task(emit):
+            script = "var e=panels(); for (var p=0; p<e.length; p++) { e[p].immutability=3; }"
+            rc = subprocess.run(
+                ["qdbus6", "org.kde.plasmashell", "/PlasmaShell",
+                 "org.kde.PlasmaShell.evaluateScript", script]
+            ).returncode
+            subprocess.run(["systemctl", "--user", "enable", "--now", "reyos-edit-mode-guard.service"])
+            return rc == 0, ("Panel layout locked." if rc == 0 else "Failed to lock panels.")
         self._run_action(task)
 
     @staticmethod
@@ -1129,6 +1273,216 @@ class Backend(QObject):
             ok = result.returncode == 0
             return ok, (f"Rule {rule_num} removed." if ok else (result.stderr.strip() or "Failed to remove rule."))
         self._run_action(task)
+
+    # --- VPN (WireGuard, bring-your-own-config) -------------------------------
+    # No bundled provider -- users import a .conf from whatever WireGuard-based
+    # VPN they already have (Mullvad, ProtonVPN, etc). wg-quick@.service is
+    # the systemd template wireguard-tools itself ships, one unit per profile
+    # name (matching the .conf file's basename in /etc/wireguard).
+
+    @staticmethod
+    def _compute_vpn_status():
+        try:
+            profiles = sorted(p.stem for p in Path("/etc/wireguard").glob("*.conf"))
+        except Exception:
+            profiles = []
+        active = ""
+        try:
+            out = subprocess.check_output(
+                ["sudo", "wg", "show", "interfaces"], text=True, stderr=subprocess.DEVNULL,
+            ).split()
+            active = out[0] if out else ""
+        except Exception:
+            pass
+        return {"profiles": profiles, "active": active}
+
+    @Slot()
+    def refreshVpnStatus(self):
+        self._vpn_worker = InfoWorker(self._compute_vpn_status)
+        self._vpn_worker.ready.connect(self.vpnStatusReady.emit)
+        self._vpn_worker.start()
+
+    @Slot()
+    def pickVpnConfigFile(self):
+        def task(emit):
+            result = subprocess.run(
+                ["kdialog", "--title", "Import VPN Config", "--getopenfilename",
+                 str(Path.home()), "WireGuard configs (*.conf)"],
+                capture_output=True, text=True,
+            )
+            return True, result.stdout.strip()
+        self._vpn_picker_worker = ActionWorker(task)
+        self._vpn_picker_worker.finished_ok.connect(lambda _ok, path: self.vpnConfigSelected.emit(path))
+        self._vpn_picker_worker.start()
+
+    @Slot(str)
+    def importVpnConfig(self, path):
+        def task(emit):
+            src = _expand(path)
+            if not Path(src).is_file():
+                return False, f"File not found: {src}"
+            name = Path(src).stem
+            rc = subprocess.run(
+                ["sudo", "install", "-Dm600", src, f"/etc/wireguard/{name}.conf"]
+            ).returncode
+            return rc == 0, (f'Imported "{name}".' if rc == 0 else "Failed to import config.")
+        self._run_action(task)
+
+    @Slot(str)
+    def connectVpn(self, name):
+        def task(emit):
+            # A single "connect" toggle implies one active tunnel at a time,
+            # even though WireGuard itself supports several simultaneously --
+            # stop whatever else is up first so switching profiles doesn't
+            # leave two tunnels racing for the default route.
+            try:
+                active = subprocess.check_output(
+                    ["sudo", "wg", "show", "interfaces"], text=True, stderr=subprocess.DEVNULL,
+                ).split()
+            except Exception:
+                active = []
+            for iface in active:
+                if iface != name:
+                    subprocess.run(["sudo", "systemctl", "stop", f"wg-quick@{iface}"], capture_output=True)
+            result = subprocess.run(
+                ["sudo", "systemctl", "start", f"wg-quick@{name}"], capture_output=True, text=True,
+            )
+            ok = result.returncode == 0
+            return ok, (f"Connected: {name}" if ok else (result.stderr.strip() or "Failed to connect."))
+        self._run_action(task)
+
+    @Slot(str)
+    def disconnectVpn(self, name):
+        def task(emit):
+            result = subprocess.run(
+                ["sudo", "systemctl", "stop", f"wg-quick@{name}"], capture_output=True, text=True,
+            )
+            ok = result.returncode == 0
+            return ok, ("Disconnected." if ok else (result.stderr.strip() or "Failed to disconnect."))
+        self._run_action(task)
+
+    @Slot(str)
+    def deleteVpnConfig(self, name):
+        def task(emit):
+            subprocess.run(["sudo", "systemctl", "stop", f"wg-quick@{name}"], capture_output=True)
+            rc = subprocess.run(["sudo", "rm", "-f", f"/etc/wireguard/{name}.conf"]).returncode
+            return rc == 0, (f'Removed "{name}".' if rc == 0 else "Failed to remove config.")
+        self._run_action(task)
+
+    # --- Security dashboard ---------------------------------------------------
+    # Consolidated firewall+VPN+Shields+permissions view -- the "safe by
+    # default" pitch should be provable at a glance, not something a user
+    # has to go find three separate pages to confirm piece by piece.
+
+    @staticmethod
+    def _compute_security_overview():
+        firewall = Backend._compute_firewall_status()
+        vpn = Backend._compute_vpn_status()
+        shields_blocked = 0
+        try:
+            stats_path = Path.home() / ".local" / "share" / "reyos-browser" / "shields-stats.json"
+            data = json.loads(stats_path.read_text(encoding="utf-8"))
+            shields_blocked = data.get("lifetimeBlocked", 0)
+            if not isinstance(shields_blocked, int):
+                shields_blocked = 0
+        except (OSError, json.JSONDecodeError):
+            pass
+        return {
+            "firewallEnabled": firewall.get("enabled", False),
+            "vpnActive": vpn.get("active", ""),
+            "vpnProfileCount": len(vpn.get("profiles", [])),
+            "shieldsBlocked": shields_blocked,
+        }
+
+    @Slot()
+    def refreshSecurityOverview(self):
+        self._security_worker = InfoWorker(self._compute_security_overview)
+        self._security_worker.ready.connect(self.securityOverviewReady.emit)
+        self._security_worker.start()
+
+    # --- USBGuard (BadUSB protection, opt-in) ---------------------------------
+    # Deliberately off by default -- unlike the firewall, blocking new USB
+    # devices out of the box would surprise a normal user plugging in a
+    # flash drive on a "simple" pitch OS. This is an opt-in toggle, not a
+    # default-on protection.
+
+    @staticmethod
+    def _compute_usbguard_status():
+        return {"enabled": Backend._service_is_active("usbguard") == "active"}
+
+    @Slot()
+    def refreshUsbGuardStatus(self):
+        self._usbguard_worker = InfoWorker(self._compute_usbguard_status)
+        self._usbguard_worker.ready.connect(self.usbGuardStatusReady.emit)
+        self._usbguard_worker.start()
+
+    @Slot()
+    def enableUsbGuard(self):
+        def task(emit):
+            # Generate an explicit allow-policy for whatever's already
+            # connected *before* the daemon starts enforcing anything --
+            # turning this on without one risks locking out a USB
+            # keyboard/mouse the moment the service comes up.
+            policy = subprocess.run(
+                ["sudo", "usbguard", "generate-policy"], capture_output=True, text=True,
+            )
+            if policy.returncode != 0:
+                return False, "Failed to generate a USB device policy."
+            write = subprocess.run(
+                ["sudo", "tee", "/etc/usbguard/rules.conf"],
+                input=policy.stdout, capture_output=True, text=True,
+            )
+            if write.returncode != 0:
+                return False, "Failed to write the USB device policy."
+            rc = subprocess.run(["sudo", "systemctl", "enable", "--now", "usbguard"]).returncode
+            return rc == 0, ("USB protection enabled. Currently connected devices were allowed automatically." if rc == 0 else "Failed to start USBGuard.")
+        self._run_action(task)
+
+    @Slot()
+    def disableUsbGuard(self):
+        def task(emit):
+            rc = subprocess.run(["sudo", "systemctl", "disable", "--now", "usbguard"]).returncode
+            return rc == 0, ("USB protection disabled." if rc == 0 else "Failed to stop USBGuard.")
+        self._run_action(task)
+
+    # --- CVE-tagged updates ----------------------------------------------------
+    # Arch has no clean official CVE-tagging built into pacman itself to
+    # distinguish "security-critical" from routine updates -- but the Arch
+    # Security Team already maintains exactly that data at
+    # security.archlinux.org, and arch-audit (an official-ish, actively
+    # maintained package) already reads it correctly. Wrapping that real
+    # tool instead of hand-rolling a parser against an unofficial feed.
+
+    @staticmethod
+    def _compute_security_updates():
+        try:
+            out = subprocess.check_output(
+                ["arch-audit", "-u", "-f", "%n|%v|%s|%c"],
+                text=True, stderr=subprocess.DEVNULL,
+            )
+        except FileNotFoundError:
+            return []
+        except subprocess.CalledProcessError as e:
+            # arch-audit exits non-zero when it finds anything -- that's
+            # the normal "issues found" case, not a real failure; the
+            # output is still valid.
+            out = e.output or ""
+        issues = []
+        for line in out.splitlines():
+            parts = line.strip().split("|")
+            if len(parts) < 4 or not parts[0]:
+                continue
+            issues.append({
+                "name": parts[0], "fixedVersion": parts[1],
+                "severity": parts[2], "cves": parts[3],
+            })
+        return issues
+
+    @Slot()
+    def refreshSecurityUpdates(self):
+        self._security_updates_worker = ListWorker(self._compute_security_updates)
+        self._security_updates_worker.ready.connect(self.securityUpdatesReady.emit)
+        self._security_updates_worker.start()
 
     # --- Users & Groups ------------------------------------------------------
     # Listing needs no privilege (/etc/passwd is world-readable) -- only
@@ -2154,6 +2508,134 @@ class Backend(QObject):
                 "libinput Accel Speed", f"{value:.3f}",
             )
             return True, ("Pointer speed applied." if live else "Saved (takes effect next login -- live apply needs this device to be reachable via KWin or xinput).")
+        self._run_action(task)
+
+    # -- printers & scanners ----------------------------------------------
+
+    @Slot()
+    def refreshPrinters(self):
+        def task():
+            result = subprocess.run(["lpstat", "-p"], capture_output=True, text=True)
+            default_result = subprocess.run(["lpstat", "-d"], capture_output=True, text=True)
+            default_name = default_result.stdout.rsplit(":", 1)[-1].strip() if ":" in default_result.stdout else ""
+            printers = []
+            for line in result.stdout.splitlines():
+                m = re.match(r"printer (\S+) is (\w+)", line)
+                if m:
+                    printers.append({
+                        "name": m.group(1),
+                        "status": m.group(2),
+                        "isDefault": m.group(1) == default_name,
+                    })
+            return printers
+        self._printer_list_worker = ListWorker(task)
+        self._printer_list_worker.ready.connect(self.printersListed.emit)
+        self._printer_list_worker.start()
+
+    @Slot()
+    def discoverPrinterDevices(self):
+        # `lpinfo -v` also probes the network (mDNS/IPP), so this can take
+        # several seconds -- always the async ListWorker, never a plain
+        # synchronous @Slot(result=...), so it doesn't freeze the page.
+        def task():
+            result = subprocess.run(["lpinfo", "-v"], capture_output=True, text=True, timeout=20)
+            configured = subprocess.run(["lpstat", "-v"], capture_output=True, text=True)
+            already = {line.rsplit(" ", 1)[-1].strip() for line in configured.stdout.splitlines() if ":" in line}
+            devices = []
+            for line in result.stdout.splitlines():
+                parts = line.strip().split(" ", 1)
+                # `lpinfo -v` always lists the bare backend schemes it has
+                # available (e.g. "network http", "network beh") even with
+                # zero real printers found -- those aren't addressable
+                # devices (no host/path), just driver capabilities, and
+                # `lpadmin -v http -m everywhere` would fail if "added".
+                # A genuine discovered device's URI always has "://".
+                if len(parts) == 2 and "://" in parts[1] and parts[1] not in already:
+                    devices.append({"kind": parts[0], "uri": parts[1]})
+            return devices
+        self._printer_device_worker = ListWorker(task)
+        self._printer_device_worker.ready.connect(self.printerDevicesFound.emit)
+        self._printer_device_worker.start()
+
+    @Slot(str, str)
+    def addPrinter(self, name, uri):
+        name = name.strip()
+        if not re.fullmatch(r"[A-Za-z0-9_-]+", name or ""):
+            self.actionFinished.emit(False, "Printer name can only contain letters, numbers, - and _")
+            return
+
+        def task(emit):
+            # `-m everywhere` uses IPP Everywhere / driverless printing --
+            # works for the large majority of printers made since ~2015
+            # without needing to locate and install a vendor PPD/driver.
+            result = subprocess.run(
+                ["sudo", "lpadmin", "-p", name, "-E", "-v", uri, "-m", "everywhere"],
+                capture_output=True, text=True,
+            )
+            if result.returncode == 0:
+                return True, f'"{name}" added.'
+            return False, (result.stderr.strip() or "Could not add that printer.")
+        self._run_action(task)
+
+    @Slot(str)
+    def removePrinter(self, name):
+        def task(emit):
+            result = subprocess.run(["sudo", "lpadmin", "-x", name], capture_output=True, text=True)
+            if result.returncode == 0:
+                return True, f'"{name}" removed.'
+            return False, (result.stderr.strip() or "Could not remove that printer.")
+        self._run_action(task)
+
+    @Slot(str)
+    def setDefaultPrinter(self, name):
+        def task(emit):
+            result = subprocess.run(["sudo", "lpadmin", "-d", name], capture_output=True, text=True)
+            if result.returncode == 0:
+                return True, f'"{name}" set as default.'
+            return False, (result.stderr.strip() or "Could not set the default printer.")
+        self._run_action(task)
+
+    @Slot(str)
+    def testPrint(self, name):
+        def task(emit):
+            # Printing itself never needs root -- only lpadmin's
+            # add/remove/set-default operations do.
+            result = subprocess.run(
+                ["lp", "-d", name, "/usr/share/cups/data/testprint"],
+                capture_output=True, text=True,
+            )
+            if result.returncode == 0:
+                return True, f"Test page sent to \"{name}\"."
+            return False, (result.stderr.strip() or "Could not send the test page.")
+        self._run_action(task)
+
+    @Slot()
+    def refreshScanners(self):
+        def task():
+            result = subprocess.run(["scanimage", "-L"], capture_output=True, text=True, timeout=20)
+            scanners = []
+            for line in result.stdout.splitlines():
+                m = re.match(r"device `([^']+)' is (.+)", line)
+                if m:
+                    scanners.append({"device": m.group(1), "label": m.group(2)})
+            return scanners
+        self._scanner_list_worker = ListWorker(task)
+        self._scanner_list_worker.ready.connect(self.scannersListed.emit)
+        self._scanner_list_worker.start()
+
+    @Slot(str)
+    def scanTestPage(self, device):
+        def task(emit):
+            out_dir = Path.home() / "Pictures"
+            out_dir.mkdir(parents=True, exist_ok=True)
+            out_path = out_dir / f"scan-{time.strftime('%Y%m%d-%H%M%S')}.png"
+            result = subprocess.run(
+                ["scanimage", "--device", device, "--format=png", "-o", str(out_path)],
+                capture_output=True, text=True, timeout=120,
+            )
+            if result.returncode == 0:
+                return True, f"Scanned to {out_path}"
+            return False, (result.stderr.strip() or "Could not scan from that device.")
         self._run_action(task)
 
 

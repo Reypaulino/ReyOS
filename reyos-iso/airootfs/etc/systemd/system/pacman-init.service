@@ -10,6 +10,14 @@ Type=oneshot
 RemainAfterExit=yes
 ExecStart=/usr/bin/pacman-key --init
 ExecStart=/usr/bin/pacman-key --populate
+# /etc/pacman.d/gnupg is tmpfs-mounted (see etc-pacman.d-gnupg.mount) and
+# reset on every boot, so --populate alone only re-trusts the standard
+# Arch keyrings -- it never re-adds the reyos-local signing key, which
+# doesn't ship as a pacman "keyring" package. Without this, every real
+# install fails "key ... could not be looked up remotely" on the first
+# reyos-local sync after any reboot.
+ExecStart=/usr/bin/pacman-key --add /usr/share/reyos/reyos-signing-key.asc
+ExecStart=/usr/bin/pacman-key --lsign-key 9A17D49EE3929AC6402337FA66E4085621026272
 
 [Install]
 WantedBy=multi-user.target

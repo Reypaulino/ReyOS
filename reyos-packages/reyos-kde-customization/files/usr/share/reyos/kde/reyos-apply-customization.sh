@@ -11,9 +11,10 @@ systemctl --user disable --now reyos-edit-mode-guard.service >/dev/null 2>&1 || 
 "$qdbus_cmd" org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript '
 var ds = desktops();
 for (var i = 0; i < ds.length; ++i) {
-    ds[i].wallpaperPlugin = "org.kde.image";
-    ds[i].currentConfigGroup = ["Wallpaper", "org.kde.image", "General"];
-    ds[i].writeConfig("Image", "file:///usr/share/backgrounds/reyos-wallpaper.jpg");
+    ds[i].wallpaperPlugin = "org.kde.slideshow";
+    ds[i].currentConfigGroup = ["Wallpaper", "org.kde.slideshow", "General"];
+    ds[i].writeConfig("SlidePaths", ["/usr/share/backgrounds/reyos/"]);
+    ds[i].writeConfig("SlideInterval", 1800);
 }
 
 var existing = panels();
@@ -34,7 +35,9 @@ clock.writeConfig("showDate", true);
 clock.writeConfig("dateDisplayFormat", "Custom");
 clock.writeConfig("customDateFormat", "ddd, MMM d");
 top.addWidget("org.kde.plasma.panelspacer");
-top.addWidget("org.kde.plasma.systemtray");
+var tray = top.addWidget("org.kde.plasma.systemtray");
+tray.currentConfigGroup = ["General"];
+tray.writeConfig("shownItems", "org.kde.plasma.notifications,org.kde.plasma.clipboard");
 top.addWidget("org.kde.plasma.lock_logout");
 
 var bottom = new Panel;
@@ -45,6 +48,8 @@ bottom.immutability = 1;
 var launcher = bottom.addWidget("org.kde.plasma.kickoff");
 launcher.currentConfigGroup = ["General"];
 launcher.writeConfig("icon", "reyos-launcher");
-bottom.addWidget("org.kde.plasma.icontasks");
+var iconTasks = bottom.addWidget("org.kde.plasma.icontasks");
+iconTasks.currentConfigGroup = ["General"];
+iconTasks.writeConfig("launchers", "applications:systemsettings.desktop,applications:org.kde.discover.desktop,applications:reyos-control-center.desktop,applications:org.kde.dolphin.desktop,applications:reyos-browser.desktop");
 '
 touch "$HOME/.config/reyos-kde-customization-applied"

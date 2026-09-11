@@ -16,9 +16,9 @@ alias ll='ls -lah --color=auto'
 alias grep='grep --color=auto'
 alias update='sudo pacman -Syu'
 
-# reyos-terminal ships the neofetch config + ASCII art but never actually
-# called neofetch anywhere — this is the hook.
-command -v neofetch &>/dev/null && neofetch
+# reyos-terminal ships the fastfetch config + ASCII art but never actually
+# called fastfetch anywhere — this is the hook.
+command -v fastfetch &>/dev/null && fastfetch
 
 # ReyOS quick-launcher — offered once per new terminal
 if [[ $- == *i* ]]; then

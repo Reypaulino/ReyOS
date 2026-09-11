@@ -1,0 +1,14 @@
+# ReyOS WSL — Minimal profile
+# Baked into the shipped .wsl artifact. Keep this list genuinely small —
+# `base` (pacstrap default) already provides bash, coreutils, pacman, sed,
+# grep, gawk, tar, gzip, iproute2, shadow, systemd, util-linux.
+sudo
+nano
+openssh
+curl
+wget
+ca-certificates
+less
+which
+man-db
+man-pages

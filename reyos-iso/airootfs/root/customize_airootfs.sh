@@ -10,6 +10,8 @@ chmod 0440 /etc/sudoers.d/g_wheel
 
 systemctl enable NetworkManager.service
 systemctl enable sddm.service
+systemctl enable systemd-oomd.service
+systemctl enable reyos-preloadd.service
 
 mkdir -p /etc/sddm.conf.d
 cat > /etc/sddm.conf.d/autologin.conf << 'EOF'

@@ -1,8 +1,8 @@
 # Maintainer: Rey Paulino
 pkgname=reyos-grub
 pkgver=1.0.0
-pkgrel=11
-pkgdesc="ReyOS GRUB theme — dark navy + blue accent, dedicated background image"
+pkgrel=12
+pkgdesc="ReyOS GRUB theme — solid navy background with centered watermark logo"
 arch=('any')
 license=('MIT')
 depends=('grub')

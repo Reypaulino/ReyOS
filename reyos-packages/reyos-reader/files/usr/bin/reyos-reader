@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Start the native ReyOS Reader application.
+# ReyOS Reader uses QtWebEngine for EPUB rendering, same VirtIO/virgl
+# rendering caveat as reyos-browser -- fall back to software rendering
+# inside a VM.
+if systemd-detect-virt -q; then
+    export QTWEBENGINE_CHROMIUM_FLAGS="${QTWEBENGINE_CHROMIUM_FLAGS:---disable-gpu}"
+    export QT_QUICK_BACKEND="${QT_QUICK_BACKEND:-software}"
+fi
+exec /usr/bin/python3 /usr/share/reyos/reader/main.py "$@"

@@ -42,9 +42,17 @@ Kirigami.ScrollablePage {
             pkgInfoText.text = info
             pkgInfoDialog.open()
         }
+        function onSecurityUpdatesReady(list) {
+            securityChecked = true
+            secUpdatesModel.clear()
+            for (var i = 0; i < list.length; i++) secUpdatesModel.append(list[i])
+        }
     }
 
+    property bool securityChecked: false
+
     ListModel { id: pkgModel }
+    ListModel { id: secUpdatesModel }
 
     Controls.Dialog {
         id: confirmRemovePkg
@@ -147,6 +155,47 @@ Kirigami.ScrollablePage {
             Layout.fillWidth: true
             wrapMode: Text.Wrap
             visible: text.length > 0
+        }
+
+        Kirigami.AbstractCard {
+            Layout.fillWidth: true
+            padding: Kirigami.Units.gridUnit
+            contentItem: ColumnLayout {
+                spacing: Kirigami.Units.smallSpacing
+                Kirigami.Heading { text: "Security updates"; level: 3 }
+                Controls.Label {
+                    Layout.fillWidth: true
+                    wrapMode: Text.Wrap
+                    opacity: 0.7
+                    text: "Cross-checks pending updates against the Arch Security Team's known-vulnerability data (via arch-audit)."
+                }
+                Controls.Button {
+                    text: "Check for security updates"
+                    enabled: !running
+                    Layout.alignment: Qt.AlignLeft
+                    onClicked: backend.refreshSecurityUpdates()
+                }
+                Repeater {
+                    model: secUpdatesModel
+                    delegate: RowLayout {
+                        Layout.fillWidth: true
+                        Controls.Label {
+                            text: severity
+                            font.bold: true
+                            color: (severity === "High" || severity === "Critical") ? Kirigami.Theme.negativeTextColor : Kirigami.Theme.neutralTextColor
+                            Layout.preferredWidth: 90
+                        }
+                        Controls.Label { text: name; Layout.preferredWidth: 200; elide: Text.ElideRight }
+                        Controls.Label { text: "→ " + fixedVersion; opacity: 0.7; Layout.preferredWidth: 160; elide: Text.ElideRight }
+                        Controls.Label { text: cves; opacity: 0.6; Layout.fillWidth: true; elide: Text.ElideRight; font.pointSize: 9 }
+                    }
+                }
+                Controls.Label {
+                    visible: securityChecked && secUpdatesModel.count === 0
+                    text: "No known security issues in pending updates."
+                    color: Kirigami.Theme.positiveTextColor
+                }
+            }
         }
 
         Kirigami.AbstractCard {

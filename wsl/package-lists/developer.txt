@@ -1,0 +1,8 @@
+# ReyOS WSL — Developer profile
+# Installed on top of Minimal (first-run, or manually: pacman -S --needed $(cat minimal.txt developer.txt))
+git
+base-devel
+python
+python-pip
+nodejs
+npm

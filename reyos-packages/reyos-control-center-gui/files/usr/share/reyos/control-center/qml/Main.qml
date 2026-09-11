@@ -6,10 +6,10 @@ import org.kde.kirigami as Kirigami
 Kirigami.ApplicationWindow {
     id: appWindow
     title: "ReyOS Control Center"
-    width: 900
-    height: 620
-    minimumWidth: 760
-    minimumHeight: 520
+    width: 1080
+    height: 740
+    minimumWidth: 900
+    minimumHeight: 600
 
     globalDrawer: Kirigami.GlobalDrawer {
         id: drawer
@@ -63,11 +63,15 @@ Kirigami.ApplicationWindow {
             ]},
             { group: "Essentials", items: [
                 { text: "Updates", icon: "system-software-update", page: "UpdatesPage.qml" },
+                { text: "Security", icon: "security-high", page: "SecurityPage.qml" },
                 { text: "Appearance", icon: "preferences-desktop-theme", page: "AppearancePage.qml" },
                 { text: "Backup", icon: "document-save", page: "BackupPage.qml" },
+                { text: "Gaming", icon: "input-gaming", page: "GamingPage.qml" },
                 { text: "Wi-Fi", icon: "network-wireless", page: "WifiPage.qml" },
                 { text: "Network", icon: "network-wired", page: "NetworkPage.qml" },
+                { text: "VPN", icon: "network-vpn", page: "VpnPage.qml" },
                 { text: "Sound", icon: "audio-speakers", page: "SoundPage.qml" },
+                { text: "Printers · Scanners", icon: "printer", page: "PrinterPage.qml" },
                 { text: "Users", icon: "system-users", page: "UsersPage.qml" }
             ]},
             { group: "Advanced", items: [
@@ -79,7 +83,7 @@ Kirigami.ApplicationWindow {
                 { text: "Drivers", icon: "video-display", page: "DriversPage.qml" },
                 { text: "Firewall", icon: "security-medium", page: "FirewallPage.qml" },
                 { text: "Disk", icon: "drive-harddisk", page: "DiskPage.qml" },
-                { text: "Date & Time", icon: "preferences-system-time", page: "DateTimePage.qml" },
+                { text: "Date · Time", icon: "preferences-system-time", page: "DateTimePage.qml" },
                 { text: "Services", icon: "system-run", page: "ServicesPage.qml" },
                 { text: "Startup Apps", icon: "preferences-system-login", page: "StartupPage.qml" },
                 { text: "Permissions", icon: "object-locked", page: "PermissionsPage.qml" }
@@ -214,15 +218,18 @@ Kirigami.ApplicationWindow {
                         Controls.ItemDelegate {
                             visible: !modelData.isHeader
                             anchors.fill: parent
-                            // A previous fix here double-escaped "&" to
-                            // "&&" to dodge Controls.ItemDelegate's
-                            // mnemonic parsing (which had turned "Date &
-                            // Time" into "Date  Time" with a stray
-                            // underline) -- confirmed live on a real
-                            // install that this control's style does
-                            // *not* parse mnemonics after all, so the
-                            // escaped form rendered literally as "Date &&
-                            // Time" instead. Plain text, no escaping.
+                            // "&"/"&&" both went through two rounds of
+                            // "verified live" here (bare "&" drew a stray
+                            // mnemonic underline; the "&&" escape meant to
+                            // fix that then rendered as a literal double
+                            // ampersand on a real install instead) --
+                            // whether this control parses mnemonics isn't
+                            // consistent across builds/styles. Sidestepped
+                            // for good: "Date & Time"/"Printers & Scanners"
+                            // now use "·" (middle dot, already ReyOS's own
+                            // separator elsewhere) instead of "&" in
+                            // navGroups above, so there's no ampersand here
+                            // for any style to possibly mis-parse.
                             text: modelData.isHeader ? "" : modelData.text
                             icon.name: modelData.isHeader ? "" : modelData.icon
                             highlighted: !modelData.isHeader && drawer.currentPage === modelData.page

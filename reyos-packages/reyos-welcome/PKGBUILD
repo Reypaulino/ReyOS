@@ -1,7 +1,7 @@
 # Maintainer: Rey Paulino
 pkgname=reyos-welcome
 pkgver=3.3.3
-pkgrel=17
+pkgrel=23
 pkgdesc="ReyOS Welcome first-login setup wizard (Kirigami/QML) — post-install software picker"
 arch=('any')
 license=('MIT')
@@ -16,4 +16,5 @@ package() {
     find "$pkgdir/etc/skel/.config/autostart" -type f -exec chmod 644 {} \;
     find "$pkgdir/usr/share/reyos/welcome/qml" -type f -exec chmod 644 {} \;
     chmod 755 "$pkgdir/usr/share/reyos/welcome/main.py"
+    chmod 755 "$pkgdir/usr/share/reyos/welcome/enable-multilib.sh"
 }

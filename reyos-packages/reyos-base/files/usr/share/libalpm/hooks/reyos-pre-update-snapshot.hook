@@ -1,0 +1,9 @@
+[Trigger]
+Operation = Upgrade
+Type = Package
+Target = *
+
+[Action]
+Description = Creating a Timeshift snapshot before system update...
+When = PreTransaction
+Exec = /usr/share/reyos/bin/reyos-pre-update-snapshot.sh

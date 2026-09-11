@@ -1,0 +1,6 @@
+module ReyOSReader
+singleton ReyOSStyle 1.0 ReyOSStyle.qml
+LibraryPage 1.0 LibraryPage.qml
+BookReaderPage 1.0 BookReaderPage.qml
+PdfReaderPage 1.0 PdfReaderPage.qml
+ComicReaderPage 1.0 ComicReaderPage.qml

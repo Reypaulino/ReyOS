@@ -113,6 +113,33 @@ Kirigami.ScrollablePage {
             }
         }
 
+        Kirigami.AbstractCard {
+            Layout.fillWidth: true
+            padding: Kirigami.Units.gridUnit
+            contentItem: ColumnLayout {
+                spacing: Kirigami.Units.largeSpacing
+                Kirigami.Heading { text: "Panel layout"; level: 3 }
+                Controls.Label {
+                    Layout.fillWidth: true
+                    wrapMode: Text.Wrap
+                    text: "Panels are locked by default so they can't be accidentally resized or moved. Unlock editing if you want to customize them, then lock them again once you're done."
+                }
+                RowLayout {
+                    spacing: Kirigami.Units.largeSpacing
+                    Controls.Button {
+                        text: "Unlock panel editing"
+                        enabled: !busy
+                        onClicked: { busy = true; backend.unlockPanelEditing() }
+                    }
+                    Controls.Button {
+                        text: "Lock panel layout"
+                        enabled: !busy
+                        onClicked: { busy = true; backend.lockPanelEditing() }
+                    }
+                }
+            }
+        }
+
         Controls.Label {
             id: statusLabel
             Layout.fillWidth: true

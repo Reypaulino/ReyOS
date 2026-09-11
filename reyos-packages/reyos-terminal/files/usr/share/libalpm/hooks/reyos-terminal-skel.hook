@@ -1,0 +1,10 @@
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = reyos-terminal
+
+[Action]
+Description = Applying ReyOS terminal branding to existing accounts...
+When = PostTransaction
+Exec = /usr/share/reyos/bin/reyos-apply-skel-terminal.sh

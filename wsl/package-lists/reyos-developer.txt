@@ -1,0 +1,14 @@
+# ReyOS WSL — ReyOS Developer profile
+# Installed on top of Developer. Goal: build/test real reyos-* PKGBUILDs
+# without a full ReyOS VM. Deliberately excludes Qt/KDE GUI stacks beyond
+# the base Qt6 dev libs — package-specific GUI deps (kirigami, pyside6,
+# qt6-webengine, etc.) are pulled in per-package by `makepkg -s` itself.
+pkgconf
+cmake
+meson
+ninja
+shellcheck
+namcap
+qt6-base
+qt6-declarative
+qt6-tools

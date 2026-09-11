@@ -1,0 +1,17 @@
+# Maintainer: Rey Paulino
+pkgname=reyos-distrobox-gui
+pkgver=1.0.0
+pkgrel=4
+pkgdesc="ReyOS Distrobox — native GUI to create, enter, and export apps from Linux distro containers"
+arch=('any')
+license=('MIT')
+depends=('pyside6' 'kirigami' 'distrobox' 'podman')
+source=()
+sha256sums=()
+
+package() {
+    cp -a "$startdir/files/usr" "$pkgdir/"
+    find "$pkgdir/usr/share" -type f -exec chmod 644 {} \;
+    chmod 755 "$pkgdir/usr/bin/reyos-distrobox-gui"
+    chmod 755 "$pkgdir/usr/share/reyos/distrobox-gui/main.py"
+}

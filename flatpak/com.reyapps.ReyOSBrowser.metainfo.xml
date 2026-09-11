@@ -28,6 +28,13 @@
   <url type="bugtracker">https://github.com/Reypaulino/ReyOS/issues</url>
   <url type="vcs-browser">https://github.com/Reypaulino/ReyOS</url>
 
+  <screenshots>
+    <screenshot type="default">
+      <caption>New tab — private by default, no account required</caption>
+      <image>https://raw.githubusercontent.com/Reypaulino/ReyOS/main/flatpak/screenshots/new-tab.png</image>
+    </screenshot>
+  </screenshots>
+
   <categories>
     <category>Network</category>
     <category>WebBrowser</category>

@@ -5,6 +5,18 @@
 # Reads the same ~/.last_pkg_update stamp reyos-system-menu.sh writes
 # after a successful "Install updates" / "Full update" run — kept in
 # sync manually since the threshold lives in two separate scripts.
+#
+# Reports real pending-update counts from both pacman and flatpak (not
+# just "it's been a while") -- this is ReyOS's one consolidated update
+# notifier, deliberately covering both sources in a single icon/popup
+# rather than one per package manager. Discover's own separate notifier
+# is suppressed on purpose (see the Hidden=true skel override next to
+# this script's own autostart entry) so this stays the only one.
+# Counts read whatever's in the local sync db already -- this never
+# triggers its own `pacman -Sy` (that's a deliberate user action via
+# System Tools/Control Center, not something a passive login nudge
+# should do unprompted), so a count of 0 here can still be stale if
+# nothing has synced recently.
 
 UPDATE_STAMP="$HOME/.last_pkg_update"
 UPDATE_INTERVAL_DAYS=3
@@ -17,10 +29,21 @@ fi
 
 [ "$upd_days" -lt "$UPDATE_INTERVAL_DAYS" ] && exit 0
 
-if [ "$upd_days" -ge 999 ]; then
-  body="No record of a recent update."
+pacman_count=$(pacman -Qu 2>/dev/null | wc -l)
+flatpak_count=0
+command -v flatpak &>/dev/null && flatpak_count=$(flatpak remote-ls --updates 2>/dev/null | wc -l)
+
+if [ "$pacman_count" -eq 0 ] && [ "$flatpak_count" -eq 0 ]; then
+  if [ "$upd_days" -ge 999 ]; then
+    body="No record of a recent update — check for new ones?"
+  else
+    body="No updates pending as of the last check, ${upd_days} day(s) ago."
+  fi
 else
-  body="Last update was ${upd_days} day(s) ago."
+  parts=()
+  [ "$pacman_count" -gt 0 ] && parts+=("${pacman_count} system package(s)")
+  [ "$flatpak_count" -gt 0 ] && parts+=("${flatpak_count} Flatpak app(s)")
+  body="Updates available: $(IFS=', '; echo "${parts[*]}")."
 fi
 
 # Backgrounded: -A/--action implies --wait, which blocks until the

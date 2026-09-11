@@ -1,0 +1,2 @@
+module ReyOSDistroboxGui
+singleton ReyOSStyle 1.0 ReyOSStyle.qml

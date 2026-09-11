@@ -1,0 +1,216 @@
+#!/usr/bin/env python3
+# ReyOS adaptive preload daemon.
+#
+# Watches which regular files (binaries, shared libs, resources) each
+# executable maps into memory every time it runs, builds a per-executable
+# "usual working set" from that history, and — the moment it sees a known
+# executable start again — asks the kernel to start warming those files
+# into the page cache (posix_fadvise WILLNEED) before/while the app finishes
+# starting. Never evicts anything (no DONTNEED calls) and never touches
+# swap/anonymous memory, so a wrong prediction can waste some idle IO but
+# can't make anything slower or less available than it already was.
+#
+# Real `preload` was ruled out for ReyOS: AUR-only (no AUR helper shipped
+# yet), largely unmaintained, and most of its benefit targets mechanical
+# disks — modern SSD/NVMe blunts most of what it was built for. This is a
+# from-scratch, deliberately scoped-down replacement: a co-occurrence /
+# per-executable file model, not full continuous-time Markov chains.
+
+import json
+import os
+import signal
+import sys
+import time
+
+STATE_DIR = "/var/lib/reyos-preload"
+STATE_FILE = os.path.join(STATE_DIR, "state.json")
+
+SCAN_INTERVAL_SEC = 10
+STATE_SAVE_EVERY_N_SCANS = 6
+
+MAX_TRACKED_EXES = 200
+MAX_FILES_PER_EXE = 40
+
+MIN_LAUNCHES_TO_PREFETCH = 3
+MIN_FILE_CONFIDENCE = 0.6
+
+MAX_PREFETCH_FILE_BYTES = 32 * 1024 * 1024
+MAX_PREFETCH_BATCH_BYTES = 64 * 1024 * 1024
+
+MIN_MEM_AVAILABLE_RATIO = 0.20
+MAX_LOADAVG_PER_CPU = 0.5
+
+RUNNING = True
+
+
+def handle_term(_signum, _frame):
+    global RUNNING
+    RUNNING = False
+
+
+def load_state():
+    try:
+        with open(STATE_FILE, "r") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {"exe_stats": {}}
+
+
+def save_state(state):
+    os.makedirs(STATE_DIR, exist_ok=True)
+    tmp_path = STATE_FILE + ".tmp"
+    with open(tmp_path, "w") as f:
+        json.dump(state, f)
+    os.replace(tmp_path, STATE_FILE)
+
+
+def prune_state(state):
+    exe_stats = state["exe_stats"]
+    if len(exe_stats) > MAX_TRACKED_EXES:
+        by_launches = sorted(exe_stats.items(), key=lambda kv: kv[1]["launches"])
+        for exe_path, _stats in by_launches[: len(exe_stats) - MAX_TRACKED_EXES]:
+            del exe_stats[exe_path]
+    for stats in exe_stats.values():
+        files = stats["files"]
+        if len(files) > MAX_FILES_PER_EXE:
+            keep = sorted(files.items(), key=lambda kv: kv[1], reverse=True)[:MAX_FILES_PER_EXE]
+            stats["files"] = dict(keep)
+
+
+def list_pids():
+    for entry in os.listdir("/proc"):
+        if entry.isdigit():
+            yield int(entry)
+
+
+def exe_path_for_pid(pid):
+    try:
+        return os.readlink("/proc/%d/exe" % pid)
+    except OSError:
+        return None
+
+
+def mapped_files_for_pid(pid):
+    files = set()
+    try:
+        with open("/proc/%d/maps" % pid, "r") as f:
+            for line in f:
+                parts = line.split(None, 5)
+                if len(parts) < 6:
+                    continue
+                path = parts[5].strip()
+                if not path or path.startswith("["):
+                    continue
+                if path not in files:
+                    files.add(path)
+    except OSError:
+        pass
+    return files
+
+
+def system_is_idle():
+    try:
+        load1, _load5, _load15 = os.getloadavg()
+    except OSError:
+        return False
+    cpu_count = os.cpu_count() or 1
+    if load1 > cpu_count * MAX_LOADAVG_PER_CPU:
+        return False
+
+    mem_total = None
+    mem_available = None
+    try:
+        with open("/proc/meminfo", "r") as f:
+            for line in f:
+                if line.startswith("MemTotal:"):
+                    mem_total = int(line.split()[1])
+                elif line.startswith("MemAvailable:"):
+                    mem_available = int(line.split()[1])
+    except OSError:
+        return False
+    if not mem_total or mem_available is None:
+        return False
+    return (mem_available / mem_total) >= MIN_MEM_AVAILABLE_RATIO
+
+
+def prefetch_file(path, budget_remaining):
+    try:
+        size = os.path.getsize(path)
+    except OSError:
+        return 0
+    if size <= 0 or size > MAX_PREFETCH_FILE_BYTES or size > budget_remaining:
+        return 0
+    try:
+        fd = os.open(path, os.O_RDONLY)
+    except OSError:
+        return 0
+    try:
+        os.posix_fadvise(fd, 0, 0, os.POSIX_FADV_WILLNEED)
+    except OSError:
+        return 0
+    finally:
+        os.close(fd)
+    return size
+
+
+def prefetch_for_exe(exe_path, stats):
+    launches = stats["launches"]
+    if launches < MIN_LAUNCHES_TO_PREFETCH:
+        return
+    budget_remaining = MAX_PREFETCH_BATCH_BYTES
+    for path, seen_count in sorted(stats["files"].items(), key=lambda kv: kv[1], reverse=True):
+        if budget_remaining <= 0:
+            break
+        if (seen_count / launches) < MIN_FILE_CONFIDENCE:
+            continue
+        budget_remaining -= prefetch_file(path, budget_remaining)
+
+
+def main():
+    signal.signal(signal.SIGTERM, handle_term)
+    signal.signal(signal.SIGINT, handle_term)
+
+    state = load_state()
+    exe_stats = state["exe_stats"]
+
+    known_pids = set()
+    scan_count = 0
+
+    while RUNNING:
+        time.sleep(SCAN_INTERVAL_SEC)
+        if not RUNNING:
+            break
+
+        current_pids = set(list_pids())
+        new_pids = current_pids - known_pids
+        known_pids = current_pids
+
+        idle = system_is_idle()
+
+        for pid in new_pids:
+            exe_path = exe_path_for_pid(pid)
+            if not exe_path or not exe_path.startswith("/"):
+                continue
+
+            stats = exe_stats.setdefault(exe_path, {"launches": 0, "files": {}})
+            stats["launches"] += 1
+
+            if idle:
+                prefetch_for_exe(exe_path, stats)
+
+            for mapped_path in mapped_files_for_pid(pid):
+                files = stats["files"]
+                files[mapped_path] = files.get(mapped_path, 0) + 1
+
+        scan_count += 1
+        if scan_count >= STATE_SAVE_EVERY_N_SCANS:
+            scan_count = 0
+            prune_state(state)
+            save_state(state)
+
+    prune_state(state)
+    save_state(state)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

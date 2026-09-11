@@ -76,6 +76,16 @@ It is not a CachyOS clone. Performance matters, especially to give older compute
 
 A new user can install ReyOS, choose a familiar desktop setup, connect to Wi-Fi, update safely, create a recovery snapshot, and use their computer comfortably—especially an older one—without needing terminal commands or fearing routine updates.
 
+## Security roadmap and performance tooling — completed (2026-08-20)
+
+The full OS-strategy security batch shipped and was verified against a real Calamares install, not just live-boot: VPN (bring-your-own WireGuard), a pre-update Timeshift snapshot pacman hook, a "ReyOS Recovery" boot entry (present on the ISO, still not live-exercised via the menu itself), a unified Security dashboard, opt-in USBGuard, and CVE-tagged updates via `arch-audit`. Three real bugs found by actually using a fresh install were also fixed the same day (Welcome's Finish/Skip quitting with zero feedback while branding ran, dead already-installed apps in the software picker, Control Center not pinned to the taskbar).
+
+Same day, a second round added baseline performance tooling: `zram-generator` (zstd swap-on-RAM), `systemd-oomd` enabled by default, and a from-scratch adaptive preload daemon (`reyos-preloadd`) that learns each app's usual file working set from `/proc/*/maps` history and prefetches it into the page cache on relaunch — deliberately scoped down from real `preload`'s Markov-chain design (AUR-only, unmaintained, built for mechanical drives) to a buildable per-executable confidence model, gated on load/memory so it can only help, never hurt. This directly serves the "fast without gimmicks" and "respect older hardware" principles above — no optimizer daemon that clears cache or makes unverifiable promises, just idle-time prefetch with a hard safety gate.
+
+Two icon-rendering bugs turned up on a second fresh install the same evening (Kickoff showing no per-app icons, light-theme context-menu icons not refreshing live) — logged in `bugs.md` with a static-review diagnosis, not yet fixed pending a live VM repro.
+
+Full detail, file paths, and exact verification status: `docs/whats-next.md`'s top sections and `docs/fixes.md`'s 2026-08-20 entries.
+
 ## ReyOS Browser foundation (2026-08-14)
 
 `reyos-browser` is a branded native PySide6/Qt Quick application using the maintained Qt WebEngine (Chromium) renderer; it is not a Firefox wrapper and does not operate a new browser engine. Its current private profile stays in memory, blocks pop-up windows and sensitive permissions by default, and includes ReyOS Shields v1 for a small curated set of network advertising/tracker domains. It does **not** yet claim full EasyList/uBlock compatibility or reliable YouTube-ad blocking. ReyOS does **not** operate a VPN: users connect a provider, workplace, or self-hosted WireGuard profile through the existing Network guide. Future work is visible user control and dependable privacy defaults, not opaque background network services.

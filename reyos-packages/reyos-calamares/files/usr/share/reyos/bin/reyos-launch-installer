@@ -1,7 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if ! mountpoint -q /run/archiso/airootfs; then
+# /run/archiso/airootfs (the previous check here) no longer exists on
+# current archiso builds -- confirmed on a genuine live boot (2026-08-31,
+# `ls /run/archiso` returns "No such file or directory"). The kernel
+# cmdline's archiso parameters are the actual stable, version-independent
+# marker mkarchiso sets for a live boot -- confirmed absent on a real
+# installed system's cmdline the same session. Same fix applied to
+# reyos-control-center-gui's and reyos-welcome's equivalent checks.
+if ! grep -qE "archisobasedir=|archisolabel=" /proc/cmdline; then
     kdialog --error "ReyOS Installer is available only from the live session."
     exit 1
 fi

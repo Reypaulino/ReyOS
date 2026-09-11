@@ -1,11 +1,13 @@
 # Maintainer: Rey Paulino
 pkgname=reyos-browser
 pkgver=0.1.0
-pkgrel=84
+pkgrel=87
 pkgdesc="ReyOS Browser — a native private-by-default Qt web application"
 arch=('any')
 license=('MPL-2.0')
-depends=('pyside6' 'qt6-webengine' 'qt6-webchannel' 'kirigami' 'libnotify' 'kdialog' 'python-secretstorage')
+# kirigami removed 2026-09-10: the QML has never actually imported it
+# (confirmed via grep), a stale dependency carried over from an earlier draft.
+depends=('pyside6' 'qt6-webengine' 'qt6-webchannel' 'libnotify' 'kdialog' 'python-secretstorage')
 source=()
 sha256sums=()
 

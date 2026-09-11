@@ -1,11 +1,11 @@
 # Maintainer: Rey Paulino
 pkgname=reyos-calamares
 pkgver=1.3.6
-pkgrel=35
+pkgrel=40
 pkgdesc="ReyOS Calamares installer config + branding — real exec phase, ext4 default, unpackfs-based install"
 arch=('any')
 license=('MIT')
-depends=('cachyos-calamares')
+depends=('reyos-calamares-core')
 source=()
 sha256sums=()
 

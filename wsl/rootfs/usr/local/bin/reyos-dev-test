@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# ReyOS WSL — build/install/test a local reyos-* package directory.
+# Usage: reyos-dev-test <path-to-package-dir-containing-PKGBUILD> [--install] [--run <binary>]
+set -euo pipefail
+
+usage() {
+    echo "Usage: reyos-dev-test <pkg-dir> [--install] [--run <binary>]" >&2
+    exit 1
+}
+
+[ $# -ge 1 ] || usage
+PKGDIR="$1"; shift
+DO_INSTALL=0
+RUN_BIN=""
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --install) DO_INSTALL=1; shift ;;
+        --run) RUN_BIN="$2"; shift 2 ;;
+        *) usage ;;
+    esac
+done
+
+[ -f "$PKGDIR/PKGBUILD" ] || { echo "No PKGBUILD in $PKGDIR" >&2; exit 1; }
+
+echo "== validating PKGBUILD =="
+if command -v namcap &>/dev/null; then
+    ( cd "$PKGDIR" && namcap PKGBUILD ) || echo "(namcap warnings above — not fatal)"
+else
+    echo "namcap not installed — skipping lint (install the reyos-developer profile for it)"
+fi
+
+echo "== makepkg (this is the actual build; errors below are real, not hidden) =="
+( cd "$PKGDIR" && makepkg -sf --noconfirm )
+
+BUILT_PKG=$(cd "$PKGDIR" && ls -t ./*.pkg.tar.zst 2>/dev/null | head -1)
+[ -n "$BUILT_PKG" ] || { echo "makepkg produced no package — see build log above" >&2; exit 1; }
+echo "built: $PKGDIR/$BUILT_PKG"
+
+if [ "$DO_INSTALL" = "1" ]; then
+    echo "== installing =="
+    sudo pacman -U --noconfirm "$PKGDIR/$BUILT_PKG"
+fi
+
+if [ -n "$RUN_BIN" ]; then
+    echo "== launching $RUN_BIN =="
+    if [ -n "${WAYLAND_DISPLAY:-}${DISPLAY:-}" ]; then
+        "$RUN_BIN" || echo "$RUN_BIN exited non-zero — see output above"
+    else
+        echo "No WAYLAND_DISPLAY/DISPLAY set — WSLg not detected, can't launch a GUI app." >&2
+        echo "CLI tools can still be run directly: $RUN_BIN" >&2
+        exit 1
+    fi
+fi

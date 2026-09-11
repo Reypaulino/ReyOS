@@ -4,7 +4,7 @@ import QtQuick.Controls as Controls
 import org.kde.kirigami as Kirigami
 
 Kirigami.ScrollablePage {
-    title: "Date & Time"
+    title: "Date · Time"
 
     property bool busy: false
     property bool ntpEnabled: false

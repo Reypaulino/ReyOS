@@ -1,7 +1,7 @@
 # Maintainer: Rey Paulino
 pkgname=reyos-wallpapers
 pkgver=1.0.0
-pkgrel=13
+pkgrel=14
 pkgdesc="ReyOS default wallpaper set"
 arch=('any')
 license=('MIT')

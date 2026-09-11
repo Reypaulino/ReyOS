@@ -49,10 +49,10 @@ ApplicationWindow {
     }
 
     function addressLabel() {
-        if (!currentView) {
+        if (!currentView || isHomeUrl(currentView.url.toString())) {
             return ""
         }
-        return isHomeUrl(currentView.url.toString()) ? "New Tab" : currentView.url.toString()
+        return currentView.url.toString()
     }
 
     function recordHistory(pageUrl, pageTitle) {
@@ -88,6 +88,9 @@ ApplicationWindow {
     function syncCurrentSite() {
         if (currentView) {
             browserBackend.setCurrentSite(currentView.url.toString())
+        }
+        if (!address.activeFocus) {
+            address.text = window.addressLabel()
         }
     }
 
@@ -173,6 +176,7 @@ ApplicationWindow {
             }
         }
         currentView.url = text
+        address.focus = false
     }
 
     function toggleBookmark() {
@@ -355,7 +359,10 @@ ApplicationWindow {
             id: tabBar
             Layout.fillWidth: true
             currentIndex: 0
-            onCurrentIndexChanged: Qt.callLater(window.syncCurrentSite)
+            onCurrentIndexChanged: {
+                address.focus = false
+                Qt.callLater(window.syncCurrentSite)
+            }
             background: Rectangle { color: "#211711" }
 
             Repeater {
@@ -481,8 +488,8 @@ ApplicationWindow {
                     Layout.minimumWidth: 280
                     implicitHeight: 32
                     placeholderText: "Search privately or enter an address"
-                    text: window.addressLabel()
                     selectByMouse: true
+                    Component.onCompleted: text = window.addressLabel()
                     onAccepted: window.openAddress(text)
                 }
 
@@ -966,7 +973,39 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 Button { text: "Import HTML…"; onClicked: browserBackend.chooseBookmarkImport() }
                 Item { Layout.fillWidth: true }
+                Button { text: "Reset…"; onClicked: resetBookmarksConfirmDialog.open() }
                 Button { text: "Close"; onClicked: bookmarksDialog.close() }
+            }
+        }
+    }
+
+    Dialog {
+        id: resetBookmarksConfirmDialog
+        title: "Reset Bookmarks"
+        modal: true
+        width: 360
+        anchors.centerIn: parent
+        padding: 18
+        background: Rectangle { color: "#302217"; border.color: "#8E5A2E"; border.width: 1; radius: 12 }
+        contentItem: ColumnLayout {
+            spacing: 14
+            Label {
+                text: "This deletes every saved bookmark. This can't be undone."
+                color: "#D7C1AA"
+                wrapMode: Text.Wrap
+                Layout.fillWidth: true
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                Item { Layout.fillWidth: true }
+                Button { text: "Cancel"; onClicked: resetBookmarksConfirmDialog.close() }
+                Button {
+                    text: "Reset Bookmarks"
+                    onClicked: {
+                        browserBackend.resetBookmarks()
+                        resetBookmarksConfirmDialog.close()
+                    }
+                }
             }
         }
     }
@@ -1093,7 +1132,39 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 Button { text: "Import CSV…"; onClicked: browserBackend.choosePasswordImport() }
                 Item { Layout.fillWidth: true }
+                Button { text: "Reset…"; onClicked: resetPasswordsConfirmDialog.open() }
                 Button { text: "Close"; onClicked: passwordsDialog.close() }
+            }
+        }
+    }
+
+    Dialog {
+        id: resetPasswordsConfirmDialog
+        title: "Reset Passwords"
+        modal: true
+        width: 360
+        anchors.centerIn: parent
+        padding: 18
+        background: Rectangle { color: "#302217"; border.color: "#8E5A2E"; border.width: 1; radius: 12 }
+        contentItem: ColumnLayout {
+            spacing: 14
+            Label {
+                text: "This deletes every saved password from your KDE wallet. This can't be undone."
+                color: "#D7C1AA"
+                wrapMode: Text.Wrap
+                Layout.fillWidth: true
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                Item { Layout.fillWidth: true }
+                Button { text: "Cancel"; onClicked: resetPasswordsConfirmDialog.close() }
+                Button {
+                    text: "Reset Passwords"
+                    onClicked: {
+                        browserBackend.resetPasswords()
+                        resetPasswordsConfirmDialog.close()
+                    }
+                }
             }
         }
     }
@@ -1194,7 +1265,7 @@ ApplicationWindow {
                 background: Rectangle { color: passwordsMenuButton.hovered ? "#3B291C" : "transparent"; radius: 7 }
                 contentItem: RowLayout {
                     spacing: 10
-                    Image { source: Qt.resolvedUrl("../icons/reyos-settings.svg"); sourceSize.width: 20; sourceSize.height: 20; Layout.leftMargin: 10 }
+                    Image { source: Qt.resolvedUrl("../icons/reyos-password.svg"); sourceSize.width: 20; sourceSize.height: 20; Layout.leftMargin: 10 }
                     Label { text: "Passwords"; color: "#FFF3E6"; font.pixelSize: 14; Layout.fillWidth: true }
                 }
                 onClicked: {
@@ -1210,7 +1281,7 @@ ApplicationWindow {
                 background: Rectangle { color: openSystemPasswordsMenuButton.hovered ? "#3B291C" : "transparent"; radius: 7 }
                 contentItem: RowLayout {
                     spacing: 10
-                    Image { source: Qt.resolvedUrl("../icons/reyos-settings.svg"); sourceSize.width: 20; sourceSize.height: 20; Layout.leftMargin: 10 }
+                    Image { source: Qt.resolvedUrl("../icons/reyos-external-key.svg"); sourceSize.width: 20; sourceSize.height: 20; Layout.leftMargin: 10 }
                     Label { text: "Open System Password Manager"; color: "#FFF3E6"; font.pixelSize: 14; Layout.fillWidth: true }
                 }
                 onClicked: {
@@ -1514,8 +1585,14 @@ ApplicationWindow {
         contentItem: ColumnLayout {
             spacing: 10
             Label { visible: downloads.count === 0; text: "No downloads in this private session"; color: "#D7C1AA" }
-            Repeater {
+            ListView {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                visible: downloads.count > 0
+                clip: true
+                spacing: 8
                 model: downloads
+                ScrollBar.vertical: ScrollBar {}
                 delegate: Rectangle {
                     required property int downloadId
                     required property string name
@@ -1524,8 +1601,8 @@ ApplicationWindow {
                     required property double totalBytes
                     required property bool finished
                     required property bool completed
-                    Layout.fillWidth: true
-                    implicitHeight: 76
+                    width: ListView.view.width
+                    height: 76
                     radius: 7
                     color: "#211711"
                     ColumnLayout {
@@ -1559,7 +1636,6 @@ ApplicationWindow {
                     }
                 }
             }
-            Item { Layout.fillHeight: true }
             Button { text: "Open Downloads Folder"; Layout.alignment: Qt.AlignRight; onClicked: Qt.openUrlExternally("file://" + window.downloadsPath) }
         }
     }
@@ -1636,6 +1712,14 @@ ApplicationWindow {
                 url: pageUrl
                 settings.javascriptCanOpenWindows: false
                 settings.pdfViewerEnabled: true
+                // pdfViewerEnabled alone isn't enough on this QtWebEngine build --
+                // confirmed live (standalone PySide6 repro) that Chromium's internal
+                // PDF viewer stays gated off and every PDF falls through to a plain
+                // download unless pluginsEnabled is also true. Not a real plugin
+                // security surface today (NPAPI/Pepper plugins are long gone from
+                // Chromium) -- this attribute just also happens to gate the PDF
+                // viewer's internal MIME handler extension.
+                settings.pluginsEnabled: true
 
                 onPermissionRequested: function(request) {
                     window.requestPermission(request)
@@ -1644,7 +1728,7 @@ ApplicationWindow {
                     tabs.setProperty(index, "pageUrl", url.toString())
                     window.recordHistory(url.toString(), title)
                     if (index === tabBar.currentIndex) {
-                        browserBackend.setCurrentSite(url.toString())
+                        window.syncCurrentSite()
                     }
                 }
                 onTitleChanged: {

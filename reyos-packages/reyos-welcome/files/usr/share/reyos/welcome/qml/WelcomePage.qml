@@ -60,7 +60,7 @@ Kirigami.Page {
             text: "Skip for now"
             flat: true
             Layout.alignment: Qt.AlignHCenter
-            onClicked: Qt.quit()
+            onClicked: applicationWindow().pageStack.push(Qt.resolvedUrl("ApplyingPage.qml"), { openUpdatesAfter: false })
         }
     }
 }

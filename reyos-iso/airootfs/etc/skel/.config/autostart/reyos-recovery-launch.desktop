@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=ReyOS Recovery Launch
+Exec=/usr/local/bin/reyos-recovery-launch.sh
+Terminal=false
+OnlyShowIn=KDE;
+X-KDE-StartupNotify=false
+NoDisplay=true

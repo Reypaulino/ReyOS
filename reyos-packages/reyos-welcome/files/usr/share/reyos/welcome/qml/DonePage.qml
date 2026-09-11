@@ -49,16 +49,13 @@ Kirigami.Page {
                 Controls.Button {
                     text: "Check for Updates"
                     icon.name: "system-software-update"
-                    onClicked: {
-                        backend.openControlCenterUpdates()
-                        Qt.quit()
-                    }
+                    onClicked: applicationWindow().pageStack.push(Qt.resolvedUrl("ApplyingPage.qml"), { openUpdatesAfter: true })
                 }
 
                 Controls.Button {
                     text: "Finish"
                     highlighted: true
-                    onClicked: Qt.quit()
+                    onClicked: applicationWindow().pageStack.push(Qt.resolvedUrl("ApplyingPage.qml"), { openUpdatesAfter: false })
                 }
             }
     }

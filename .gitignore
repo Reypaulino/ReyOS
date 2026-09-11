@@ -7,3 +7,4 @@ local-repo/
 *.iso
 __pycache__/
 *.pyc
+reyos-agent-handoff-*.md

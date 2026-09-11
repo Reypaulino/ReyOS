@@ -9,6 +9,6 @@
 # via a hook, sidesteps the conflict entirely instead of fighting pacman's
 # file-ownership tracking.
 set -e -u
-for f in users.conf partition.conf unpackfs.conf bootloader.conf grubcfg.conf; do
+for f in users.conf partition.conf unpackfs.conf bootloader.conf grubcfg.conf services-systemd.conf; do
     install -Dm644 "/usr/share/reyos/calamares-overrides/$f" "/etc/calamares/modules/$f"
 done

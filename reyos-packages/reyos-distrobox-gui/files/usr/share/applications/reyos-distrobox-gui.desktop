@@ -1,0 +1,12 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=ReyOS Distrobox
+Comment=Run apps from other Linux distros in containers alongside ReyOS
+Exec=reyos-distrobox-gui
+Icon=/usr/share/icons/hicolor/scalable/apps/reyos-distrobox-gui.svg
+Terminal=false
+Categories=System;Utility;
+StartupNotify=true
+StartupWMClass=reyos-distrobox-gui
+Keywords=distrobox;container;podman;docker;ubuntu;fedora;debian;

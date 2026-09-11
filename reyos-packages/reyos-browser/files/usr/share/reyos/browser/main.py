@@ -603,6 +603,14 @@ class BrowserBackend(QObject):
         self.bookmarksChanged.emit()
 
     @Slot()
+    def resetBookmarks(self) -> None:
+        if not self._bookmarks:
+            return
+        self._bookmarks = []
+        self._save_bookmarks()
+        self.bookmarksChanged.emit()
+
+    @Slot()
     def chooseBookmarkImport(self) -> None:
         try:
             path = choose_open_file(
@@ -770,6 +778,20 @@ class BrowserBackend(QObject):
             return
         try:
             self._password_vault.delete_credential(normalized_origin, cleaned_username)
+        except Exception as error:
+            self.notify("Passwords unavailable", str(error))
+            return
+        self.passwordsChanged.emit()
+
+    @Slot()
+    def resetPasswords(self) -> None:
+        try:
+            origins = self._password_vault.list_all_origins()
+            for origin in origins:
+                for credential in self._password_vault.get_credentials(origin):
+                    username = credential.get("username", "")
+                    if username:
+                        self._password_vault.delete_credential(origin, username)
         except Exception as error:
             self.notify("Passwords unavailable", str(error))
             return

@@ -1,0 +1,13 @@
+[Unit]
+Description=ReyOS adaptive preload daemon
+
+[Service]
+ExecStart=/usr/share/reyos/bin/reyos-preloadd
+Restart=on-failure
+Nice=19
+IOSchedulingClass=idle
+MemoryMax=64M
+StateDirectory=reyos-preload
+
+[Install]
+WantedBy=multi-user.target

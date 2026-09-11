@@ -1,12 +1,19 @@
 # ReyOS GRUB theme
-# Reuses the ReyOS desktop wallpaper as the boot menu background — the
-# logo/ring artwork sits in the upper-center of that image, so the boot
-# menu itself is placed in the lower third to avoid overlapping it.
+# Solid navy background with the ReyOS watermark logo centered in the
+# upper half (same solid-color + centered-logo pattern as the Plasma
+# login splash) — the boot menu sits in the lower third to avoid it.
 
 title-text: ""
-desktop-image: "background.png"
 desktop-color: "#0A1428"
 terminal-font: "Unifont Regular 16"
+
++ image {
+    file = "watermark.png"
+    left = 50%-120
+    top = 12%
+    width = 240
+    height = 250
+}
 
 + boot_menu {
     left = 15%

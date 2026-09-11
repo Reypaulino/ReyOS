@@ -1,11 +1,14 @@
 # Maintainer: Rey Paulino
 pkgname=reyos-control-center
 pkgver=1.0.0
-pkgrel=16
+pkgrel=22
 pkgdesc="ReyOS System Tools — terminal quick-launcher for system care, updates, network, and disk utilities"
 arch=('any')
 license=('MIT')
-depends=('htop' 'flatpak' 'openssh' 'rsync' 'neofetch' 'libnotify' 'pacman-contrib' 'ufw')
+# neofetch dropped from official Arch repos (see reyos-terminal's PKGBUILD
+# note) -- swapped to fastfetch here too, and skel.bashrc's hook now calls
+# `fastfetch` instead of `neofetch`.
+depends=('htop' 'flatpak' 'openssh' 'rsync' 'fastfetch' 'libnotify' 'pacman-contrib' 'ufw')
 source=()
 sha256sums=()
 

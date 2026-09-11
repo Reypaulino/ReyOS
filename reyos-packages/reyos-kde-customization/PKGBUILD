@@ -1,7 +1,7 @@
 # Maintainer: Rey Paulino
 pkgname=reyos-kde-customization
 pkgver=1.0.0
-pkgrel=13
+pkgrel=17
 pkgdesc="Optional ReyOS KDE desktop customization"
 arch=('any')
 license=('GPL-3.0-or-later')

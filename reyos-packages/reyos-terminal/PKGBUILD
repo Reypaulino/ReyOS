@@ -1,15 +1,37 @@
 # Maintainer: Rey Paulino
 pkgname=reyos-terminal
 pkgver=1.0.0
-pkgrel=5
-pkgdesc="ReyOS terminal branding — neofetch ASCII logo + system info, auto-run on shell open"
+pkgrel=10
+pkgdesc="ReyOS terminal branding — fastfetch ASCII logo + system info, Midnight Copper Konsole color scheme"
 arch=('any')
 license=('MIT')
-depends=('neofetch')
+# neofetch is gone from official Arch repos (upstream archived, was only
+# ever resolving via a since-removed CachyOS mirror). Migrated to
+# fastfetch: config.conf -> config.jsonc (fastfetch's format). The ASCII
+# art file used neofetch's own literal "\e[...m" text notation (neofetch
+# interprets that itself); fastfetch's "file" logo type prints raw bytes
+# with no such interpretation, so it rendered as literal text instead of
+# color. Fixed by converting those to real ESC (0x1b) bytes.
+#
+# Real bug found 2026-09-09: /etc/skel only gets copied into a home
+# directory at account-creation time, so the ESC-byte fix above never
+# reached already-existing accounts on upgrade, or accounts created from
+# an ISO build that predates this fix -- confirmed live (an already-created
+# test account kept showing the literal-text banner after `pacman -Syu`
+# pulled the fixed package). New hook re-applies every skel file this
+# package ships to every real account's home directory on every
+# install/upgrade, so the fix actually reaches people instead of only new
+# accounts created after this exact package version.
+depends=('fastfetch')
 source=()
 sha256sums=()
 
 package() {
     cp -a "$startdir/files/etc" "$pkgdir/"
-    find "$pkgdir/etc/skel/.config/neofetch" -type f -exec chmod 644 {} \;
+    cp -a "$startdir/files/usr" "$pkgdir/"
+    find "$pkgdir/etc/skel/.config/fastfetch" -type f -exec chmod 644 {} \;
+    find "$pkgdir/etc/skel/.local/share/konsole" -type f -exec chmod 644 {} \;
+    chmod 644 "$pkgdir/etc/skel/.config/konsolerc"
+    chmod 644 "$pkgdir/usr/share/libalpm/hooks/reyos-terminal-skel.hook"
+    chmod 755 "$pkgdir/usr/share/reyos/bin/reyos-apply-skel-terminal.sh"
 }

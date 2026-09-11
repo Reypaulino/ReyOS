@@ -6,7 +6,7 @@
 # since Welcome can trigger this on every exit, not just the first one.
 MARKER="$HOME/.config/reyos-branding-applied"
 # Existing marker files must not block a corrected ReyOS visual identity.
-BRANDING_VERSION="midnight-copper-3"
+BRANDING_VERSION="midnight-copper-4"
 PANEL_EDIT_MARKER="$HOME/.config/reyos-panel-editing-requested"
 [ "$(cat "$MARKER" 2>/dev/null)" = "$BRANDING_VERSION" ] && exit 0
 
@@ -16,17 +16,47 @@ mkdir -p "$HOME/.config"
 apply_visual_identity() {
   plasma-apply-colorscheme ReyOS >/dev/null 2>&1 || true
   kwriteconfig6 --file kdeglobals --group KDE --key LookAndFeelPackage org.reyos.desktop
+  # LookAndFeelPackage above is informational only -- it doesn't make Plasma
+  # actually apply that package's bundled defaults, including its icon theme.
+  # Confirmed live: without this, [Icons] Theme is never set at all, so Kickoff
+  # and every other icon consumer falls back to whatever Plasma's compiled-in
+  # default is instead of ReyOS branding.
+  kwriteconfig6 --file kdeglobals --group Icons --key Theme ReyOS
+  kbuildsycoca6 --noincremental >/dev/null 2>&1 || true
+}
+
+restart_plasmashell_for_icons() {
+  # A running plasmashell process doesn't re-resolve icons just because the
+  # config file changed underneath it -- confirmed the same way Control
+  # Center's theme switch needed a restart (see reyos-control-center-gui's
+  # applyLookAndFeel()). Do this last, after the panel layout below has
+  # already been built and verified -- restarting plasmashell any earlier
+  # was tried first and broke the panel-layout qdbus scripting further down
+  # (icontasks' launchers list came back empty), presumably because the
+  # freshly-restarted plasmashell's PlasmaShell DBus interface wasn't fully
+  # ready yet even though the process itself was already running.
+  kquitapp6 plasmashell >/dev/null 2>&1 || true
+  kstart plasmashell >/dev/null 2>&1 &
+  disown
+  for _ in $(seq 1 30); do
+    pgrep -x plasmashell >/dev/null 2>&1 && break
+    sleep 1
+  done
+  sleep 2
 }
 
 apply_wallpaper() {
   qdbus6 org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript '
   var d = desktops();
   for (i = 0; i < d.length; i++) {
-      d[i].wallpaperPlugin = "org.kde.image";
-      d[i].currentConfigGroup = ["Wallpaper", "org.kde.image", "General"];
-      d[i].writeConfig("Image", "file:///usr/share/backgrounds/reyos-wallpaper.jpg");
+      d[i].wallpaperPlugin = "org.kde.slideshow";
+      d[i].currentConfigGroup = ["Wallpaper", "org.kde.slideshow", "General"];
+      d[i].writeConfig("SlidePaths", ["/usr/share/backgrounds/reyos/"]);
+      d[i].writeConfig("SlideInterval", 1800);
   }
   ' >/dev/null 2>&1
+  # Lock screen keeps the single branded (logo) image rather than the
+  # slideshow — recognizable branding matters more there than variety.
   # Lock screen wallpaper is a separate config from the desktop wallpaper
   # above (kscreenlockerrc, not plasma-org.kde.plasma.desktop-appletsrc) and
   # was never set anywhere — confirmed via kreadconfig6 returning empty on a
@@ -98,7 +128,7 @@ shortcuts_still_bound() {
 apply_panel_layout() {
   # Use Plasma's stable scripting API; saved containment IDs vary per user and
   # caused fresh installs to restore the legacy panel template.
-  qdbus6 org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript 'var e=panels(); for(var p=e.length-1;p>=0;--p){e[p].remove();} var t=new Panel; t.location="top"; t.height=30; t.floating=false; t.immutability=3; t.addWidget("org.reyos.workspacedots"); t.addWidget("org.kde.plasma.panelspacer"); var c=t.addWidget("org.kde.plasma.digitalclock"); c.currentConfigGroup=["Appearance"]; c.writeConfig("showDate",true); c.writeConfig("dateDisplayFormat","Custom"); c.writeConfig("customDateFormat","ddd, MMM d"); t.addWidget("org.kde.plasma.panelspacer"); t.addWidget("org.kde.plasma.systemtray"); t.addWidget("org.kde.plasma.lock_logout"); var b=new Panel; b.location="bottom"; b.height=40; b.floating=false; b.immutability=3; var l=b.addWidget("org.kde.plasma.kickoff"); l.currentConfigGroup=["General"]; l.writeConfig("icon","reyos-launcher"); b.addWidget("org.kde.plasma.icontasks");' >/dev/null 2>&1
+  qdbus6 org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript 'var e=panels(); for(var p=e.length-1;p>=0;--p){e[p].remove();} var t=new Panel; t.location="top"; t.height=30; t.floating=false; t.immutability=3; t.addWidget("org.reyos.workspacedots"); t.addWidget("org.kde.plasma.panelspacer"); var c=t.addWidget("org.kde.plasma.digitalclock"); c.currentConfigGroup=["Appearance"]; c.writeConfig("showDate",true); c.writeConfig("dateDisplayFormat","Custom"); c.writeConfig("customDateFormat","ddd, MMM d"); t.addWidget("org.kde.plasma.panelspacer"); var tray=t.addWidget("org.kde.plasma.systemtray"); tray.currentConfigGroup=["General"]; tray.writeConfig("shownItems","org.kde.plasma.notifications,org.kde.plasma.clipboard"); t.addWidget("org.kde.plasma.lock_logout"); var b=new Panel; b.location="bottom"; b.height=40; b.floating=false; b.immutability=3; var l=b.addWidget("org.kde.plasma.kickoff"); l.currentConfigGroup=["General"]; l.writeConfig("icon","reyos-launcher"); var it=b.addWidget("org.kde.plasma.icontasks"); it.currentConfigGroup=["General"]; it.writeConfig("launchers","applications:systemsettings.desktop,applications:org.kde.discover.desktop,applications:reyos-control-center.desktop,applications:org.kde.dolphin.desktop,applications:reyos-browser.desktop");' >/dev/null 2>&1
 }
 
 unlock_panel_layout() {
@@ -160,4 +190,5 @@ for attempt in $(seq 1 5); do
 done
 
 [ -f "$PANEL_EDIT_MARKER" ] && unlock_panel_layout
+restart_plasmashell_for_icons
 printf '%s\n' "$BRANDING_VERSION" > "$MARKER"

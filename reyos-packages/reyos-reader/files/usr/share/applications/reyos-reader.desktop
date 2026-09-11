@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=ReyOS Reader
+Comment=Read EPUB books, PDFs, and CBZ/CBR manga and comics
+Exec=reyos-reader %U
+Icon=/usr/share/icons/hicolor/scalable/apps/reyos-reader.svg
+Terminal=false
+Categories=Office;Viewer;Graphics;
+MimeType=application/epub+zip;application/vnd.comicbook+zip;application/vnd.comicbook-rar;
+StartupNotify=true
+StartupWMClass=reyos-reader
+Keywords=reader;ebook;epub;manga;comic;cbz;cbr;books;

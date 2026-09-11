@@ -69,6 +69,9 @@ modules:
       - install -Dm644 flatpak/com.reyapps.ReyOSBrowser.metainfo.xml /app/share/metainfo/com.reyapps.ReyOSBrowser.metainfo.xml
       - install -Dm644 reyos-packages/reyos-browser/files/usr/share/reyos/browser/main.py /app/share/reyos/browser/main.py
       - install -Dm644 reyos-packages/reyos-browser/files/usr/share/reyos/browser/home.html /app/share/reyos/browser/home.html
+      - install -Dm644 reyos-packages/reyos-browser/files/usr/share/reyos/browser/password-autofill.js /app/share/reyos/browser/password-autofill.js
+      - install -Dm644 reyos-packages/reyos-browser/files/usr/share/reyos/browser/fingerprint-protection.js /app/share/reyos/browser/fingerprint-protection.js
+      - install -Dm644 reyos-packages/reyos-browser/files/usr/share/reyos/browser/qwebchannel.js /app/share/reyos/browser/qwebchannel.js
       - install -Dm644 reyos-packages/reyos-browser/files/usr/share/reyos/browser/shields-blocklist.txt /app/share/reyos/browser/shields-blocklist.txt
       - install -Dm644 reyos-packages/reyos-browser/files/usr/share/reyos/browser/qml/Main.qml /app/share/reyos/browser/qml/Main.qml
       - install -Dm644 reyos-packages/reyos-browser/files/usr/share/reyos/browser/assets/reyos-r-penguin.png /app/share/reyos/browser/assets/reyos-r-penguin.png
@@ -89,4 +92,4 @@ modules:
     sources:
       - type: git
         url: https://github.com/Reypaulino/ReyOS.git
-        commit: 7cefa2c9016331e610f3246a87b33be5d49c8621
+        commit: 9f2779aceb6a7f153f59374fb9df8bf1a4e6ce69

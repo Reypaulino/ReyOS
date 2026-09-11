@@ -1,0 +1,16 @@
+# Maintainer: Rey Paulino
+pkgname=reyos-screenshot
+pkgver=1.0.0
+pkgrel=3
+pkgdesc="ReyOS Screenshot — branded launcher for screenshots and screen recording (built on Spectacle)"
+arch=('any')
+license=('MIT')
+depends=('spectacle')
+source=()
+sha256sums=()
+
+package() {
+    cp -a "$startdir/files/usr" "$pkgdir/"
+    chmod 644 "$pkgdir/usr/local/share/applications/org.kde.spectacle.desktop"
+    chmod 644 "$pkgdir/usr/share/icons/hicolor/scalable/apps/reyos-screenshot.svg"
+}
