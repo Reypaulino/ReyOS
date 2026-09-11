@@ -139,6 +139,24 @@ Kirigami.ScrollablePage {
             spacing: Kirigami.Units.largeSpacing
 
             Controls.Button {
+                text: "Update ReyOS Apps only"
+                icon.name: "system-software-update"
+                enabled: !running
+                onClicked: { running = true; logText = ""; backend.runPkgAction("reyos") }
+            }
+            Controls.Label {
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
+                opacity: 0.7
+                text: "Updates only reyos-* apps (Browser, Reader, Control Center, etc.) without touching the rest of the system."
+            }
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: Kirigami.Units.largeSpacing
+
+            Controls.Button {
                 text: "List orphaned packages"
                 enabled: !running
                 onClicked: backend.listOrphans()

@@ -25,6 +25,47 @@ PKG_ACTIONS = {
 }
 
 
+DEFAULT_APP_CATEGORIES = [
+    {"key": "documents", "label": "Documents / PDF", "mimetypes": ["application/pdf"]},
+    {"key": "browser", "label": "Web Browser", "mimetypes": ["x-scheme-handler/http", "x-scheme-handler/https", "text/html"]},
+    {"key": "images", "label": "Image Viewer", "mimetypes": ["image/png", "image/jpeg", "image/gif", "image/bmp", "image/svg+xml", "image/webp"]},
+    {"key": "text", "label": "Text Editor", "mimetypes": ["text/plain"]},
+    {"key": "video", "label": "Video Player", "mimetypes": ["video/mp4", "video/x-matroska", "video/webm", "video/mpeg"]},
+    {"key": "music", "label": "Music Player", "mimetypes": ["audio/mpeg", "audio/x-wav", "audio/flac", "audio/ogg"]},
+    {"key": "filemanager", "label": "File Manager", "mimetypes": ["inode/directory"]},
+]
+
+
+def _desktop_entries():
+    # ~/.local/share/applications second so a user-level override of a
+    # same-named .desktop file (e.g. a user's own launcher tweak) wins over
+    # the system one, matching normal XDG precedence.
+    dirs = ["/usr/share/applications", str(Path.home() / ".local/share/applications")]
+    entries = {}
+    for d in dirs:
+        p = Path(d)
+        if not p.is_dir():
+            continue
+        for f in sorted(p.glob("*.desktop")):
+            try:
+                text = f.read_text(errors="ignore")
+            except OSError:
+                continue
+            display = f.name
+            mimetypes = set()
+            no_display = False
+            for line in text.splitlines():
+                if line.startswith("Name=") and display == f.name:
+                    display = line[len("Name="):].strip()
+                elif line.startswith("MimeType="):
+                    mimetypes |= {m for m in line[len("MimeType="):].split(";") if m}
+                elif line.startswith("NoDisplay=true"):
+                    no_display = True
+            if not no_display:
+                entries[f.name] = {"name": display, "desktopId": f.name, "mimetypes": mimetypes}
+    return entries
+
+
 def _is_live_session():
     # /run/archiso/airootfs (the old check here) no longer exists on current
     # archiso builds -- confirmed live on a genuine live boot (2026-08-31,
@@ -181,7 +222,7 @@ class PkgWorker(QThread):
     def run(self):
         try:
             emit = self.progress.emit
-            if self.action in ("upgrade", "full", "clean") and _is_live_session():
+            if self.action in ("upgrade", "full", "clean", "reyos") and _is_live_session():
                 self.finished_ok.emit(False, "Updates and cleanup are disabled in the live session. Install ReyOS first, then update the installed system.")
                 return
             if self.action == "check":
@@ -218,6 +259,25 @@ class PkgWorker(QThread):
                 emit("[3/3] Flatpak update...")
                 _run(["flatpak", "update", "-y"], emit)
                 self.finished_ok.emit(True, "Full update complete.")
+            elif self.action == "reyos":
+                _wait_for_pacman_lock(emit)
+                emit("$ sudo pacman -Sy")
+                rc = _run(["sudo", "pacman", "-Sy"], emit)
+                if rc != 0:
+                    self.finished_ok.emit(False, "Could not sync package databases.")
+                    return
+                emit("Checking for ReyOS app updates...")
+                repo_out = subprocess.run(["pacman", "-Sl", "reyos-local"], capture_output=True, text=True).stdout
+                reyos_pkgs = {line.split()[1] for line in repo_out.splitlines() if len(line.split()) >= 2}
+                upgradable_out = subprocess.run(["pacman", "-Qu"], capture_output=True, text=True).stdout
+                to_upgrade = [line.split()[0] for line in upgradable_out.splitlines() if line.split() and line.split()[0] in reyos_pkgs]
+                if not to_upgrade:
+                    self.finished_ok.emit(True, "ReyOS apps are already up to date.")
+                    return
+                emit("Updating: " + ", ".join(to_upgrade))
+                _wait_for_pacman_lock(emit)
+                rc = _run(["sudo", "pacman", "-S", "--noconfirm"] + to_upgrade, emit)
+                self.finished_ok.emit(rc == 0, f"Updated {len(to_upgrade)} ReyOS app(s)." if rc == 0 else "Update failed.")
             elif self.action == "clean":
                 orphans = subprocess.run(
                     ["pacman", "-Qtdq"], capture_output=True, text=True
@@ -372,6 +432,34 @@ class Backend(QObject):
         self._pkg_worker.progress.connect(self.pkgProgress.emit)
         self._pkg_worker.finished_ok.connect(self.pkgFinished.emit)
         self._pkg_worker.start()
+
+    @Slot(result="QVariantList")
+    def defaultAppsInfo(self):
+        entries = _desktop_entries()
+        result = []
+        for cat in DEFAULT_APP_CATEGORIES:
+            primary_mime = cat["mimetypes"][0]
+            current_id = subprocess.run(
+                ["xdg-mime", "query", "default", primary_mime], capture_output=True, text=True
+            ).stdout.strip()
+            options = [e for e in entries.values() if e["mimetypes"] & set(cat["mimetypes"])]
+            options.sort(key=lambda e: e["name"].lower())
+            current_name = next((o["name"] for o in options if o["desktopId"] == current_id), current_id or "Not set")
+            result.append({
+                "key": cat["key"],
+                "label": cat["label"],
+                "mimetypesCsv": ",".join(cat["mimetypes"]),
+                "currentId": current_id,
+                "currentName": current_name,
+                "options": [{"name": o["name"], "desktopId": o["desktopId"]} for o in options],
+            })
+        return result
+
+    @Slot(str, str)
+    def setDefaultApp(self, mimetypes_csv, desktop_id):
+        mimetypes = mimetypes_csv.split(",")
+        rc = subprocess.run(["xdg-mime", "default", desktop_id] + mimetypes).returncode
+        self.actionFinished.emit(rc == 0, f"Default set to {desktop_id}." if rc == 0 else "Could not set default app.")
 
     @Slot()
     def listOrphans(self):

@@ -212,4 +212,5 @@ podman
 plymouth
 reyos-plymouth
 reyos-preload
+reyos-update-notifier
 reyos-grub

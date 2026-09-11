@@ -12,6 +12,20 @@ systemctl enable NetworkManager.service
 systemctl enable sddm.service
 systemctl enable systemd-oomd.service
 systemctl enable reyos-preloadd.service
+# --global enables this user unit for every future user account, not just
+# liveuser -- there's no real user yet at ISO-build time to enable it "for".
+systemctl --global enable reyos-update-check.timer
+
+# Trust the reyos-local repo's signing key in the live squashfs's own pacman
+# keyring, so a real install (which unpacks this exact squashfs via
+# Calamares, not pacstrap) inherits the trust automatically -- no separate
+# Calamares module needed. reyos-local's pacman.conf entry is
+# SigLevel=Required, so without this every reyos-* install/update would fail
+# signature verification on a fresh system.
+pacman-key --init
+pacman-key --populate archlinux
+pacman-key --add /usr/share/reyos/reyos-signing-key.asc
+pacman-key --lsign-key 9A17D49EE3929AC6402337FA66E4085621026272
 
 mkdir -p /etc/sddm.conf.d
 cat > /etc/sddm.conf.d/autologin.conf << 'EOF'

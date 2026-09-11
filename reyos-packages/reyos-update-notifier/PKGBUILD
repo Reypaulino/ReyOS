@@ -1,0 +1,17 @@
+# Maintainer: Rey Paulino
+pkgname=reyos-update-notifier
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="ReyOS update notifier — periodically checks reyos-local for newer reyos-* app versions and sends a desktop notification"
+arch=('any')
+license=('MIT')
+depends=('python' 'systemd' 'libnotify')
+source=()
+sha256sums=()
+
+package() {
+    cp -a "$startdir/files/usr" "$pkgdir/"
+    chmod 755 "$pkgdir/usr/share/reyos/bin/reyos-check-updates"
+    chmod 644 "$pkgdir/usr/lib/systemd/user/reyos-update-check.service"
+    chmod 644 "$pkgdir/usr/lib/systemd/user/reyos-update-check.timer"
+}

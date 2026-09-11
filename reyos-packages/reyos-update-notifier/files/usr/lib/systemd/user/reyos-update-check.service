@@ -1,0 +1,6 @@
+[Unit]
+Description=Check for ReyOS app updates
+
+[Service]
+Type=oneshot
+ExecStart=/usr/share/reyos/bin/reyos-check-updates

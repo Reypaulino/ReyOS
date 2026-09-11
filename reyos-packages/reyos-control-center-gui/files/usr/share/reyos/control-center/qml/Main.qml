@@ -65,6 +65,7 @@ Kirigami.ApplicationWindow {
                 { text: "Updates", icon: "system-software-update", page: "UpdatesPage.qml" },
                 { text: "Security", icon: "security-high", page: "SecurityPage.qml" },
                 { text: "Appearance", icon: "preferences-desktop-theme", page: "AppearancePage.qml" },
+                { text: "Default Apps", icon: "preferences-desktop-default-applications", page: "DefaultAppsPage.qml" },
                 { text: "Backup", icon: "document-save", page: "BackupPage.qml" },
                 { text: "Gaming", icon: "input-gaming", page: "GamingPage.qml" },
                 { text: "Wi-Fi", icon: "network-wireless", page: "WifiPage.qml" },

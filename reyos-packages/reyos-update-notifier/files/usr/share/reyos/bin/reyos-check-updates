@@ -1,0 +1,84 @@
+#!/usr/bin/env python3
+"""Checks the reyos-local package repo (GitHub Pages) for newer versions of
+installed reyos-* packages and sends a desktop notification if any are
+found. Fetches the repo database over plain HTTPS instead of `pacman -Sy`
+(which needs root) so this can run unprivileged as a per-user systemd timer.
+"""
+import io
+import subprocess
+import tarfile
+import urllib.error
+import urllib.request
+
+REPO_DB_URL = "https://reypaulino.github.io/ReyOS/reyos-local.db.tar.gz"
+
+
+def fetch_repo_versions():
+    try:
+        with urllib.request.urlopen(REPO_DB_URL, timeout=15) as resp:
+            data = resp.read()
+    except (urllib.error.URLError, OSError):
+        return None
+    versions = {}
+    with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as tar:
+        for member in tar.getmembers():
+            if not member.name.endswith("/desc"):
+                continue
+            extracted = tar.extractfile(member)
+            if extracted is None:
+                continue
+            lines = extracted.read().decode(errors="ignore").splitlines()
+            name = version = None
+            for i, line in enumerate(lines):
+                if line == "%NAME%" and i + 1 < len(lines):
+                    name = lines[i + 1]
+                elif line == "%VERSION%" and i + 1 < len(lines):
+                    version = lines[i + 1]
+            if name and version:
+                versions[name] = version
+    return versions
+
+
+def installed_version(name):
+    result = subprocess.run(["pacman", "-Q", name], capture_output=True, text=True)
+    if result.returncode != 0:
+        return None
+    parts = result.stdout.split()
+    return parts[1] if len(parts) > 1 else None
+
+
+def is_newer(remote_version, local_version):
+    result = subprocess.run(["vercmp", remote_version, local_version], capture_output=True, text=True)
+    try:
+        return int(result.stdout.strip()) > 0
+    except ValueError:
+        return False
+
+
+def main():
+    remote = fetch_repo_versions()
+    if not remote:
+        return
+
+    updates = []
+    for name, remote_ver in remote.items():
+        local_ver = installed_version(name)
+        if local_ver and is_newer(remote_ver, local_ver):
+            updates.append(name)
+
+    if not updates:
+        return
+
+    if len(updates) == 1:
+        body = f"{updates[0]} has an update available."
+    else:
+        body = f"{len(updates)} ReyOS apps have updates: {', '.join(updates)}"
+
+    subprocess.Popen([
+        "notify-send", "-a", "ReyOS", "-i", "system-software-update",
+        "ReyOS update available", body,
+    ])
+
+
+if __name__ == "__main__":
+    main()
