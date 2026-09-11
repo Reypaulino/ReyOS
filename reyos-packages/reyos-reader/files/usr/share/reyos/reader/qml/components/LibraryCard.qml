@@ -49,12 +49,22 @@ Rectangle {
                 anchors.top: parent.top
                 anchors.right: parent.right
                 icon.name: item.favorite ? "starred-symbolic" : "non-starred-symbolic"
+                icon.color: "white"
+                background: Rectangle {
+                    radius: width / 2
+                    color: Qt.rgba(0, 0, 0, 0.45)
+                }
                 onClicked: card.toggleFavorite()
             }
             Controls.ToolButton {
                 anchors.top: parent.top
                 anchors.left: parent.left
                 icon.name: "edit-delete"
+                icon.color: "white"
+                background: Rectangle {
+                    radius: width / 2
+                    color: Qt.rgba(0, 0, 0, 0.45)
+                }
                 Controls.ToolTip.visible: hovered
                 Controls.ToolTip.text: "Remove from library (keeps the file)"
                 onClicked: card.remove()
