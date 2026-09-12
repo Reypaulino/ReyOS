@@ -524,6 +524,15 @@ class Backend(QObject):
         path = self._to_local_path(path)
         self._run_pdf_annotation(lambda: pdf_annotate.add_comment(path, page_index, x, y, text))
 
+    @Slot(str, result=str)
+    def getPdfAnnotations(self, path):
+        path = self._to_local_path(path)
+        try:
+            return json.dumps(pdf_annotate.list_annotations(path))
+        except Exception:
+            log.exception("Failed to list PDF annotations")
+            return "[]"
+
 
 def main():
     _setup_logging()

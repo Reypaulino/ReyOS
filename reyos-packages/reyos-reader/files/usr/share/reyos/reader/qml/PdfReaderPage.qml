@@ -23,6 +23,15 @@ Kirigami.Page {
 
     property bool findBarVisible: false
 
+    function reloadAnnotations() {
+        var json = backend.getPdfAnnotations(meta.path)
+        try {
+            view.annotations = JSON.parse(json)
+        } catch (e) {
+            view.annotations = []
+        }
+    }
+
     PdfDocument {
         id: doc
         source: meta.path
@@ -32,6 +41,7 @@ Kirigami.Page {
                     page.restored = true
                     view.goToPage(meta.startPage)
                     if (meta.zoom > 0) view.renderScale = meta.zoom
+                    page.reloadAnnotations()
                 } else if (page.awaitingReload) {
                     page.awaitingReload = false
                     // A same-tick goToPage() here (mirroring the first-load
@@ -52,6 +62,7 @@ Kirigami.Page {
         onTriggered: {
             view.goToPage(page.pendingReloadPage)
             view.renderScale = page.pendingReloadScale
+            page.reloadAnnotations()
         }
     }
 
@@ -179,10 +190,15 @@ Kirigami.Page {
         }
     }
 
-    PdfMultiPageView {
+    PdfAnnotatedMultiPageView {
         id: view
         anchors.fill: parent
         document: doc
+
+        onAnnotationTapped: function(annotation) {
+            annotationInfoPopup.text = annotation.text
+            annotationInfoPopup.open()
+        }
 
         Keys.onPressed: function(event) {
             if (findField.activeFocus) return
@@ -197,15 +213,36 @@ Kirigami.Page {
         Component.onCompleted: forceActiveFocus()
     }
 
-    // Placing a free-text note or a comment needs a page-point position, but
-    // PdfMultiPageView doesn't expose per-page pixel geometry or a tap
-    // signal in page coordinates -- only a whole extra page-point-size
-    // property on PdfDocument (pagePointSize) is public. Rather than forking
-    // Qt's ~600-line multi-page view to add that, this dialog renders the
+    Controls.Popup {
+        id: annotationInfoPopup
+        anchors.centerIn: parent
+        modal: true
+        width: Math.min(page.width - 80, 420)
+        property alias text: infoLabel.text
+
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: Kirigami.Units.smallSpacing
+            Controls.Label {
+                id: infoLabel
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+            }
+            Controls.Button {
+                Layout.alignment: Qt.AlignRight
+                text: "Close"
+                onClicked: annotationInfoPopup.close()
+            }
+        }
+    }
+
+    // Placing a free-text note or a comment needs a page-point position.
+    // PdfAnnotatedMultiPageView (the fork above) could expose that too, but
+    // this dialog predates the fork and works fine as is: it renders the
     // current page on its own via PdfPageImage (a plain Image subclass) at
     // a size this dialog controls, so the click-to-page-point scale factor
-    // is simple, known math instead of reverse-engineered from the live
-    // scrolling/zooming view.
+    // is simple, known math instead of read off the live scrolling/zooming
+    // view.
     Controls.Popup {
         id: placeDialog
         anchors.centerIn: parent

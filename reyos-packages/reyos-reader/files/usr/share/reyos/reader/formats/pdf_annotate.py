@@ -48,6 +48,44 @@ def _open(path):
         raise PdfAnnotateError(f"Could not open {Path(path).name}: {e}")
 
 
+_KIND_BY_KEYWORD = {"Highlight": "highlight", "FreeText": "freetext", "Text": "comment"}
+
+
+def list_annotations(path):
+    """Every highlight/freetext/comment annotation across the whole document,
+    positioned in page points (top-left origin, matching PdfDocument's own
+    pagePointSize) -- QtQuick.Pdf's PdfMultiPageView doesn't render
+    annotations back onto the page image at all (confirmed live: a fresh
+    annotation is invisible in the app's own view even though it's a
+    correctly-placed, real annotation any other PDF viewer shows), so the
+    QML side draws its own overlay from this instead. Approximates a
+    highlight's shape as its overall bounding rect rather than its precise
+    per-line quads -- close enough to show "something is highlighted here"
+    without needing to reconstruct exact QuadPoints geometry."""
+    doc = _open(path)
+    try:
+        results = []
+        for page_index in range(doc.page_count):
+            page = doc[page_index]
+            for annot in page.annots():
+                kind = _KIND_BY_KEYWORD.get(annot.type[1])
+                if kind is None:
+                    continue
+                rect = annot.rect
+                results.append({
+                    "page": page_index,
+                    "kind": kind,
+                    "x": rect.x0,
+                    "y": rect.y0,
+                    "width": rect.width,
+                    "height": rect.height,
+                    "text": annot.info.get("content", ""),
+                })
+        return results
+    finally:
+        doc.close()
+
+
 def add_highlight(path, page_index, text):
     """Finds `text` on the given page and highlights every occurrence.
     Tries the exact selection first, then a whitespace-collapsed version,
