@@ -1,7 +1,7 @@
 # Maintainer: Rey Paulino
 pkgname=reyos-reader
 pkgver=1.0.0
-pkgrel=23
+pkgrel=30
 pkgdesc="ReyOS Reader — native EPUB/PDF/CBZ/CBR book and manga reader, with PDF merge/split tools"
 arch=('any')
 license=('MIT')

@@ -19,6 +19,7 @@ Kirigami.Page {
     property real marginPct: 8
     property string textAlign: "left"
     property string readTheme: "dark"   // dark | light | sepia
+    property bool paginated: false
     property bool findBarVisible: false
     property var bookmarks: []
     property var highlights: []
@@ -92,28 +93,108 @@ Kirigami.Page {
                   // just to see one image (confirmed live on a real cover).
                   " img, svg, image { max-width: 100% !important; max-height: 90vh !important;" +
                   " width: auto !important; height: auto !important; }"
+        // Paginated mode: instead of one tall continuously-scrolling document,
+        // flow the content into fixed-width CSS columns exactly one screen
+        // wide each -- so what used to be vertical scroll position becomes
+        // horizontal scroll position, one "page" per column. column-fill:auto
+        // (the default) fills each column top-to-bottom before wrapping to the
+        // next, which is what makes this read like flipped pages rather than
+        // a sideways-scrolling single column of text.
+        //
+        // column-width must match body's own rendered box exactly, or the
+        // overflow:hidden viewport (body's clientWidth) ends up wider than
+        // one actual rendered column, letting the next column's content
+        // peek through on the right edge -- confirmed live via Chrome
+        // DevTools Protocol: this was still happening even after the
+        // clientWidth fix below, because body's own left/right margin
+        // padding (the marginPct% padding above) was eating into the
+        // multi-column layout's *content* width while the overflow:hidden
+        // *viewport* stayed at body's full padding-box width -- i.e. two
+        // different widths for what must be the same measurement. The fix
+        // is to move that padding onto html (whose own clientWidth is the
+        // fixed viewport size and is unaffected by its own padding) and
+        // zero it on body, so body's clientWidth -- and thus its column
+        // width -- shrinks to exactly the space available for text, with
+        // the margin now appearing as a static, non-scrolling inset around
+        // the whole reading pane instead of being consumed by the columns.
+        // These two rules must stay textually after the base `body {...}`
+        // padding rule above (both are `!important`, so source order breaks
+        // the tie) and are appended into the same stylesheet, not set as
+        // inline styles, since an inline style cannot win against an
+        // `!important` rule in the base css string regardless of order.
+        var paginatedCss = page.paginated
+            ? " html, body { margin: 0 !important; height: 100vh !important;" +
+              " overflow: hidden !important; }" +
+              " body { column-gap: 0px !important; column-fill: auto !important;" +
+              " box-sizing: border-box !important;" +
+              " padding-left: 0 !important; padding-right: 0 !important; }" +
+              " html { padding-left: " + marginPct + "% !important;" +
+              " padding-right: " + marginPct + "% !important; }"
+            : ""
+        // QtWebEngine's compositor was repeatedly observed (live, via Chrome
+        // DevTools Protocol) to keep painting the *previous* column layout
+        // for several seconds after column-width changes here -- even
+        // though the DOM/layout was already correct on every check
+        // (getBoundingClientRect matched the new geometry immediately).
+        // The stale frame looks exactly like the padding-eating-into-
+        // column-width bug this function otherwise fixes, which is what
+        // made it look unfixed. A display:none/'' toggle forces a full
+        // paint-layer invalidation and repaint against the layout that
+        // already exists, closing that gap instead of waiting on whatever
+        // triggers Chromium to notice on its own.
         var js = "(function(){ var s = document.getElementById('reyos-reader-style');" +
                  "if(!s){ s = document.createElement('style'); s.id='reyos-reader-style'; document.head.appendChild(s); }" +
-                 "s.textContent = " + JSON.stringify(css) + "; })();"
+                 "s.textContent = " + JSON.stringify(css + paginatedCss) + ";" +
+                 (page.paginated
+                    ? "document.body.style.columnWidth = document.body.clientWidth + 'px';"
+                    : "document.body.style.columnWidth = '';") +
+                 " document.body.style.display = 'none'; void document.body.offsetHeight;" +
+                 " document.body.style.display = ''; })();"
         webView.runJavaScript(js)
     }
 
+    // The one true "how wide is a page" measurement, used by every function
+    // below so a page turn always lands exactly on a column boundary. This
+    // must be body's own clientWidth, not html's -- html's clientWidth is
+    // the fixed outer viewport size and no longer matches the actual
+    // rendered column width now that the reading margin lives on html's
+    // padding instead of body's (see applyAppearance() above).
+    readonly property string pageWidthJs: "document.body.clientWidth"
+
+    // Every paginated-mode scroll function below reads/writes document.body,
+    // never document.scrollingElement -- confirmed live via Chrome DevTools
+    // Protocol on the actual bug (fix #2 above did NOT resolve it despite
+    // being otherwise correct). document.scrollingElement resolves to
+    // <html>, and once html itself has overflow:hidden (set for exactly
+    // this paginated mode), Chromium clamps html's own *scrollWidth* to its
+    // clientWidth -- i.e. it reports zero overflow -- even though its child
+    // <body> (which is what actually holds the wide, multi-column content)
+    // correctly reports the real scrollWidth. Every nextPage()/prevPage()
+    // boundary check was therefore comparing against a scrollWidth that
+    // always equaled one page, so it looked "at the end" immediately; the
+    // bleed the user kept seeing was scrollLeft assignments on the wrong
+    // (non-functional) element having no real effect. body has no such
+    // clamping since it isn't the root scrolling element.
     function restoreScroll(frac) {
-        webView.runJavaScript(
-            "window.scrollTo(0, document.documentElement.scrollHeight * " + frac + ");"
-        )
+        var js = page.paginated
+            ? "(function(){ var se = document.body;" +
+              " se.scrollLeft = (se.scrollWidth - " + pageWidthJs + ") * " + frac + "; })();"
+            : "window.scrollTo(0, document.documentElement.scrollHeight * " + frac + ");"
+        webView.runJavaScript(js)
     }
 
     function saveProgress() {
-        webView.runJavaScript(
-            "(document.documentElement.scrollTop || document.body.scrollTop) / " +
-            "Math.max(1, (document.documentElement.scrollHeight - window.innerHeight))",
-            function(frac) {
-                var f = (typeof frac === "number" && isFinite(frac)) ? Math.max(0, Math.min(1, frac)) : 0
-                var percent = ((page.currentChapter + f) / Math.max(1, meta.chapterCount)) * 100
-                backend.saveProgress(meta.id, JSON.stringify({ chapter: page.currentChapter, scroll_frac: f }), percent)
-            }
-        )
+        var script = page.paginated
+            ? "(function(){ var se = document.body;" +
+              " var d = se.scrollWidth - " + pageWidthJs + ";" +
+              " return d > 0 ? se.scrollLeft / d : 0; })();"
+            : "(document.documentElement.scrollTop || document.body.scrollTop) / " +
+              "Math.max(1, (document.documentElement.scrollHeight - window.innerHeight))"
+        webView.runJavaScript(script, function(frac) {
+            var f = (typeof frac === "number" && isFinite(frac)) ? Math.max(0, Math.min(1, frac)) : 0
+            var percent = ((page.currentChapter + f) / Math.max(1, meta.chapterCount)) * 100
+            backend.saveProgress(meta.id, JSON.stringify({ chapter: page.currentChapter, scroll_frac: f }), percent)
+        })
     }
 
     function goToChapter(index, frac) {
@@ -121,6 +202,49 @@ Kirigami.Page {
         page.currentChapter = index
         webView.url = meta.chapterUrls[index]
         pendingRestoreFrac = frac !== undefined ? frac : 0
+    }
+
+    // In paginated mode, "next/prev" means one column-width of horizontal
+    // scroll, only falling through to the adjacent chapter once already at
+    // the first/last page -- checked in JS (the only place that knows the
+    // real scrollWidth) rather than guessed at from QML.
+    function nextPage() {
+        if (!page.paginated) { page.goToChapter(page.currentChapter + 1); return }
+        webView.runJavaScript(
+            "(function(){ var se = document.body; var w = " + pageWidthJs + ";" +
+            " var atEnd = se.scrollLeft + w >= se.scrollWidth - 2;" +
+            " if (!atEnd) se.scrollLeft += w; return atEnd; })();",
+            function(atEnd) { if (atEnd) page.goToChapter(page.currentChapter + 1) }
+        )
+    }
+
+    function prevPage() {
+        if (!page.paginated) { page.goToChapter(page.currentChapter - 1); return }
+        webView.runJavaScript(
+            "(function(){ var se = document.body; var w = " + pageWidthJs + ";" +
+            " var atStart = se.scrollLeft <= 2;" +
+            " if (!atStart) se.scrollLeft -= w; return atStart; })();",
+            function(atStart) { if (atStart) page.goToChapter(page.currentChapter - 1) }
+        )
+    }
+
+    // Reads the current position under whichever axis is active right now,
+    // flips the mode, re-applies the CSS for the new axis, then restores
+    // that same fractional position under the new axis -- so switching
+    // modes mid-chapter doesn't lose your place.
+    function toggleReadMode() {
+        var wasPaginated = page.paginated
+        var readScript = wasPaginated
+            ? "(function(){ var se = document.body;" +
+              " var d = se.scrollWidth - " + pageWidthJs + "; return d > 0 ? se.scrollLeft / d : 0; })();"
+            : "(document.documentElement.scrollTop || document.body.scrollTop) / " +
+              "Math.max(1, (document.documentElement.scrollHeight - window.innerHeight))"
+        webView.runJavaScript(readScript, function(frac) {
+            var f = (typeof frac === "number" && isFinite(frac)) ? Math.max(0, Math.min(1, frac)) : 0
+            page.paginated = !wasPaginated
+            page.applyAppearance()
+            page.restoreScroll(f)
+        })
     }
 
     property real pendingRestoreFrac: meta.startScrollFrac || 0
@@ -207,6 +331,13 @@ Kirigami.Page {
                 onClicked: textSettingsPopup.open()
             }
             Controls.ToolButton {
+                icon.name: page.paginated ? "zoom-fit-page" : "format-justify-fill"
+                text: page.paginated ? "Pages" : "Scroll"
+                Controls.ToolTip.visible: hovered
+                Controls.ToolTip.text: page.paginated ? "Switch to continuous scrolling" : "Switch to page-by-page reading"
+                onClicked: page.toggleReadMode()
+            }
+            Controls.ToolButton {
                 text: page.readTheme === "dark" ? "Dark" : (page.readTheme === "light" ? "Light" : "Sepia")
                 onClicked: {
                     page.readTheme = page.readTheme === "dark" ? "light" : (page.readTheme === "light" ? "sepia" : "dark")
@@ -261,6 +392,30 @@ Kirigami.Page {
         id: webView
         anchors.fill: parent
 
+        // The column width baked into the stylesheet is a snapshot of
+        // document.body's rendered width at the moment it was applied -- a
+        // live resize (e.g. un-maximizing the window) leaves it stale,
+        // reintroducing the same next-page-bleeds-in bug this fixes for the
+        // static case. Debounced so a window being dragged to resize
+        // doesn't reapply on every intermediate pixel.
+        onWidthChanged: if (page.paginated) resizeReflowTimer.restart()
+
+        Timer {
+            id: resizeReflowTimer
+            interval: 150
+            onTriggered: {
+                webView.runJavaScript(
+                    "(function(){ var se = document.body;" +
+                    " var d = se.scrollWidth - " + page.pageWidthJs + "; return d > 0 ? se.scrollLeft / d : 0; })();",
+                    function(frac) {
+                        var f = (typeof frac === "number" && isFinite(frac)) ? Math.max(0, Math.min(1, frac)) : 0
+                        page.applyAppearance()
+                        page.restoreScroll(f)
+                    }
+                )
+            }
+        }
+
         onLoadingChanged: function(loadRequest) {
             if (loadRequest.status === WebEngineView.LoadSucceededStatus) {
                 page.applyAppearance()
@@ -287,16 +442,17 @@ Kirigami.Page {
         }
     }
 
-    // Click the page edges to turn chapters, Kindle-style, without needing
-    // the toolbar's prev/next buttons. Narrow enough (7%) to mostly land in
-    // the reading margin rather than over real text.
+    // Click the page edges to turn pages (paginated mode) or chapters
+    // (scroll mode), Kindle-style, without needing the toolbar's prev/next
+    // buttons. Narrow enough (7%) to mostly land in the reading margin
+    // rather than over real text.
     MouseArea {
         anchors.left: parent.left
         anchors.top: parent.top
         anchors.bottom: parent.bottom
         width: parent.width * 0.07
         cursorShape: Qt.PointingHandCursor
-        onClicked: page.goToChapter(page.currentChapter - 1)
+        onClicked: page.prevPage()
     }
     MouseArea {
         anchors.right: parent.right
@@ -304,7 +460,7 @@ Kirigami.Page {
         anchors.bottom: parent.bottom
         width: parent.width * 0.07
         cursorShape: Qt.PointingHandCursor
-        onClicked: page.goToChapter(page.currentChapter + 1)
+        onClicked: page.nextPage()
     }
 
     // Always-present reveal handle while the toolbar/status bar are
@@ -603,6 +759,8 @@ Kirigami.Page {
     Shortcut { sequence: "Ctrl+-"; onActivated: { page.fontScale = Math.max(0.6, page.fontScale - 0.1); page.applyAppearance() } }
     Shortcut { sequence: "Ctrl+0"; onActivated: { page.fontScale = 1.0; page.applyAppearance() } }
     Shortcut { sequence: "B"; enabled: !findField.activeFocus; onActivated: page.toggleBookmark() }
-    Shortcut { sequence: "PgDown"; onActivated: page.goToChapter(page.currentChapter + 1) }
-    Shortcut { sequence: "PgUp"; onActivated: page.goToChapter(page.currentChapter - 1) }
+    Shortcut { sequence: "PgDown"; onActivated: page.nextPage() }
+    Shortcut { sequence: "PgUp"; onActivated: page.prevPage() }
+    Shortcut { sequence: "Right"; enabled: !findField.activeFocus; onActivated: page.nextPage() }
+    Shortcut { sequence: "Left"; enabled: !findField.activeFocus; onActivated: page.prevPage() }
 }
