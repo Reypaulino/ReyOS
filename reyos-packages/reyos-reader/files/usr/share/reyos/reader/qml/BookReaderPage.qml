@@ -131,25 +131,13 @@ Kirigami.Page {
               " html { padding-left: " + marginPct + "% !important;" +
               " padding-right: " + marginPct + "% !important; }"
             : ""
-        // QtWebEngine's compositor was repeatedly observed (live, via Chrome
-        // DevTools Protocol) to keep painting the *previous* column layout
-        // for several seconds after column-width changes here -- even
-        // though the DOM/layout was already correct on every check
-        // (getBoundingClientRect matched the new geometry immediately).
-        // The stale frame looks exactly like the padding-eating-into-
-        // column-width bug this function otherwise fixes, which is what
-        // made it look unfixed. A display:none/'' toggle forces a full
-        // paint-layer invalidation and repaint against the layout that
-        // already exists, closing that gap instead of waiting on whatever
-        // triggers Chromium to notice on its own.
         var js = "(function(){ var s = document.getElementById('reyos-reader-style');" +
                  "if(!s){ s = document.createElement('style'); s.id='reyos-reader-style'; document.head.appendChild(s); }" +
                  "s.textContent = " + JSON.stringify(css + paginatedCss) + ";" +
                  (page.paginated
                     ? "document.body.style.columnWidth = document.body.clientWidth + 'px';"
                     : "document.body.style.columnWidth = '';") +
-                 " document.body.style.display = 'none'; void document.body.offsetHeight;" +
-                 " document.body.style.display = ''; })();"
+                 " })();"
         webView.runJavaScript(js)
     }
 
@@ -176,9 +164,21 @@ Kirigami.Page {
     // (non-functional) element having no real effect. body has no such
     // clamping since it isn't the root scrolling element.
     function restoreScroll(frac) {
+        // This turned out to be the actual, primary source of the
+        // bleed-through bug this whole file's history above is chasing:
+        // live CDP testing (screenshots pixel-identical to the user's
+        // reports, both via the OS window *and* Chromium's own internal
+        // Page.captureScreenshot -- ruling out any paint/compositor
+        // staleness) showed that a raw `frac * (scrollWidth - pageWidth)`
+        // is essentially never an exact multiple of one page's width, so
+        // it lands the viewport straddling a column boundary -- showing
+        // the tail of one column and the head of the next simultaneously,
+        // which is indistinguishable from a "next page bleeding in" bug.
+        // Snapping to the nearest whole page closes this for good.
         var js = page.paginated
-            ? "(function(){ var se = document.body;" +
-              " se.scrollLeft = (se.scrollWidth - " + pageWidthJs + ") * " + frac + "; })();"
+            ? "(function(){ var se = document.body; var w = " + pageWidthJs + ";" +
+              " var d = se.scrollWidth - w;" +
+              " se.scrollLeft = d > 0 ? Math.round((d * " + frac + ") / w) * w : 0; })();"
             : "window.scrollTo(0, document.documentElement.scrollHeight * " + frac + ");"
         webView.runJavaScript(js)
     }
