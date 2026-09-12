@@ -25,10 +25,10 @@ from formats.epub import (
     register_epub_scheme,
 )
 from formats.pdf import PdfEncryptedError, PdfOpenError, open_metadata as open_pdf_metadata
-from formats import pdf_tools
+from formats import pdf_annotate, pdf_tools
 from imagecache import ComicImageProvider, IconThemeProvider
 from library import Library
-from scanner import ScanWorker, extract_metadata
+from scanner import ScanWorker, extract_metadata, _extract_and_cache_cover
 
 LOG_DIR = Path.home() / ".cache" / "reyos-reader"
 LOG_FILE = LOG_DIR / "reyos-reader.log"
@@ -89,6 +89,8 @@ class Backend(QObject):
     openFailed = Signal(str, str)    # friendly message, technical detail
     pdfToolFinished = Signal(bool, str)  # ok, output path or error message
     highlightsChanged = Signal()
+    pdfAnnotationFailed = Signal(str)  # error message
+    pdfAnnotationAdded = Signal()
 
     def __init__(self, image_provider, scheme_handler):
         super().__init__()
@@ -134,9 +136,9 @@ class Backend(QObject):
     def getRecentlyAdded(self):
         return self._items_json(self._lib.list_recently_added())
 
-    @Slot(str, result=str)
-    def search(self, query):
-        return self._items_json(self._lib.search(query))
+    @Slot(str, str, result=str)
+    def search(self, query, fmt_filter):
+        return self._items_json(self._lib.search(query, fmt_filter))
 
     @Slot(result=str)
     def listFolders(self):
@@ -305,7 +307,13 @@ class Backend(QObject):
         existing = self._lib.get_item_by_path(p)
         if existing is None:
             title, author = extract_metadata(p, fmt)
-            self._lib.upsert_item(p, None, title, author, fmt)
+            # Unlike ScanWorker, this path is for files opened one at a time
+            # via the file dialog rather than an auto-scanned library folder
+            # -- cover extraction was missing here entirely, so anything
+            # opened this way (e.g. a book downloaded straight to ~/Downloads)
+            # never got a library-grid cover, confirmed live.
+            cover = _extract_and_cache_cover(p, fmt)
+            self._lib.upsert_item(p, None, title, author, fmt, cover)
             existing = self._lib.get_item_by_path(p)
         self.openItem(existing["id"])
 
@@ -476,6 +484,45 @@ class Backend(QObject):
     @Slot(str, str, str)
     def splitPdf(self, input_path, output_path, ranges_str):
         self._run_pdf_tool(lambda: pdf_tools.split_pdf(input_path, output_path, ranges_str))
+
+    # -- PDF annotations (highlight / free text / comment) -------------------
+    # Fast enough (single page, small file) to run synchronously on the UI
+    # thread, unlike merge/split above which can touch a whole large PDF.
+
+    def _run_pdf_annotation(self, fn):
+        try:
+            fn()
+        except pdf_annotate.PdfAnnotateError as e:
+            self.pdfAnnotationFailed.emit(str(e))
+            return
+        except Exception as e:
+            log.exception("PDF annotation failed")
+            self.pdfAnnotationFailed.emit(f"Unexpected error: {e}")
+            return
+        self.pdfAnnotationAdded.emit()
+
+    @staticmethod
+    def _to_local_path(path):
+        """meta.path (as seen by QML) is a file:// URL -- QUrl.fromLocalFile(...)
+        in openPath()/openItem() below -- since that's what PdfDocument.source
+        expects. pymupdf.open() wants a plain filesystem path instead."""
+        url = QUrl(path)
+        return url.toLocalFile() if url.isLocalFile() else path
+
+    @Slot(str, int, str)
+    def addPdfHighlight(self, path, page_index, text):
+        path = self._to_local_path(path)
+        self._run_pdf_annotation(lambda: pdf_annotate.add_highlight(path, page_index, text))
+
+    @Slot(str, int, float, float, str)
+    def addPdfFreeText(self, path, page_index, x, y, text):
+        path = self._to_local_path(path)
+        self._run_pdf_annotation(lambda: pdf_annotate.add_free_text(path, page_index, x, y, text))
+
+    @Slot(str, int, float, float, str)
+    def addPdfComment(self, path, page_index, x, y, text):
+        path = self._to_local_path(path)
+        self._run_pdf_annotation(lambda: pdf_annotate.add_comment(path, page_index, x, y, text))
 
 
 def main():
