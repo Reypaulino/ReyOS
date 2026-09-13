@@ -42,7 +42,7 @@ PASSWORD_BLOCKLIST_PATH = BROWSER_STATE_DIR / "password-blocklist.json"
 PASSWORD_AUTOFILL_SCRIPT_PATH = APP_DIR / "password-autofill.js"
 FINGERPRINT_PROTECTION_SCRIPT_PATH = APP_DIR / "fingerprint-protection.js"
 WEBAPPS_DESKTOP_DIR = Path.home() / ".local" / "share" / "applications"
-WEBAPPS_ICON_DIR = Path.home() / ".local" / "share" / "icons" / "hicolor" / "128x128" / "apps"
+WEBAPPS_ICON_DIR = Path.home() / ".local" / "share" / "icons" / "hicolor" / "256x256" / "apps"
 QWEBCHANNEL_JS_PATHS = (
     Path("/usr/share/qt6/webchannel/qwebchannel.js"),
     APP_DIR / "qwebchannel.js",

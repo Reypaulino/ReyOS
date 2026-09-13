@@ -195,9 +195,11 @@ ApplicationWindow {
         if (!currentView || isHomeUrl(currentView.url.toString())) {
             return
         }
-        appIconGrabber.pageUrl = currentView.url.toString()
-        appIconGrabber.pageTitle = currentView.title || currentView.url.host
-        appIconGrabber.source = currentView.icon
+        installAppNameDialog.pendingUrl = currentView.url.toString()
+        installAppNameField.text = currentView.title || currentView.url.host
+        installAppNameDialog.open()
+        installAppNameField.selectAll()
+        installAppNameField.forceActiveFocus()
     }
 
     function openBookmarkUrl(pageUrl) {
@@ -1237,13 +1239,59 @@ ApplicationWindow {
         }
     }
 
+    Dialog {
+        id: installAppNameDialog
+        title: "Install as App"
+        modal: true
+        width: 400
+        anchors.centerIn: parent
+        padding: 18
+        property string pendingUrl: ""
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        background: Rectangle { color: "#302217"; border.color: "#8E5A2E"; border.width: 1; radius: 12 }
+        contentItem: ColumnLayout {
+            spacing: 12
+            Label {
+                text: "App name"
+                color: "#D7C1AA"
+                Layout.fillWidth: true
+            }
+            TextField {
+                id: installAppNameField
+                Layout.fillWidth: true
+                selectByMouse: true
+                color: "#FFF3E6"
+                background: Rectangle { color: "#3B291C"; radius: 6; border.color: "#8E5A2E"; border.width: 1 }
+                onAccepted: if (installAppInstallButton.enabled) installAppInstallButton.clicked()
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                Item { Layout.fillWidth: true }
+                Button { text: "Cancel"; onClicked: installAppNameDialog.close() }
+                Button {
+                    id: installAppInstallButton
+                    text: "Install"
+                    enabled: installAppNameField.text.trim().length > 0
+                    onClicked: {
+                        appIconGrabber.pageUrl = installAppNameDialog.pendingUrl
+                        appIconGrabber.pageTitle = installAppNameField.text.trim()
+                        appIconGrabber.source = currentView ? currentView.icon : ""
+                        installAppNameDialog.close()
+                    }
+                }
+            }
+        }
+    }
+
     Image {
         id: appIconGrabber
         parent: window.contentItem
         x: -1000
         y: -1000
-        width: 64
-        height: 64
+        width: 256
+        height: 256
+        fillMode: Image.PreserveAspectFit
+        mipmap: true
         visible: true
         property string pageUrl: ""
         property string pageTitle: ""
