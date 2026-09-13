@@ -191,6 +191,15 @@ ApplicationWindow {
         }
     }
 
+    function installCurrentAsApp() {
+        if (!currentView || isHomeUrl(currentView.url.toString())) {
+            return
+        }
+        appIconGrabber.pageUrl = currentView.url.toString()
+        appIconGrabber.pageTitle = currentView.title || currentView.url.host
+        appIconGrabber.source = currentView.icon
+    }
+
     function openBookmarkUrl(pageUrl) {
         if (!pageUrl) {
             return
@@ -1228,6 +1237,37 @@ ApplicationWindow {
         }
     }
 
+    Image {
+        id: appIconGrabber
+        parent: window.contentItem
+        x: -1000
+        y: -1000
+        width: 64
+        height: 64
+        visible: true
+        property string pageUrl: ""
+        property string pageTitle: ""
+        onStatusChanged: {
+            if (status !== Image.Ready && status !== Image.Error) {
+                return
+            }
+            var url = pageUrl
+            var title = pageTitle
+            if (status === Image.Error) {
+                browserBackend.installAsApp(url, title, "")
+                return
+            }
+            grabToImage(function(result) {
+                var tmpPath = StandardPaths.writableLocation(StandardPaths.TempLocation).toString().replace(/^file:\/\//, "") + "/reyos-webapp-icon-" + Date.now() + ".png"
+                if (result.saveToFile(tmpPath)) {
+                    browserBackend.installAsApp(url, title, tmpPath)
+                } else {
+                    browserBackend.installAsApp(url, title, "")
+                }
+            })
+        }
+    }
+
     Popup {
         id: browserMenu
         parent: window.contentItem
@@ -1348,6 +1388,35 @@ ApplicationWindow {
                 onClicked: {
                     browserMenu.close()
                     browserBackend.toggleCurrentSiteShields()
+                }
+            }
+
+            Button {
+                id: installAppMenuButton
+                enabled: currentView && !isHomeUrl(currentView.url.toString())
+                Layout.fillWidth: true
+                implicitHeight: 36
+                background: Rectangle { color: installAppMenuButton.hovered ? "#3B291C" : "transparent"; radius: 7 }
+                contentItem: RowLayout {
+                    spacing: 10
+                    Image {
+                        source: Qt.resolvedUrl("../icons/reyos-webapp.svg")
+                        sourceSize.width: 20
+                        sourceSize.height: 20
+                        opacity: installAppMenuButton.enabled ? 1.0 : 0.45
+                        Layout.leftMargin: 10
+                    }
+                    Label {
+                        text: "Install this site as an app"
+                        color: installAppMenuButton.enabled ? "#FFF3E6" : "#9F8873"
+                        font.pixelSize: 14
+                        Layout.fillWidth: true
+                        elide: Text.ElideRight
+                    }
+                }
+                onClicked: {
+                    browserMenu.close()
+                    window.installCurrentAsApp()
                 }
             }
 

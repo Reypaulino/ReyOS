@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import csv
+import hashlib
 import json
 import os
 import re
@@ -40,6 +41,8 @@ else:
 PASSWORD_BLOCKLIST_PATH = BROWSER_STATE_DIR / "password-blocklist.json"
 PASSWORD_AUTOFILL_SCRIPT_PATH = APP_DIR / "password-autofill.js"
 FINGERPRINT_PROTECTION_SCRIPT_PATH = APP_DIR / "fingerprint-protection.js"
+WEBAPPS_DESKTOP_DIR = Path.home() / ".local" / "share" / "applications"
+WEBAPPS_ICON_DIR = Path.home() / ".local" / "share" / "icons" / "hicolor" / "128x128" / "apps"
 QWEBCHANNEL_JS_PATHS = (
     Path("/usr/share/qt6/webchannel/qwebchannel.js"),
     APP_DIR / "qwebchannel.js",
@@ -354,6 +357,19 @@ def normalize_origin(value: str) -> str:
     if port != -1 and not ((scheme == "http" and port == 80) or (scheme == "https" and port == 443)):
         return f"{scheme}://{host}:{port}"
     return f"{scheme}://{host}"
+
+
+def _webapp_id(url: str, title: str) -> str:
+    base = re.sub(r"[^a-z0-9]+", "-", (title or "").strip().lower()).strip("-")
+    if not base:
+        base = re.sub(r"[^a-z0-9]+", "-", QUrl(url).host().lower()).strip("-") or "webapp"
+    digest = hashlib.sha256(url.encode("utf-8")).hexdigest()[:8]
+    return f"reyos-webapp-{base[:40]}-{digest}"
+
+
+def _quote_desktop_exec_arg(value: str) -> str:
+    escaped = value.replace("\\", "\\\\").replace('"', '\\"').replace("`", "\\`").replace("$", "\\$")
+    return f'"{escaped}"'
 
 
 def _normalized_csv_header(value: str) -> str:
@@ -909,6 +925,73 @@ class BrowserBackend(QObject):
             stderr=subprocess.DEVNULL,
         )
 
+    @Slot(str, str, str, result=bool)
+    def installAsApp(self, url: str, title: str, icon_path: str) -> bool:
+        """Write a .desktop launcher that reopens this page in its own chromeless window."""
+        if IS_WINDOWS:
+            self.notify("Install as App unavailable", "Installing sites as apps isn't supported on Windows yet.")
+            return False
+        clean_url = re.sub(r"[\r\n]+", "", url or "")
+        normalized = normalize_origin(clean_url)
+        if not normalized:
+            self.notify("Can't install this page", "Only regular http/https pages can be installed as an app.")
+            return False
+        display_title = re.sub(r"[\r\n]+", " ", title or "").strip()[:80] or QUrl(clean_url).host()
+        app_id = _webapp_id(clean_url, display_title)
+        icon_value = str(APP_DIR / "assets" / "reyos-r-penguin.png")
+        try:
+            WEBAPPS_DESKTOP_DIR.mkdir(parents=True, exist_ok=True)
+            source_icon = Path(icon_path) if icon_path else None
+            if source_icon is not None and source_icon.is_file() and source_icon.stat().st_size > 0:
+                WEBAPPS_ICON_DIR.mkdir(parents=True, exist_ok=True)
+                dest_icon = WEBAPPS_ICON_DIR / f"{app_id}.png"
+                shutil.copyfile(source_icon, dest_icon)
+                icon_value = str(dest_icon)
+                try:
+                    source_icon.unlink()
+                except OSError:
+                    pass
+            exec_value = " ".join(
+                _quote_desktop_exec_arg(part)
+                for part in (
+                    "reyos-browser",
+                    f"--app-url={clean_url}",
+                    f"--app-title={display_title}",
+                    f"--app-icon={icon_value}",
+                )
+            )
+            entry = (
+                "[Desktop Entry]\n"
+                "Version=1.0\n"
+                "Type=Application\n"
+                f"Name={display_title}\n"
+                f"Comment=Installed from {normalized} with ReyOS Browser\n"
+                f"Exec={exec_value}\n"
+                f"Icon={icon_value}\n"
+                "Terminal=false\n"
+                "Categories=Network;WebBrowser;\n"
+                "StartupNotify=true\n"
+                f"StartupWMClass={app_id}\n"
+            )
+            desktop_path = WEBAPPS_DESKTOP_DIR / f"{app_id}.desktop"
+            temp_path = desktop_path.with_suffix(".tmp")
+            temp_path.write_text(entry, encoding="utf-8")
+            os.replace(temp_path, desktop_path)
+            os.chmod(desktop_path, 0o644)
+        except OSError as error:
+            self.notify("Couldn't install app", f"{display_title}: {error}")
+            return False
+        try:
+            subprocess.Popen(
+                ["update-desktop-database", str(WEBAPPS_DESKTOP_DIR)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except OSError:
+            pass
+        self.notify("App installed", f"{display_title} was added to your app launcher.")
+        return True
+
     @Slot(result=bool)
     def openSystemPasswordManager(self) -> bool:
         if IS_WINDOWS:
@@ -1076,14 +1159,45 @@ class ShieldsUpdateWorker(QThread):
 def main():
     QtWebEngineQuick.initialize()
     app = QApplication(sys.argv)
-    app.setApplicationName("ReyOS Browser")
-    app.setDesktopFileName("reyos-browser")
     app.setOrganizationName("ReyOS")
-    engine = QQmlApplicationEngine()
+
+    app_url = ""
+    app_title = ""
+    app_icon = ""
+    for arg in sys.argv[1:]:
+        if arg.startswith("--app-url="):
+            app_url = arg.split("=", 1)[1]
+        elif arg.startswith("--app-title="):
+            app_title = arg.split("=", 1)[1]
+        elif arg.startswith("--app-icon="):
+            app_icon = arg.split("=", 1)[1]
+
     interceptor = ShieldsInterceptor(load_blocked_domains())
     backend = BrowserBackend(interceptor, PasswordVault(), load_password_script_source())
-    app.aboutToQuit.connect(backend.persistShieldsStats)
+    engine = QQmlApplicationEngine()
     engine.rootContext().setContextProperty("browserBackend", backend)
+
+    if app_url:
+        app_id = _webapp_id(app_url, app_title)
+        app.setApplicationName(app_title or "ReyOS Web App")
+        app.setDesktopFileName(app_id)
+        engine.rootContext().setContextProperty("appUrl", app_url)
+        engine.rootContext().setContextProperty("appTitle", app_title or app_url)
+        engine.rootContext().setContextProperty("appStorageName", app_id)
+        engine.load(QUrl.fromLocalFile(str(APP_DIR / "qml" / "AppWindow.qml")))
+        if not engine.rootObjects():
+            return 1
+        window = engine.rootObjects()[0]
+        profile = window.findChild(QQuickWebEngineProfile, "appProfile")
+        if profile is not None:
+            profile.setUrlRequestInterceptor(interceptor)
+        fallback_icon = QIcon.fromTheme("reyos-browser", QIcon(str(APP_DIR / "assets" / "reyos-r-penguin.png")))
+        window.setIcon(QIcon(app_icon) if app_icon and Path(app_icon).is_file() else fallback_icon)
+        return app.exec()
+
+    app.setApplicationName("ReyOS Browser")
+    app.setDesktopFileName("reyos-browser")
+    app.aboutToQuit.connect(backend.persistShieldsStats)
     engine.rootContext().setContextProperty("passwordBridge", backend.passwordBridge)
     engine.load(QUrl.fromLocalFile(str(APP_DIR / "qml" / "Main.qml")))
     if not engine.rootObjects():

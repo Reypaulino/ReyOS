@@ -1,0 +1,1145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ReyOS</title>
+  <link rel="icon" type="image/png" href="reyos-r-penguin.png" />
+  <meta name="description" content="ReyOS is a calm, dependable KDE Linux distribution. Download status, known issues, and the built-in private ReyOS Browser." />
+  <meta name="robots" content="index, follow" />
+  <link rel="canonical" href="https://reyos.reyapps.com/" />
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://reyos.reyapps.com/" />
+  <meta property="og:title" content="ReyOS" />
+  <meta property="og:description" content="A calm, dependable KDE desktop built to give older computers a second life." />
+  <meta property="og:site_name" content="ReyOS" />
+  <meta property="og:image" content="https://reyos.reyapps.com/reyos-r-penguin.png" />
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="ReyOS" />
+  <meta name="twitter:description" content="A calm, dependable KDE desktop built to give older computers a second life." />
+
+  <!-- Structured Data -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "ReyOS",
+    "applicationCategory": "OperatingSystem",
+    "operatingSystem": "Linux",
+    "url": "https://reyos.reyapps.com",
+    "description": "A calm, dependable KDE Linux distribution built to give older computers a second life.",
+    "author": { "@type": "Person", "name": "Reynaldo Paulino" }
+  }
+  </script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --accent: #E08A3C;
+      --accent-2: #9C4F1E;
+      --copper-light: #F3C089;
+      --text: #fff;
+      --muted: #718096;
+      --muted-2: #4a5568;
+      --surface: rgba(255,255,255,0.04);
+      --border: rgba(255,255,255,0.08);
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      min-height: 100vh;
+      background: #0a0a0a;
+      color: var(--text);
+    }
+
+    /* ── Background ── */
+    .bg {
+      position: fixed;
+      inset: 0;
+      background: radial-gradient(ellipse at 20% 50%, #241708 0%, transparent 60%),
+                  radial-gradient(ellipse at 80% 20%, #1e1408 0%, transparent 60%),
+                  radial-gradient(ellipse at 60% 80%, #150d05 0%, transparent 50%);
+      z-index: 0;
+      pointer-events: none;
+    }
+
+    .grid {
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
+      background-size: 60px 60px;
+      z-index: 0;
+      pointer-events: none;
+    }
+
+    /* ── Nav ── */
+    nav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px 48px;
+      backdrop-filter: blur(12px);
+      background: rgba(10,10,10,0.7);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .nav-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      color: var(--text);
+      font-weight: 700;
+      font-size: 15px;
+    }
+
+    .nav-logo img { height: 32px; width: 32px; display: block; }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 32px;
+      list-style: none;
+    }
+
+    .nav-links a {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+      transition: color 0.2s;
+    }
+
+    .nav-links a:hover { color: var(--text); }
+
+    .nav-back {
+      font-size: 13px;
+      color: var(--muted-2) !important;
+    }
+
+    /* ── Sections ── */
+    section {
+      position: relative;
+      z-index: 1;
+    }
+
+    /* ── Hero ── */
+    #hero {
+      min-height: 86vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 64px 24px 80px;
+    }
+
+    .hero-logo {
+      width: 120px;
+      height: 120px;
+      margin-bottom: 28px;
+      filter: drop-shadow(0 8px 24px rgba(224,138,60,0.25));
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(224,138,60,0.1);
+      border: 1px solid rgba(224,138,60,0.3);
+      border-radius: 999px;
+      padding: 6px 18px;
+      font-size: 12px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--copper-light);
+      margin-bottom: 32px;
+    }
+
+    .badge-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 6px var(--accent);
+    }
+
+    h1 {
+      font-size: clamp(56px, 10vw, 96px);
+      font-weight: 800;
+      letter-spacing: -3px;
+      line-height: 1;
+      margin-bottom: 8px;
+      background: linear-gradient(135deg, #fff 0%, #a0aec0 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    h1 .dot {
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .tagline {
+      font-size: 20px;
+      color: var(--muted);
+      margin-top: 20px;
+      margin-bottom: 48px;
+      line-height: 1.6;
+      max-width: 520px;
+    }
+
+    .hero-actions {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 14px 28px;
+      border-radius: 10px;
+      font-size: 15px;
+      font-weight: 600;
+      text-decoration: none;
+      transition: all 0.2s;
+      cursor: pointer;
+      border: none;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      color: #fff;
+    }
+
+    .btn-primary:hover { opacity: 0.88; transform: translateY(-1px); }
+
+    .btn-ghost {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--muted);
+    }
+
+    .btn-ghost:hover { color: var(--text); border-color: rgba(255,255,255,0.2); }
+
+    .btn-disabled {
+      opacity: 0.55;
+      cursor: default;
+      pointer-events: none;
+    }
+
+    /* ── Section shared ── */
+    .section-inner {
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 100px 24px;
+    }
+
+    .section-label {
+      font-size: 12px;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: var(--copper-light);
+      margin-bottom: 12px;
+      font-weight: 600;
+    }
+
+    .section-title {
+      font-size: clamp(32px, 5vw, 48px);
+      font-weight: 800;
+      letter-spacing: -1.5px;
+      line-height: 1.1;
+      margin-bottom: 20px;
+      background: linear-gradient(135deg, #fff 0%, #a0aec0 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .section-desc {
+      color: var(--muted);
+      font-size: 16px;
+      line-height: 1.8;
+      max-width: 640px;
+      margin-bottom: 48px;
+    }
+
+    .section-divider {
+      width: 100%;
+      height: 1px;
+      background: var(--border);
+    }
+
+    /* ── Screenshots ── */
+    .screenshots-slider {
+      position: relative;
+      border-radius: 24px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02)),
+        rgba(0,0,0,0.3);
+      box-shadow: 0 24px 60px rgba(0,0,0,0.45);
+    }
+
+    .slides {
+      position: relative;
+      min-height: 0;
+    }
+
+    .screenshot-card {
+      display: none;
+      border-radius: 16px;
+      overflow: hidden;
+      background: transparent;
+    }
+
+    .screenshot-card.active {
+      display: block;
+      animation: fade-slide 0.45s ease;
+    }
+
+    @keyframes fade-slide {
+      from { opacity: 0; transform: translateX(24px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+
+    .screenshot-card img {
+      display: block;
+      width: 100%;
+      aspect-ratio: 16 / 10;
+      object-fit: cover;
+      background: #0b0b0b;
+    }
+
+    .screenshot-caption {
+      padding: 18px 24px 24px;
+      font-size: 14px;
+      color: var(--muted);
+      border-top: 1px solid var(--border);
+      background: linear-gradient(180deg, rgba(10,10,10,0.15), rgba(10,10,10,0.55));
+    }
+
+    .slider-controls {
+      position: absolute;
+      inset: auto 20px 20px auto;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      z-index: 2;
+    }
+
+    .slider-btn {
+      width: 44px;
+      height: 44px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(10,10,10,0.65);
+      color: var(--text);
+      font-size: 20px;
+      line-height: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: transform 0.2s, border-color 0.2s, background 0.2s;
+      backdrop-filter: blur(10px);
+    }
+
+    .slider-btn:hover {
+      transform: translateY(-1px);
+      border-color: rgba(255,255,255,0.3);
+      background: rgba(20,20,20,0.82);
+    }
+
+    .slider-dots {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      padding-top: 20px;
+    }
+
+    .slider-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      border: none;
+      background: rgba(255,255,255,0.18);
+      cursor: pointer;
+      transition: transform 0.2s, background 0.2s;
+    }
+
+    .slider-dot.active {
+      background: var(--accent);
+      transform: scale(1.15);
+    }
+
+    /* ── Status grid ── */
+    .status-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 20px;
+      margin-bottom: 48px;
+    }
+
+    .status-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+    }
+
+    .status-card-title {
+      font-size: 15px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .status-row {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--muted-2);
+    }
+
+    .status-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+    .status-dot.live { background: #48bb78; box-shadow: 0 0 6px #48bb78; }
+    .status-dot.wip  { background: #ecc94b; }
+    .status-dot.soon { background: var(--accent); animation: pulse 2s ease-in-out infinite; }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50%       { opacity: 0.4; transform: scale(0.8); }
+    }
+
+    .known-issues {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 28px 28px;
+    }
+
+    .known-issues h3 {
+      font-size: 14px;
+      letter-spacing: 0.5px;
+      color: var(--copper-light);
+      margin-bottom: 16px;
+    }
+
+    .known-issues ul {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .known-issues li {
+      font-size: 14px;
+      color: var(--muted);
+      line-height: 1.6;
+      padding-left: 20px;
+      position: relative;
+    }
+
+    .known-issues li::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 8px;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--muted-2);
+    }
+
+    /* ── Download / platform cards ── */
+    .cards-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 24px;
+    }
+
+    .platform-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 32px 28px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .platform-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      background: linear-gradient(135deg, rgba(224,138,60,0.22), rgba(156,79,30,0.22));
+      border: 1px solid rgba(224,138,60,0.25);
+    }
+
+    .platform-name {
+      font-size: 17px;
+      font-weight: 700;
+    }
+
+    .platform-desc {
+      font-size: 14px;
+      color: var(--muted);
+      line-height: 1.6;
+      flex: 1;
+    }
+
+    .platform-subnote {
+      font-size: 13px;
+    }
+
+    .platform-subnote a { color: var(--copper-light); text-decoration: none; }
+    .platform-subnote a:hover { text-decoration: underline; }
+
+    /* ── Install guide ── */
+    code {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 2px 6px;
+      font-family: "SF Mono", Consolas, Monaco, monospace;
+      font-size: 0.9em;
+    }
+
+    .install-steps {
+      list-style: none;
+      counter-reset: install-step;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      margin-top: 28px;
+    }
+
+    .install-steps li {
+      counter-increment: install-step;
+      display: flex;
+      gap: 18px;
+    }
+
+    .install-steps li::before {
+      content: counter(install-step);
+      flex-shrink: 0;
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      color: #1a1108;
+      font-weight: 700;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .install-step-body h4 {
+      font-size: 15px;
+      margin-bottom: 6px;
+    }
+
+    .install-step-body p {
+      font-size: 14px;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    .install-step-body pre {
+      background: rgba(0,0,0,0.35);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 14px;
+      margin-top: 8px;
+      overflow-x: auto;
+      font-size: 13px;
+    }
+
+    .install-step-body pre code {
+      background: none;
+      border: none;
+      padding: 0;
+    }
+
+    .install-note {
+      margin-top: 28px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px 20px;
+      font-size: 14px;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    .install-note pre {
+      background: rgba(0,0,0,0.35);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 14px;
+      margin-top: 8px;
+      overflow-x: auto;
+      font-size: 13px;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    .install-note pre code {
+      background: none;
+      border: none;
+      padding: 0;
+    }
+
+    /* ── Footer ── */
+    footer {
+      position: relative;
+      z-index: 1;
+      border-top: 1px solid var(--border);
+      padding: 40px 48px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    footer .footer-logo {
+      font-size: 15px;
+      font-weight: 700;
+      background: linear-gradient(135deg, #fff 0%, #a0aec0 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    footer p {
+      font-size: 13px;
+      color: var(--muted-2);
+    }
+
+    footer a { color: inherit; opacity: 0.75; text-decoration: none; }
+    footer a:hover { opacity: 1; }
+
+    /* ── Responsive ── */
+    @media (max-width: 720px) {
+      nav { padding: 16px 24px; }
+      .nav-links { gap: 20px; }
+      footer { padding: 32px 24px; flex-direction: column; text-align: center; }
+      .slider-controls { inset: auto 14px 14px auto; }
+      .slider-btn { width: 40px; height: 40px; }
+      .screenshot-caption { padding: 16px 18px 22px; }
+    }
+
+    .nav-toggle {
+      display: none;
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-size: 18px;
+      line-height: 1;
+      width: 40px;
+      height: 40px;
+      border-radius: 8px;
+      cursor: pointer;
+      align-items: center;
+      justify-content: center;
+    }
+
+    @media (max-width: 560px) {
+      .nav-toggle { display: inline-flex; }
+      .nav-links {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0;
+        background: rgba(10,10,10,0.96);
+        backdrop-filter: blur(12px);
+        border-bottom: 1px solid var(--border);
+        max-height: 0;
+        overflow: hidden;
+        opacity: 0;
+        transition: max-height 0.25s ease, opacity 0.2s ease;
+      }
+      .nav-links.open { max-height: 420px; opacity: 1; }
+      .nav-links a { display: block; padding: 14px 24px; border-top: 1px solid var(--border); }
+    }
+  </style>
+</head>
+<body>
+  <div class="bg"></div>
+  <div class="grid"></div>
+
+  <!-- Nav -->
+  <nav>
+    <a href="#hero" class="nav-logo">
+      <img src="reyos-r-penguin.png" alt="ReyOS" />
+      ReyOS
+    </a>
+    <button class="nav-toggle" aria-label="Toggle menu" aria-expanded="false">☰</button>
+    <ul class="nav-links">
+      <li><a href="#features">Features</a></li>
+      <li><a href="#screenshots">Screenshots</a></li>
+      <li><a href="#status">Status</a></li>
+      <li><a href="#download">Download</a></li>
+      <li><a href="#install-guide">Install Guide</a></li>
+      <li><a href="#browser">Browser</a></li>
+      <li><a href="#wsl">WSL</a></li>
+      <li><a href="https://github.com/Reypaulino/ReyOS" target="_blank" rel="noopener">GitHub</a></li>
+      <li><a href="https://reyapps.com" class="nav-back">← reyapps.com</a></li>
+    </ul>
+  </nav>
+
+  <!-- Hero -->
+  <section id="hero">
+    <img class="hero-logo" src="reyos-r-penguin.png" alt="ReyOS logo" />
+    <h1>Rey<span class="dot">OS</span></h1>
+    <p class="tagline">A calm, dependable KDE desktop built to give older computers a second life.<br>Install it, use it, update it, and recover it — without fear.</p>
+    <div class="hero-actions">
+      <a href="#download" class="btn btn-primary">Download ISO</a>
+      <a href="#browser" class="btn btn-ghost">ReyOS Browser</a>
+      <a href="#status" class="btn btn-ghost">Known Issues</a>
+    </div>
+  </section>
+
+  <div class="section-divider"></div>
+
+  <!-- Features -->
+  <section id="features">
+    <div class="section-inner">
+      <p class="section-label">Features</p>
+      <h2 class="section-title">What's built in</h2>
+      <p class="section-desc">These ship with ReyOS by default — no extra installs, no separate accounts.</p>
+
+      <div class="cards-grid">
+        <div class="platform-card">
+          <div class="platform-icon">🎛️</div>
+          <div class="platform-name">Control Center</div>
+          <p class="platform-desc">One settings app instead of a dozen. Updates (atomic, read-only check first, with a pre-update Timeshift snapshot taken automatically), a Backup Center, a unified Security page (firewall, bring-your-own WireGuard VPN, Shields, permissions, opt-in USB device protection), CVE-tracked security updates, one-click NVIDIA driver install, network/Wi-Fi/sound/users, guarded permission repair, and live power &amp; performance tuning — including zram, systemd-oomd protection, and adaptive preload for faster everyday responsiveness and boot-time follow-through — organized as Home, Essentials, and Advanced.</p>
+        </div>
+        <div class="platform-card">
+          <div class="platform-icon">🛠️</div>
+          <div class="platform-name">System Tools</div>
+          <p class="platform-desc">A Midnight Copper terminal menu (<code>reyos-tools</code>) for the stuff you'd otherwise have to Google: safe package updates, firewall rules, CPU/swap tuning, zram and swappiness controls, home-only permission fixes, and network &amp; disk info.</p>
+        </div>
+        <div class="platform-card">
+          <div class="platform-icon">🌐</div>
+          <div class="platform-name">Web</div>
+          <p class="platform-desc">ReyOS Browser is private by default — session-only, no history, no accounts — with ad/tracker Shields on out of the box, a maintained filter list you can refresh anytime, and a reader mode for cleaner articles. <a href="#browser" style="color:var(--copper-light);">More on the browser ↓</a></p>
+        </div>
+        <div class="platform-card">
+          <div class="platform-icon">📚</div>
+          <div class="platform-name">Reader</div>
+          <p class="platform-desc">ReyOS Reader is a native EPUB, PDF, and comic-book (CBZ/CBR) reader with a Kindle-style layout — for your books and manga without needing a browser tab or a third-party app.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="section-divider"></div>
+
+  <!-- Screenshots -->
+  <section id="screenshots">
+    <div class="section-inner">
+      <p class="section-label">Screenshots</p>
+      <h2 class="section-title">What it actually looks like</h2>
+      <p class="section-desc">Real captures from a fresh ReyOS-Test install — no mockups, no staged renders.</p>
+
+      <div class="screenshots-slider" aria-label="ReyOS screenshots slideshow">
+        <div class="slides">
+          <div class="screenshot-card active">
+            <img src="screenshots/desktop.png" alt="ReyOS desktop with the Midnight Copper wallpaper" loading="lazy" />
+            <p class="screenshot-caption">The desktop — KDE Plasma, Midnight Copper theme.</p>
+          </div>
+          <div class="screenshot-card">
+            <img src="screenshots/browser.png" alt="ReyOS Browser window open to the ReyOS start page" loading="lazy" />
+            <p class="screenshot-caption">ReyOS Browser — private by default, captured as a live app window.</p>
+          </div>
+          <div class="screenshot-card">
+            <img src="screenshots/toolbox-2.png" alt="ReyOS Toolbox terminal window" loading="lazy" style="object-fit: contain; background: #0b0b0b;" />
+            <p class="screenshot-caption">ReyOS Toolbox — the Midnight Copper terminal menu for system maintenance.</p>
+          </div>
+        </div>
+
+        <div class="slider-controls">
+          <button class="slider-btn" type="button" data-slide-nav="prev" aria-label="Previous screenshot">‹</button>
+          <button class="slider-btn" type="button" data-slide-nav="next" aria-label="Next screenshot">›</button>
+        </div>
+
+        <div class="slider-dots" aria-label="Choose screenshot">
+          <button class="slider-dot active" type="button" data-slide-to="0" aria-label="Show desktop screenshot"></button>
+          <button class="slider-dot" type="button" data-slide-to="1" aria-label="Show browser screenshot"></button>
+          <button class="slider-dot" type="button" data-slide-to="2" aria-label="Show toolbox screenshot"></button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="section-divider"></div>
+
+  <!-- Status -->
+  <section id="status">
+    <div class="section-inner">
+      <p class="section-label">Status</p>
+      <h2 class="section-title">What's ready, what's next</h2>
+      <p class="section-desc">ReyOS is being built and validated in the open, one fresh install at a time. Here's the honest state of things right now — nothing here is marketing gloss.</p>
+
+      <div class="status-grid">
+        <div class="status-card">
+          <div class="status-card-title">KDE Desktop</div>
+          <div class="status-row"><span class="status-dot live"></span> Working — KDE Plasma 6 on Wayland</div>
+        </div>
+        <div class="status-card">
+          <div class="status-card-title">Installer (Calamares)</div>
+          <div class="status-row"><span class="status-dot live"></span> Working — full installs verified end-to-end, repeatedly</div>
+        </div>
+        <div class="status-card">
+          <div class="status-card-title">Backup &amp; Recovery</div>
+          <div class="status-row"><span class="status-dot live"></span> Working — Timeshift snapshots + Backup Center</div>
+        </div>
+        <div class="status-card">
+          <div class="status-card-title">Firewall &amp; Security</div>
+          <div class="status-row"><span class="status-dot live"></span> Working — firewall, bring-your-own VPN, Shields, USB protection</div>
+        </div>
+        <div class="status-card">
+          <div class="status-card-title">Performance Tooling (zram, OOM protection, adaptive preload)</div>
+          <div class="status-row"><span class="status-dot live"></span> Working — live-verified</div>
+        </div>
+        <div class="status-card">
+          <div class="status-card-title">Public ISO Download</div>
+          <div class="status-row"><span class="status-dot live"></span> Published (2026.09.12)</div>
+        </div>
+        <div class="status-card">
+          <div class="status-card-title">ReyOS WSL</div>
+          <div class="status-row"><span class="status-dot wip"></span> Available, unverified on Windows</div>
+        </div>
+      </div>
+
+      <div class="known-issues">
+        <h3>KNOWN LIMITATIONS RIGHT NOW</h3>
+        <ul>
+          <li>The public ISO is out (2026.09.12) — download and checksums are in the Download section below. New since the last release: a "Looks" page in Control Center bundling a color palette, wallpaper set, and keyboard scheme into one switchable option (Copper and Slate to start), and ReyOS Reader now installs itself automatically instead of requiring a manual step. It also ships ReyOS Connect (KDE Connect + VPN remote access + Bluetooth + Remote Desktop); Remote Desktop's video/input hasn't been verified end-to-end on real hardware yet, only against a VM with a known display-acceleration limitation.</li>
+          <li>ReyOS Browser doesn't have a Windows build yet; only the built-in Linux browser exists today.</li>
+          <li>Not recommended as a daily-driver machine yet — best tried on spare hardware or a virtual machine.</li>
+          <li><a href="#wsl" style="color:var(--copper-light);">ReyOS WSL</a> — a separate, terminal-only build for Windows Subsystem for Linux — is downloadable now, but was only built and verified on Linux (a real Dev VM build run). It hasn't been installed on a real Windows 11 + WSL2 machine yet.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <div class="section-divider"></div>
+
+  <!-- Download -->
+  <section id="download">
+    <div class="section-inner">
+      <p class="section-label">Download</p>
+      <h2 class="section-title">Get ReyOS</h2>
+      <p class="section-desc">Published as a GitHub Release with SHA-256 checksums. The ISO (2.9GB) is split into two parts to fit GitHub's per-file size limit — download both and join them before use (steps below). Source is already public if you want to follow along.</p>
+
+      <div class="cards-grid">
+        <div class="platform-card">
+          <div class="platform-icon">💿</div>
+          <div class="platform-name">ReyOS ISO (2026.09.12)</div>
+          <p class="platform-desc">x86_64, KDE Plasma, Calamares installer, Midnight Copper theme. Includes ReyOS Connect for the first time.</p>
+          <a href="https://github.com/Reypaulino/ReyOS/releases/download/reyos-2026.09.12/reyos-2026.09.12-x86_64.iso.part1" class="btn btn-ghost" target="_blank" rel="noopener">Download Part 1 (1.7GB)</a>
+          <a href="https://github.com/Reypaulino/ReyOS/releases/download/reyos-2026.09.12/reyos-2026.09.12-x86_64.iso.part2" class="btn btn-ghost" target="_blank" rel="noopener">Download Part 2 (1.3GB)</a>
+          <p class="platform-subnote"><a href="https://github.com/Reypaulino/ReyOS/releases/tag/reyos-2026.09.12" target="_blank" rel="noopener">Release notes on GitHub</a> · <a href="#install-guide">See how installing works ↓</a></p>
+          <div class="install-note" style="margin-top:16px; text-align:left;">
+            <p style="margin-top:0;"><strong>After downloading both parts, join them into one file:</strong></p>
+            <p style="margin-bottom:4px;">Linux / macOS:</p>
+            <pre><code>cat reyos-2026.09.12-x86_64.iso.part1 reyos-2026.09.12-x86_64.iso.part2 > reyos-2026.09.12-x86_64.iso</code></pre>
+            <p style="margin-bottom:4px;">Windows (Command Prompt):</p>
+            <pre><code>copy /b reyos-2026.09.12-x86_64.iso.part1+reyos-2026.09.12-x86_64.iso.part2 reyos-2026.09.12-x86_64.iso</code></pre>
+          </div>
+        </div>
+        <div class="platform-card">
+          <div class="platform-icon">📦</div>
+          <div class="platform-name">Source Code</div>
+          <p class="platform-desc">Package sources, ISO build profile, and Calamares config — all public on GitHub.</p>
+          <a href="https://github.com/Reypaulino/ReyOS" class="btn btn-ghost" target="_blank" rel="noopener">View on GitHub</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="section-divider"></div>
+
+  <!-- Install Guide -->
+  <section id="install-guide">
+    <div class="section-inner">
+      <p class="section-label">Install Guide</p>
+      <h2 class="section-title">How installing ReyOS works</h2>
+      <p class="section-desc">Same steps as installing any Linux distro from a USB drive — the one extra step here is joining the two downloaded parts back into a single ISO first.</p>
+
+      <ol class="install-steps">
+        <li>
+          <div class="install-step-body">
+            <h4>Download both parts, join them, and verify the checksum</h4>
+            <p>Download <code>reyos-2026.09.12-x86_64.iso.part1</code> and <code>.part2</code> from the <a href="https://github.com/Reypaulino/ReyOS/releases/tag/reyos-2026.09.12" target="_blank" rel="noopener">GitHub Release</a>, then join them (Linux/macOS):</p>
+            <pre><code>cat reyos-2026.09.12-x86_64.iso.part1 reyos-2026.09.12-x86_64.iso.part2 > reyos-2026.09.12-x86_64.iso</code></pre>
+            <p>On Windows (Command Prompt):</p>
+            <pre><code>copy /b reyos-2026.09.12-x86_64.iso.part1+reyos-2026.09.12-x86_64.iso.part2 reyos-2026.09.12-x86_64.iso</code></pre>
+            <p>Then confirm the joined file wasn't corrupted:</p>
+            <pre><code>sha256sum reyos-2026.09.12-x86_64.iso</code></pre>
+            <p>Compare the result against <code>15badb74ee11a8093b838fd642f5673aac88180f05856a8a32716c0465d81cee</code> (also published with the release).</p>
+          </div>
+        </li>
+        <li>
+          <div class="install-step-body">
+            <h4>Write it to a USB drive (8GB or larger)</h4>
+            <p>On Linux, find your USB device first with <code>lsblk</code> — getting the device wrong will erase the wrong disk — then write the ISO directly to it:</p>
+            <pre><code>sudo dd if=reyos-2026.09.12-x86_64.iso of=/dev/sdX bs=4M status=progress oflag=sync</code></pre>
+            <p>Replace <code>/dev/sdX</code> with your actual USB device, not a partition like <code>/dev/sdX1</code>. Prefer a GUI? <a href="https://etcher.balena.io/" target="_blank" rel="noopener" style="color:var(--copper-light);">balenaEtcher</a> or <a href="https://www.ventoy.net/" target="_blank" rel="noopener" style="color:var(--copper-light);">Ventoy</a> work the same way on Linux, Windows, or macOS.</p>
+          </div>
+        </li>
+        <li>
+          <div class="install-step-body">
+            <h4>Boot from the USB drive</h4>
+            <p>Restart the target machine and open its boot menu — commonly <code>F12</code>, <code>F10</code>, <code>Esc</code>, or <code>Del</code> depending on the motherboard — and select the USB drive. ReyOS boots straight to a live desktop; nothing on the machine's disk is touched yet, so it's safe to just look around first.</p>
+          </div>
+        </li>
+        <li>
+          <div class="install-step-body">
+            <h4>Run the installer</h4>
+            <p>The Calamares installer opens automatically on the live desktop. Pick your language and keyboard layout, choose a disk (Erase Disk is the simplest option for a clean install), and create your user account.</p>
+          </div>
+        </li>
+        <li>
+          <div class="install-step-body">
+            <h4>Reboot into ReyOS</h4>
+            <p>Once the installer shows "All done.", remove the USB drive and reboot. First login lands on ReyOS Welcome to finish setup — pick software, and you're in.</p>
+          </div>
+        </li>
+      </ol>
+
+      <p class="install-note">This is the same install flow that's been run and verified on real test hardware for every build — a real Calamares install completing and booting into ReyOS was confirmed again on this exact ISO.</p>
+    </div>
+  </section>
+
+  <div class="section-divider"></div>
+
+  <!-- Browser -->
+  <section id="browser">
+    <div class="section-inner">
+      <p class="section-label">ReyOS Browser</p>
+      <h2 class="section-title">Private by default</h2>
+      <p class="section-desc">The browser built into ReyOS runs a private, session-only profile with no persistent history — Shields blocks ads/trackers, upgrades HTTP to HTTPS, strips tracking parameters from links, and randomizes your canvas/WebGL/audio fingerprint per site, all backed by a filter list you can refresh anytime. Plus a reader mode for cleaner articles, a KWallet-backed password manager, bookmark folders, and its own download manager. No extensions or accounts required.</p>
+
+      <ul style="max-width: 640px; margin: 18px 0 48px; padding-left: 20px; color: var(--muted); line-height: 1.8;">
+        <li><strong style="color:var(--text);">Ad/tracker blocking</strong> — a curated, refreshable domain blocklist, with a per-site on/off toggle.</li>
+        <li><strong style="color:var(--text);">HTTPS upgrade</strong> — HTTP requests redirect to HTTPS automatically when the site supports it.</li>
+        <li><strong style="color:var(--text);">Tracking-param stripping</strong> — <code>utm_*</code>, <code>fbclid</code>, <code>gclid</code>, and similar link-tracking params are removed from navigations.</li>
+        <li><strong style="color:var(--text);">Fingerprint randomization</strong> — canvas, WebGL, and audio outputs get subtle per-site noise, so trackers can't stitch together a stable device ID across sites. Noise resets every time you restart the browser.</li>
+        <li><strong style="color:var(--text);">Install any site as an app</strong> — turns the current page into its own launcher and chromeless window, with its own persistent sign-in so you stay logged in between launches, plus the same Shields and Low Memory Mode controls as the main browser.</li>
+      </ul>
+
+      <div class="cards-grid">
+        <div class="platform-card">
+          <div class="platform-icon">🐧</div>
+          <div class="platform-name">Linux</div>
+          <p class="platform-desc">Included by default on ReyOS. On Arch-based distros you build the package directly from the ReyOS source tree, not from the AUR; Ubuntu and Debian users can grab a ready-made <code>.deb</code> — see below.</p>
+          <p class="platform-subnote"><a href="#browser-build">Build it on your distro ↓</a></p>
+        </div>
+        <div class="platform-card">
+          <div class="platform-icon">🪟</div>
+          <div class="platform-name">Windows</div>
+          <p class="platform-desc">A Windows build is in development and not yet available.</p>
+          <span class="btn btn-ghost btn-disabled">In Development</span>
+        </div>
+      </div>
+
+      <div id="browser-build" class="install-note" style="margin-top:28px;">
+        <p style="color:var(--text); font-weight:700; margin-bottom:10px;">Run ReyOS Browser outside ReyOS</p>
+        <p>The browser itself is cross-distro Qt/PySide code. On Arch-based systems, build the package directly from the ReyOS repo — not from the AUR. On Ubuntu or Debian, grab the ready-made <code>.deb</code> below.</p>
+
+        <p style="color:var(--text); font-weight:700; margin: 22px 0 10px;">Arch-based distros</p>
+        <p>It's a real package with no ReyOS-specific runtime dependencies. This is not an AUR install: <code>pyside6</code>, <code>qt6-webengine</code>, <code>qt6-webchannel</code>, <code>libnotify</code>, <code>kdialog</code>, and <code>python-secretstorage</code> are all in the official Arch Linux repos, so <code>makepkg</code> handles everything:</p>
+        <pre><code>git clone https://github.com/Reypaulino/ReyOS.git
+cd ReyOS/reyos-packages/reyos-browser
+makepkg -si</code></pre>
+        <p>Then launch it with <code>reyos-browser</code>. Works on Arch, CachyOS, Manjaro, EndeavourOS, or anything else built on <code>pacman</code>.</p>
+
+        <p style="color:var(--text); font-weight:700; margin: 22px 0 10px;">Ubuntu / Debian</p>
+        <p>A ready-made <code>amd64 .deb</code> is available on GitHub Releases. It bundles its own Python runtime (PySide6 + Qt WebEngine); <code>apt</code> pulls in the handful of system libraries QtWebEngine needs automatically:</p>
+        <pre><code>cd /tmp
+wget https://github.com/Reypaulino/ReyOS/releases/download/reyos-browser-v0.1.0-103ubuntu1/reyos-browser_0.1.0-103ubuntu1_amd64.deb
+sudo apt install ./reyos-browser_0.1.0-103ubuntu1_amd64.deb</code></pre>
+        <p>Then launch it from your app menu, or run <code>reyos-browser</code>.</p>
+        <a href="https://github.com/Reypaulino/ReyOS/releases/tag/reyos-browser-v0.1.0-103ubuntu1" class="btn btn-ghost">Download for Ubuntu/Debian (.deb)</a>
+      </div>
+    </div>
+  </section>
+
+  <div class="section-divider"></div>
+
+  <!-- WSL -->
+  <section id="wsl">
+    <div class="section-inner">
+      <p class="section-label">ReyOS WSL</p>
+      <h2 class="section-title">Develop on ReyOS without leaving Windows</h2>
+      <p class="section-desc">A lightweight Arch/ReyOS terminal environment for Windows Subsystem for Linux 2 — ReyOS development, package building, dependency/script testing, and general dev tooling from a Windows machine, no VM required. <strong style="color:var(--text);">It does not replace the ReyOS desktop ISO</strong>: no KDE Plasma, no installer, no bootloader, no hardware drivers — WSL2 supplies its own kernel and there's no desktop session to boot into.</p>
+
+      <div class="install-note" style="margin-bottom:32px;">
+        Built and verified with a real <code>pacstrap</code> run on the ReyOS Dev VM — three real bugs were found and fixed that way, not by guessing. It has <strong style="color:var(--text);">not</strong> yet been installed on a real Windows 11 + WSL2 machine, so treat the Windows-side steps below as untested until someone actually runs them.
+      </div>
+
+      <div class="cards-grid">
+        <div class="platform-card">
+          <div class="platform-icon">🪟</div>
+          <div class="platform-name">Windows (WSL2)</div>
+          <p class="platform-desc">x86_64, no kernel/bootloader/desktop bundled — Minimal profile by default, with Developer and ReyOS Developer profiles offered at first run.</p>
+          <a href="https://github.com/Reypaulino/ReyOS/releases/tag/reyos-wsl-v2026.09.02" class="btn btn-ghost" target="_blank" rel="noopener">Download ReyOS-WSL-x86_64.wsl</a>
+        </div>
+      </div>
+
+      <div class="install-note" style="margin-bottom:32px;">
+        <strong style="color:var(--text);">Before you start:</strong> WSL2 itself needs to already be set up on your machine. If <code>wsl --import</code> fails with something like <code>HCS_E_SERVICE_NOT_AVAILABLE</code>, run <code>wsl --install --no-distribution</code> as admin, restart, and confirm Task Manager → Performance → CPU shows "Virtualization: Enabled" (a BIOS/UEFI setting if not — Windows can't turn this on for you).
+      </div>
+
+      <ol class="install-steps" style="margin-top:40px;">
+        <li>
+          <div class="install-step-body">
+            <h4>Download and verify</h4>
+            <p>Grab <code>ReyOS-WSL-2026.09.02-x86_64.wsl</code> and its checksum from the GitHub Release above, then confirm it (PowerShell):</p>
+            <pre><code>Get-FileHash .\ReyOS-WSL-2026.09.02-x86_64.wsl -Algorithm SHA256</code></pre>
+            <p>Compare against the published <code>.sha256</code> file.</p>
+          </div>
+        </li>
+        <li>
+          <div class="install-step-body">
+            <h4>Install it</h4>
+            <p>Use <code>wsl --import</code>, not <code>wsl --install --from-file</code> — real-tested on Windows 11, <code>--from-file</code> fails with <code>error_file_not_found</code> against this artifact (it targets Microsoft's newer packaged <code>.wsl</code> format, not a plain rootfs tarball). <code>--import</code> takes three separate things: a distro name, a new empty folder for WSL's own use, and the file you actually downloaded — point that last one at wherever it landed (Downloads, here):</p>
+            <pre><code>wsl --import ReyOS $env:LOCALAPPDATA\ReyOS-WSL $env:USERPROFILE\Downloads\ReyOS-WSL-2026.09.02-x86_64.wsl
+wsl -d ReyOS</code></pre>
+          </div>
+        </li>
+        <li>
+          <div class="install-step-body">
+            <h4>First launch</h4>
+            <p>A setup wizard runs automatically on first login: pick a username and password, then choose Minimal, Developer (git, Python, Node.js, base-devel), or ReyOS Developer (adds the tools needed to actually build <code>reyos-*</code> packages — cmake, meson, ninja, Qt6 dev libs, and more).</p>
+          </div>
+        </li>
+        <li>
+          <div class="install-step-body">
+            <h4>Restart the distro once</h4>
+            <p>WSL only picks up your new default user after a restart:</p>
+            <pre><code>wsl -t ReyOS
+wsl -d ReyOS</code></pre>
+            <p>You're now in a ReyOS shell as your own user, with <code>sudo</code> and the ReyOS/CachyOS/Arch package repos configured.</p>
+          </div>
+        </li>
+      </ol>
+
+      <p class="install-note">Selected ReyOS GUI apps (like ReyOS Browser or ReyOS Reader) can launch through WSLg where your WSL/Windows version supports it — this hasn't been confirmed on real hardware yet. KDE Connect device pairing, Bluetooth, and hardware-dependent Control Center pages are not expected to work under WSL and aren't something this build tries to fake.</p>
+
+      <div id="wsl-build" class="install-note" style="margin-top:28px;">
+        <p style="color:var(--text); font-weight:700; margin-bottom:10px;">Build and run a real reyos-* package (e.g. ReyOS Browser)</p>
+        <p>First check whether GUI forwarding (WSLg) is actually available on this WSL/Windows version:</p>
+        <pre><code>echo $WAYLAND_DISPLAY $DISPLAY</code></pre>
+        <p>If both come back empty, there's no GUI forwarding here — CLI/build testing below still works fine, a window just won't appear. Either way, get the source and build:</p>
+        <pre><code>git clone https://github.com/Reypaulino/ReyOS.git
+cd ReyOS/reyos-packages/reyos-browser
+reyos-dev-test . --install --run reyos-browser</code></pre>
+        <p><code>reyos-dev-test</code> (built into the image) lints the PKGBUILD, runs a real <code>makepkg -sf</code> — pulling <code>pyside6</code>, <code>qt6-webengine</code>, <code>qt6-webchannel</code>, <code>kirigami</code>, and the rest straight from the official repos, no AUR — installs the result, then launches it if a real <code>$WAYLAND_DISPLAY</code> was found. Swap in any other <code>reyos-packages/&lt;name&gt;</code> directory to build something else.</p>
+      </div>
+    </div>
+  </section>
+
+  <div class="section-divider"></div>
+
+  <!-- Footer -->
+  <footer>
+    <span class="footer-logo">ReyOS</span>
+    <p>Built by Reynaldo Paulino &mdash; &copy; 2026 &nbsp;&middot;&nbsp; <a href="https://reyapps.com">reyapps.com</a></p>
+  </footer>
+  <script>
+    const navToggle = document.querySelector(".nav-toggle");
+    const navLinks = document.querySelector(".nav-links");
+    if (navToggle && navLinks) {
+      navToggle.addEventListener("click", () => {
+        const isOpen = navLinks.classList.toggle("open");
+        navToggle.setAttribute("aria-expanded", isOpen ? "true" : "false");
+      });
+      navLinks.querySelectorAll("a").forEach((a) => {
+        a.addEventListener("click", () => {
+          navLinks.classList.remove("open");
+          navToggle.setAttribute("aria-expanded", "false");
+        });
+      });
+    }
+
+    const slides = Array.from(document.querySelectorAll(".screenshot-card"));
+    const dots = Array.from(document.querySelectorAll(".slider-dot"));
+    const prevButton = document.querySelector('[data-slide-nav="prev"]');
+    const nextButton = document.querySelector('[data-slide-nav="next"]');
+    let currentSlide = 0;
+    let slideTimer;
+
+    function showSlide(index) {
+      currentSlide = (index + slides.length) % slides.length;
+
+      slides.forEach((slide, slideIndex) => {
+        slide.classList.toggle("active", slideIndex === currentSlide);
+      });
+
+      dots.forEach((dot, dotIndex) => {
+        dot.classList.toggle("active", dotIndex === currentSlide);
+      });
+    }
+
+    function restartSlider() {
+      window.clearInterval(slideTimer);
+      slideTimer = window.setInterval(() => {
+        showSlide(currentSlide + 1);
+      }, 5000);
+    }
+
+    prevButton.addEventListener("click", () => {
+      showSlide(currentSlide - 1);
+      restartSlider();
+    });
+
+    nextButton.addEventListener("click", () => {
+      showSlide(currentSlide + 1);
+      restartSlider();
+    });
+
+    dots.forEach((dot, index) => {
+      dot.addEventListener("click", () => {
+        showSlide(index);
+        restartSlider();
+      });
+    });
+
+    showSlide(0);
+    restartSlider();
+  </script>
+</body>
+</html>
