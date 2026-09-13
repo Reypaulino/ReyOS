@@ -2,6 +2,20 @@
 
 Real bugs found and fixed, with root cause. Newest first. See `bugs.md` for what's still open.
 
+## 2026-09-13 — reyos-browser: "Install this site as an app" (new feature, not a fix)
+
+New browser-menu item writes a real `.desktop` launcher (icon grabbed live from the page via QML `grabToImage`, `.desktop`'s `Exec=` correctly escaped against adversarial titles/URLs — verified with a title/URL containing `"`, `` ` ``, `$`, backslashes, and a newline) that reopens the page in a new chromeless `AppWindow.qml` mode (no tabs/address bar). Each installed app gets its **own persistent, disk-based `WebEngineProfile`** — a deliberate departure from the main browser's private/in-memory-only profile, since an "installed app" that forgets your login every launch would be pointless. User's explicit call: installed apps do **not** get the ReyOS password manager (no KWallet autofill/save prompts) — site-only session persistence, kept simple.
+
+Same session, user asked for feature parity with two specific main-browser controls: **Low Memory Mode** (the single `WebEngineView` freezes/discards using the same lifecycle states and 120s/480s timers as background tabs) and **Site Safety** (HTTPS status, Shields on/off + per-site override, blocked-request count) — both added as a small top-right header bar, the only chrome an app window has. User's follow-up refinement: freezing triggers only on actual `Window.Minimized`, not merely losing focus while still visible (narrower than tab-freezing, which triggers on "not the selected tab").
+
+One benign, self-correcting Qt WebEngine QML warning at startup ("Storage name is empty... Switching to disk-based behavior") from the declarative `WebEngineProfile { storageName: ... }` block — cosmetic, not a functional bug, not worth chasing (would need migrating to Qt 6.9's `WebEngineProfilePrototype`, unused elsewhere in this app).
+
+Verified at every step: Dev VM screenshots (chromeless window rendering, header bar with both buttons), and three separate clean `ubuntu:24.04` Docker container installs (one per iteration) confirming dependencies resolve and the process tree is healthy with no new QML errors.
+
+Published: Arch `reyos-browser` pkgrel 90 (`reyos-local` repo via `reyos-pages`), Ubuntu `reyos-browser-v0.1.0-105ubuntu1` (GitHub Release, old ones deleted per the one-release-per-product-line pattern). `reyos.reyapps.com` updated live on the Pi (new feature bullet, stale `.deb` version links 97→103 fixed, a leftover `kirigami` Arch-deps mention removed — already dropped from the real `PKGBUILD` 2026-09-10). The website's own source (previously living only on the Pi deploy target and an untracked local homepage repo) was brought into this repo under `website/`.
+
+Source committed to both `master` and `public-release`; **`public-release` itself is not yet pushed to `origin/main`** — that push was blocked by the coding agent's own safety classifier as a real public-facing action requiring explicit user confirmation, still pending as of this entry.
+
 ## 2026-09-12 — ReyOS Reader: paginated-EPUB bleed-through's real root cause, PDF find/highlight/annotations, and getting them to actually show up
 
 Long session, three real fixes worth remembering in detail — full writeup in `docs/reader.md`'s "Paginated EPUB reading mode" and "PDF find/highlight/annotations" sections; this is the short version.
