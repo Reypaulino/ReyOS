@@ -27,7 +27,7 @@ except ModuleNotFoundError:
     keyring = None
 
 from PySide6.QtCore import QFile, QIODevice, QObject, Property, QThread, QUrl, QUrlQuery, Signal, Slot
-from PySide6.QtGui import QIcon
+from PySide6.QtGui import QIcon, QImage
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtWebEngineCore import QWebEngineUrlRequestInfo, QWebEngineUrlRequestInterceptor
 from PySide6.QtWebEngineQuick import QQuickWebEngineProfile, QtWebEngineQuick
@@ -926,8 +926,27 @@ class BrowserBackend(QObject):
             stderr=subprocess.DEVNULL,
         )
 
-    @Slot(str, str, str, result=bool)
-    def installAsApp(self, url: str, title: str, icon_path: str) -> bool:
+    @staticmethod
+    def _fetch_icon_image(icon_url: str) -> QImage | None:
+        """Download a page's own declared icon link directly, bypassing Chromium's
+        internal favicon cache -- that cache silently downsamples icons for its own
+        tab-icon bookkeeping (confirmed live: a site's real 1024x1024 icon.png came
+        back as a soft, blurry image via WebEngineView.icon/grabToImage, while
+        fetching the same declared <link rel="icon"> URL directly was pixel-perfect).
+        """
+        try:
+            request = urllib.request.Request(icon_url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(request, timeout=5) as response:
+                data = response.read(8 * 1024 * 1024)
+        except (urllib.error.URLError, ValueError, OSError):
+            return None
+        image = QImage()
+        if not image.loadFromData(data) or image.isNull():
+            return None
+        return image
+
+    @Slot(str, str, str, str, result=bool)
+    def installAsApp(self, url: str, title: str, icon_path: str, icon_url: str) -> bool:
         """Write a .desktop launcher that reopens this page in its own chromeless window."""
         if IS_WINDOWS:
             self.notify("Install as App unavailable", "Installing sites as apps isn't supported on Windows yet.")
@@ -942,12 +961,19 @@ class BrowserBackend(QObject):
         icon_value = str(APP_DIR / "assets" / "reyos-r-penguin.png")
         try:
             WEBAPPS_DESKTOP_DIR.mkdir(parents=True, exist_ok=True)
+            fetched_icon = self._fetch_icon_image(icon_url) if icon_url else None
+            if fetched_icon is not None:
+                WEBAPPS_ICON_DIR.mkdir(parents=True, exist_ok=True)
+                dest_icon = WEBAPPS_ICON_DIR / f"{app_id}.png"
+                if fetched_icon.save(str(dest_icon), "PNG"):
+                    icon_value = str(dest_icon)
             source_icon = Path(icon_path) if icon_path else None
-            if source_icon is not None and source_icon.is_file() and source_icon.stat().st_size > 0:
+            if icon_value == str(APP_DIR / "assets" / "reyos-r-penguin.png") and source_icon is not None and source_icon.is_file() and source_icon.stat().st_size > 0:
                 WEBAPPS_ICON_DIR.mkdir(parents=True, exist_ok=True)
                 dest_icon = WEBAPPS_ICON_DIR / f"{app_id}.png"
                 shutil.copyfile(source_icon, dest_icon)
                 icon_value = str(dest_icon)
+            if source_icon is not None and source_icon.is_file():
                 try:
                     source_icon.unlink()
                 except OSError:

@@ -21,6 +21,7 @@ ApplicationWindow {
     property int findMatchCount: 0
     readonly property string downloadsPath: StandardPaths.writableLocation(StandardPaths.DownloadLocation).toString().replace(/^file:\/\//, "")
     readonly property url homeUrl: Qt.resolvedUrl("../home.html")
+    readonly property string iconLinkFinderScript: "(function() { function abs(href) { try { return new URL(href, document.baseURI).href } catch (e) { return '' } } var links = document.querySelectorAll('link[rel~=\"icon\"], link[rel=\"apple-touch-icon\"], link[rel=\"apple-touch-icon-precomposed\"]'); var best = ''; var bestSize = 0; for (var i = 0; i < links.length; i++) { var link = links[i]; var href = link.getAttribute('href'); if (!href) continue; var size = 32; var sizesAttr = link.getAttribute('sizes') || ''; var match = sizesAttr.match(/(\\d+)x\\d+/); if (match) { size = parseInt(match[1], 10) } else if ((link.getAttribute('rel') || '').indexOf('apple-touch-icon') !== -1) { size = 180 } if (size > bestSize) { bestSize = size; best = href } } return best ? abs(best) : '' })()"
 
     ListModel { id: tabs }
     ListModel { id: downloads }
@@ -193,6 +194,22 @@ ApplicationWindow {
 
     function openManageApps() {
         manageAppsDialog.open()
+    }
+
+    function confirmInstallApp(url, title) {
+        var view = currentView
+        if (!view) {
+            return
+        }
+        view.runJavaScript(iconLinkFinderScript, function(result) {
+            if (result && result.length > 0) {
+                browserBackend.installAsApp(url, title, "", result)
+            } else {
+                appIconGrabber.pageUrl = url
+                appIconGrabber.pageTitle = title
+                appIconGrabber.source = view.icon
+            }
+        })
     }
 
     function installCurrentAsApp() {
@@ -1277,10 +1294,10 @@ ApplicationWindow {
                     text: "Install"
                     enabled: installAppNameField.text.trim().length > 0
                     onClicked: {
-                        appIconGrabber.pageUrl = installAppNameDialog.pendingUrl
-                        appIconGrabber.pageTitle = installAppNameField.text.trim()
-                        appIconGrabber.source = currentView ? currentView.icon : ""
+                        var pendingUrl = installAppNameDialog.pendingUrl
+                        var pendingTitle = installAppNameField.text.trim()
                         installAppNameDialog.close()
+                        window.confirmInstallApp(pendingUrl, pendingTitle)
                     }
                 }
             }
@@ -1356,8 +1373,8 @@ ApplicationWindow {
         parent: window.contentItem
         x: -1000
         y: -1000
-        width: 256
-        height: 256
+        width: 128
+        height: 128
         fillMode: Image.PreserveAspectFit
         mipmap: true
         visible: true
@@ -1370,15 +1387,15 @@ ApplicationWindow {
             var url = pageUrl
             var title = pageTitle
             if (status === Image.Error) {
-                browserBackend.installAsApp(url, title, "")
+                browserBackend.installAsApp(url, title, "", "")
                 return
             }
             grabToImage(function(result) {
                 var tmpPath = StandardPaths.writableLocation(StandardPaths.TempLocation).toString().replace(/^file:\/\//, "") + "/reyos-webapp-icon-" + Date.now() + ".png"
                 if (result.saveToFile(tmpPath)) {
-                    browserBackend.installAsApp(url, title, tmpPath)
+                    browserBackend.installAsApp(url, title, tmpPath, "")
                 } else {
-                    browserBackend.installAsApp(url, title, "")
+                    browserBackend.installAsApp(url, title, "", "")
                 }
             })
         }
