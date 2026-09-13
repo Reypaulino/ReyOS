@@ -191,6 +191,10 @@ ApplicationWindow {
         }
     }
 
+    function openManageApps() {
+        manageAppsDialog.open()
+    }
+
     function installCurrentAsApp() {
         if (!currentView || isHomeUrl(currentView.url.toString())) {
             return
@@ -1283,6 +1287,70 @@ ApplicationWindow {
         }
     }
 
+    Dialog {
+        id: manageAppsDialog
+        title: "Installed Apps"
+        modal: true
+        width: 460
+        height: Math.min(480, window.height - 80)
+        anchors.centerIn: parent
+        padding: 18
+        background: Rectangle { color: "#302217"; border.color: "#8E5A2E"; border.width: 1; radius: 12 }
+        contentItem: ColumnLayout {
+            spacing: 10
+            Label {
+                visible: browserBackend.installedWebApps.length === 0
+                text: "No apps installed yet. Use \"Install this site as an app\" on any page to add one."
+                wrapMode: Text.Wrap
+                color: "#D7C1AA"
+                Layout.fillWidth: true
+            }
+            ScrollView {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+                ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+                contentWidth: availableWidth
+
+                ColumnLayout {
+                    width: parent.width
+                    spacing: 4
+                    Repeater {
+                        model: browserBackend.installedWebApps
+                        delegate: Rectangle {
+                            id: webAppEntry
+                            required property var modelData
+                            Layout.fillWidth: true
+                            implicitHeight: 60
+                            radius: 7
+                            color: "#211711"
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.margins: 9
+                                spacing: 10
+                                Image {
+                                    source: webAppEntry.modelData.icon ? Qt.resolvedUrl("file://" + webAppEntry.modelData.icon) : Qt.resolvedUrl("../assets/reyos-r-penguin.png")
+                                    sourceSize.width: 36
+                                    sourceSize.height: 36
+                                    Layout.preferredWidth: 36
+                                    Layout.preferredHeight: 36
+                                }
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 2
+                                    Label { text: webAppEntry.modelData.name; color: "#FFF3E6"; elide: Text.ElideRight; Layout.fillWidth: true }
+                                    Label { text: webAppEntry.modelData.comment; color: "#D7C1AA"; font.pixelSize: 11; elide: Text.ElideRight; Layout.fillWidth: true }
+                                }
+                                Button { text: "Remove"; onClicked: browserBackend.uninstallWebApp(webAppEntry.modelData.id) }
+                            }
+                        }
+                    }
+                }
+            }
+            Button { text: "Close"; Layout.alignment: Qt.AlignRight; onClicked: manageAppsDialog.close() }
+        }
+    }
+
     Image {
         id: appIconGrabber
         parent: window.contentItem
@@ -1465,6 +1533,22 @@ ApplicationWindow {
                 onClicked: {
                     browserMenu.close()
                     window.installCurrentAsApp()
+                }
+            }
+
+            Button {
+                id: manageAppsMenuButton
+                Layout.fillWidth: true
+                implicitHeight: 36
+                background: Rectangle { color: manageAppsMenuButton.hovered ? "#3B291C" : "transparent"; radius: 7 }
+                contentItem: RowLayout {
+                    spacing: 10
+                    Image { source: Qt.resolvedUrl("../icons/reyos-webapp.svg"); sourceSize.width: 20; sourceSize.height: 20; Layout.leftMargin: 10 }
+                    Label { text: "Manage installed apps"; color: "#FFF3E6"; font.pixelSize: 14; Layout.fillWidth: true }
+                }
+                onClicked: {
+                    browserMenu.close()
+                    manageAppsDialog.open()
                 }
             }
 

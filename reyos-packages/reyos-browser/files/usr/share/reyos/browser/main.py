@@ -431,6 +431,7 @@ class BrowserBackend(QObject):
     currentSiteShieldsChanged = Signal()
     searchEngineChanged = Signal()
     bookmarksChanged = Signal()
+    installedWebAppsChanged = Signal()
     passwordsChanged = Signal()
     bookmarkImportFinished = Signal(int, str)
     passwordImportFinished = Signal(int, str)
@@ -990,6 +991,63 @@ class BrowserBackend(QObject):
         except OSError:
             pass
         self.notify("App installed", f"{display_title} was added to your app launcher.")
+        self.installedWebAppsChanged.emit()
+        return True
+
+    @staticmethod
+    def _read_desktop_field(text: str, field: str) -> str:
+        prefix = f"{field}="
+        for line in text.splitlines():
+            if line.startswith(prefix):
+                return line[len(prefix):]
+        return ""
+
+    @Property("QVariantList", notify=installedWebAppsChanged)
+    def installedWebApps(self):
+        apps = []
+        if IS_WINDOWS or not WEBAPPS_DESKTOP_DIR.is_dir():
+            return apps
+        for desktop_path in sorted(WEBAPPS_DESKTOP_DIR.glob("reyos-webapp-*.desktop")):
+            try:
+                text = desktop_path.read_text(encoding="utf-8")
+            except OSError:
+                continue
+            apps.append(
+                {
+                    "id": desktop_path.stem,
+                    "name": self._read_desktop_field(text, "Name") or desktop_path.stem,
+                    "icon": self._read_desktop_field(text, "Icon"),
+                    "comment": self._read_desktop_field(text, "Comment"),
+                }
+            )
+        return apps
+
+    @Slot(str, result=bool)
+    def uninstallWebApp(self, app_id: str) -> bool:
+        if not re.fullmatch(r"reyos-webapp-[a-z0-9-]+", app_id or ""):
+            return False
+        desktop_path = WEBAPPS_DESKTOP_DIR / f"{app_id}.desktop"
+        icon_path = None
+        if desktop_path.is_file():
+            try:
+                icon_value = self._read_desktop_field(desktop_path.read_text(encoding="utf-8"), "Icon")
+                candidate = Path(icon_value) if icon_value else None
+                if candidate is not None and candidate.name.startswith("reyos-webapp-"):
+                    icon_path = candidate
+            except OSError:
+                pass
+            try:
+                desktop_path.unlink()
+            except OSError as error:
+                self.notify("Couldn't remove app", f"{app_id}: {error}")
+                return False
+        if icon_path is not None and icon_path.is_file():
+            try:
+                icon_path.unlink()
+            except OSError:
+                pass
+        self.installedWebAppsChanged.emit()
+        self.notify("App removed", "The installed app was removed from your app launcher.")
         return True
 
     @Slot(result=bool)
