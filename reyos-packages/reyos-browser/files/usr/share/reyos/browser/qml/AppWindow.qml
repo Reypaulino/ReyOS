@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Window
 import QtWebEngine
 
 ApplicationWindow {
@@ -13,8 +14,12 @@ ApplicationWindow {
     color: "#15110E"
     title: (view.lifecycleState === WebEngineView.LifecycleState.Frozen ? "❄ " : (view.lifecycleState === WebEngineView.LifecycleState.Discarded ? "◌ " : "")) + (view.title && view.title.length ? view.title : appTitle)
 
+    function isMinimized() {
+        return appWindow.visibility === Window.Minimized
+    }
+
     function updateLifecycle() {
-        if (!browserBackend.lowMemoryMode || appWindow.active) {
+        if (!browserBackend.lowMemoryMode || !isMinimized()) {
             lifecycleTimer.stop()
             view.lifecycleState = WebEngineView.LifecycleState.Active
             return
@@ -22,7 +27,7 @@ ApplicationWindow {
         lifecycleTimer.restart()
     }
 
-    onActiveChanged: updateLifecycle()
+    onVisibilityChanged: updateLifecycle()
     Component.onCompleted: updateLifecycle()
 
     Connections {
@@ -35,7 +40,7 @@ ApplicationWindow {
         interval: view.lifecycleState === WebEngineView.LifecycleState.Active ? 120000 : 480000
         repeat: false
         onTriggered: {
-            if (appWindow.active || !browserBackend.lowMemoryMode) {
+            if (!appWindow.isMinimized() || !browserBackend.lowMemoryMode) {
                 return
             }
             if (view.lifecycleState === WebEngineView.LifecycleState.Active) {
