@@ -2,6 +2,12 @@
 
 Real bugs found and fixed, with root cause. Newest first. See `bugs.md` for what's still open.
 
+## 2026-09-13 — reyos.reyapps.com: horizontal overflow on mobile
+
+User reported the site "did not look right" on a mobile device. Root cause: long unbroken strings in inline `<code>` tags (ISO filenames, a SHA256 hash, a `wget` URL) had no `word-break`/`overflow-wrap`, and sat inside a flex child (`.install-step-body`) with no `min-width` override — a classic flexbox overflow, where the flex item refuses to shrink below its min-content width and pushes the whole row (and page) wider than the viewport. Confirmed live, not guessed: rendered the site through `reyos-browser`'s own Chromium engine at a 390px window width, scrolled through the full page via injected `window.scrollTo()` calls plus `grabToImage()` screenshots at each step — found a real page-level horizontal scrollbar, not just the already-correctly-scoped per-code-block one.
+
+Fixed with two small, targeted rules: `overflow-wrap: anywhere` on the base `code` selector, and `min-width: 0` on `.install-step-body`. Re-verified the identical way: page-level overflow gone everywhere on the page, every code block now either wraps in place or scrolls within its own bounded box as intended.
+
 ## 2026-09-13 — reyos-browser: "Install this site as an app" (new feature, not a fix)
 
 New browser-menu item writes a real `.desktop` launcher (icon grabbed live from the page via QML `grabToImage`, `.desktop`'s `Exec=` correctly escaped against adversarial titles/URLs — verified with a title/URL containing `"`, `` ` ``, `$`, backslashes, and a newline) that reopens the page in a new chromeless `AppWindow.qml` mode (no tabs/address bar). Each installed app gets its **own persistent, disk-based `WebEngineProfile`** — a deliberate departure from the main browser's private/in-memory-only profile, since an "installed app" that forgets your login every launch would be pointless. User's explicit call: installed apps do **not** get the ReyOS password manager (no KWallet autofill/save prompts) — site-only session persistence, kept simple.
