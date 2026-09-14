@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import configparser
 import glob
 import grp
 import json
@@ -10,11 +11,23 @@ import sys
 import time
 from pathlib import Path
 
+try:
+    import setproctitle
+except ModuleNotFoundError:
+    setproctitle = None
+
 from PySide6.QtCore import QObject, Signal, Slot, QThread, QUrl, QTimer
 from PySide6.QtGui import QGuiApplication, QIcon
 from PySide6.QtQml import QQmlApplicationEngine
 
 APP_DIR = Path(__file__).resolve().parent
+LOOKS_DIR = Path("/usr/share/reyos/looks")
+
+# Bundled ReyOS apps dropped from the base ISO (kept optional to stay lean)
+# that "Update ReyOS Apps" should still backfill for anyone who skipped or
+# unchecked them in Welcome's first-login picker -- installed alongside
+# whatever's already-installed-and-upgradable, not just upgraded.
+REYOS_DEFAULT_APPS = ["reyos-reader"]
 
 PKG_ACTIONS = {
     "check":   (["sudo", "pacman", "-Sy"], None),
@@ -271,13 +284,19 @@ class PkgWorker(QThread):
                 reyos_pkgs = {line.split()[1] for line in repo_out.splitlines() if len(line.split()) >= 2}
                 upgradable_out = subprocess.run(["pacman", "-Qu"], capture_output=True, text=True).stdout
                 to_upgrade = [line.split()[0] for line in upgradable_out.splitlines() if line.split() and line.split()[0] in reyos_pkgs]
-                if not to_upgrade:
+
+                installed_out = subprocess.run(["pacman", "-Qq"], capture_output=True, text=True).stdout
+                installed = set(installed_out.split())
+                to_backfill = [p for p in REYOS_DEFAULT_APPS if p in reyos_pkgs and p not in installed]
+
+                to_install = to_upgrade + to_backfill
+                if not to_install:
                     self.finished_ok.emit(True, "ReyOS apps are already up to date.")
                     return
-                emit("Updating: " + ", ".join(to_upgrade))
+                emit("Updating: " + ", ".join(to_install))
                 _wait_for_pacman_lock(emit)
-                rc = _run(["sudo", "pacman", "-S", "--noconfirm"] + to_upgrade, emit)
-                self.finished_ok.emit(rc == 0, f"Updated {len(to_upgrade)} ReyOS app(s)." if rc == 0 else "Update failed.")
+                rc = _run(["sudo", "pacman", "-S", "--needed", "--noconfirm"] + to_install, emit)
+                self.finished_ok.emit(rc == 0, f"Updated {len(to_install)} ReyOS app(s)." if rc == 0 else "Update failed.")
             elif self.action == "clean":
                 orphans = subprocess.run(
                     ["pacman", "-Qtdq"], capture_output=True, text=True
@@ -683,15 +702,153 @@ class Backend(QObject):
         self._lookandfeel_worker = worker
         worker.start()
 
-    def _relaunch_self(self):
+    def _relaunch_self(self, page="AppearancePage.qml"):
         env = dict(os.environ)
-        env["REYOS_CC_INITIAL_PAGE"] = "AppearancePage.qml"
+        env["REYOS_CC_INITIAL_PAGE"] = page
         subprocess.Popen(
             [str(APP_DIR / "main.py")],
             env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             start_new_session=True,
         )
         QTimer.singleShot(300, QGuiApplication.quit)
+
+    @Slot(result="QVariantList")
+    def looksInfo(self):
+        current = None
+        try:
+            current = subprocess.check_output(
+                ["kreadconfig6", "--file", "kdeglobals", "--group", "General", "--key", "ColorScheme"],
+                text=True, stderr=subprocess.DEVNULL,
+            ).strip() or None
+        except (OSError, subprocess.CalledProcessError):
+            pass
+
+        looks = []
+        if not LOOKS_DIR.is_dir():
+            return looks
+        for look_dir in sorted(LOOKS_DIR.iterdir()):
+            colors_file = look_dir / "colors.colors"
+            if not look_dir.is_dir() or not colors_file.is_file():
+                continue
+            parser = configparser.ConfigParser(strict=False)
+            parser.read(colors_file)
+            scheme_id = parser.get("General", "ColorScheme", fallback=look_dir.name)
+            looks.append({
+                "id": look_dir.name,
+                "name": parser.get("General", "Name", fallback=look_dir.name.capitalize()),
+                "background": "#" + "".join(f"{int(c):02x}" for c in parser.get("Colors:Window", "BackgroundNormal", fallback="20,20,20").split(",")),
+                "accent": "#" + "".join(f"{int(c):02x}" for c in parser.get("Colors:Button", "DecorationFocus", fallback="100,100,100").split(",")),
+                "foreground": "#" + "".join(f"{int(c):02x}" for c in parser.get("Colors:Window", "ForegroundNormal", fallback="230,230,230").split(",")),
+                "active": scheme_id == current,
+            })
+        return looks
+
+    @Slot(str)
+    def applyLook(self, look_id):
+        def task(emit):
+            look_dir = LOOKS_DIR / look_id
+            colors_file = look_dir / "colors.colors"
+            if not colors_file.is_file():
+                return False, f"Unknown look: {look_id}"
+
+            # plasma-apply-colorscheme only resolves a registered scheme name
+            # (looked up under /usr/share/color-schemes or the user's local
+            # copy) -- a full path is accepted but silently reduced to its
+            # last path component, which fails to resolve. Every look's
+            # ColorScheme id is shipped there too for exactly this reason.
+            parser = configparser.ConfigParser(strict=False)
+            parser.read(colors_file)
+            scheme_id = parser.get("General", "ColorScheme", fallback=None)
+            if not scheme_id:
+                return False, f"Look '{look_id}' has no ColorScheme id."
+            rc = subprocess.run(["plasma-apply-colorscheme", scheme_id]).returncode
+
+            # reyos-icons' own branded overrides (the gear used for every
+            # "preferences-*"-style sidebar icon, among others) bake their
+            # accent in as a literal fill="#RRGGBB" -- a plain color-scheme
+            # switch never touches that file, so the gear stayed copper under
+            # every Look until this rewrites it to match. Anchored on
+            # mask="url(#gear-mask)" (unique to the branded rect) so the
+            # mask definition's own white/black fills are never touched.
+            accent_hex = parser.get("Colors:Button", "DecorationFocus", fallback=None)
+            if accent_hex:
+                accent_hex = "#" + "".join(f"{int(c):02x}" for c in accent_hex.split(","))
+                gear_pattern = re.compile(r'(fill="#[0-9A-Fa-f]{6}"(?=[^>]*mask="url\(#gear-mask\)"))')
+                # /usr/share/icons is root-owned -- writing there directly (as
+                # this process runs unprivileged) fails with EACCES. Stage the
+                # recolored files in /tmp, then a single "sudo cp" moves all
+                # three into place with one privilege prompt instead of three.
+                copies = []
+                for size in ("16", "32", "48"):
+                    gear_svg = Path(f"/usr/share/icons/ReyOS/apps/{size}/preferences-system.svg")
+                    if not gear_svg.is_file():
+                        continue
+                    text = gear_svg.read_text()
+                    new_text = gear_pattern.sub(f'fill="{accent_hex}"', text)
+                    if new_text == text:
+                        continue
+                    tmp = Path(f"/tmp/reyos-look-gear-{size}.svg")
+                    tmp.write_text(new_text)
+                    copies.append((tmp, gear_svg))
+                if copies:
+                    script = " && ".join(f"cp {tmp} {dest}" for tmp, dest in copies)
+                    subprocess.run(["sudo", "bash", "-c", script])
+                    for tmp, _ in copies:
+                        tmp.unlink(missing_ok=True)
+                subprocess.run(["kbuildsycoca6", "--noincremental"], capture_output=True)
+
+            wallpaper_dir = look_dir / "wallpaper"
+            if wallpaper_dir.is_dir():
+                subprocess.run([
+                    "qdbus6", "org.kde.plasmashell", "/PlasmaShell", "org.kde.PlasmaShell.evaluateScript",
+                    'var d = desktops();'
+                    'for (i = 0; i < d.length; i++) {'
+                    '    d[i].wallpaperPlugin = "org.kde.slideshow";'
+                    '    d[i].currentConfigGroup = ["Wallpaper", "org.kde.slideshow", "General"];'
+                    f'    d[i].writeConfig("SlidePaths", ["{wallpaper_dir}/"]);'
+                    '    d[i].writeConfig("SlideInterval", 1800);'
+                    '}'
+                ], capture_output=True)
+
+            # Every Look shares the same ReyOS keybinding scheme (SUPER-based
+            # workspace/window shortcuts) -- only the palette/wallpaper differ
+            # per look, so this file lives at LOOKS_DIR root, not per-look.
+            shortcuts_file = LOOKS_DIR / "shortcuts.conf"
+            if shortcuts_file.is_file():
+                for line in shortcuts_file.read_text().splitlines():
+                    line = line.strip()
+                    if not line or line.startswith("#") or "=" not in line:
+                        continue
+                    key_part, value = line.split("=", 1)
+                    component, _, action = key_part.partition(".")
+                    subprocess.run(["kwriteconfig6", "--file", "kglobalshortcutsrc",
+                                     "--group", component, "--key", action, value])
+                # Reloads kwin's own component only -- confirmed the same way
+                # apply_virtual_desktops() in reyos-apply-branding.sh notes
+                # config-file re-reads behave inconsistently for KWin, but this
+                # specific call is KWin's documented way to re-read
+                # kglobalshortcutsrc for its own global shortcuts.
+                subprocess.run(["qdbus6", "org.kde.KWin", "/KWin", "org.kde.KWin.reconfigure"], capture_output=True)
+
+            # Same lesson as applyLookAndFeel() above: plasmashell doesn't
+            # repaint panel/systray icons on its own just because kdeglobals
+            # changed underneath it -- a full restart is the only thing that
+            # reliably refreshed them in testing.
+            subprocess.run(["kquitapp6", "plasmashell"], capture_output=True)
+            subprocess.Popen(
+                ["kstart", "plasmashell"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+            return rc == 0, (f"{look_id.capitalize()} applied." if rc == 0 else "Failed to apply color scheme.")
+
+        worker = ActionWorker(task)
+        worker.finished_ok.connect(self.actionFinished.emit)
+        # Same reasoning as applyLookAndFeel()'s relaunch: this window's own
+        # chrome doesn't hot-reload on a live color-scheme switch.
+        worker.finished_ok.connect(lambda ok, _msg: ok and self._relaunch_self("LooksPage.qml"))
+        self._looks_worker = worker
+        worker.start()
 
     @Slot()
     def pickWallpaperImage(self):
@@ -2728,6 +2885,8 @@ class Backend(QObject):
 
 
 def main():
+    if setproctitle is not None:
+        setproctitle.setproctitle("reyos-control-center")
     app = QGuiApplication(sys.argv)
     app.setApplicationName("ReyOS Control Center")
     app.setDesktopFileName("reyos-control-center")

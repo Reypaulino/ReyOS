@@ -1,11 +1,11 @@
 # Maintainer: Rey Paulino
 pkgname=reyos-connect
 pkgver=1.0.0
-pkgrel=12
-pkgdesc="ReyOS Connect — unified device dashboard: KDE Connect (LAN), VPN remote access, and Bluetooth"
+pkgrel=14
+pkgdesc="ReyOS Connect — unified device dashboard: KDE Connect (LAN), VPN remote access, Bluetooth, and Sync/Migration"
 arch=('any')
 license=('MIT')
-depends=('kdeconnect' 'pyside6' 'kirigami' 'libnotify' 'bluez' 'bluez-utils')
+depends=('kdeconnect' 'pyside6' 'kirigami' 'libnotify' 'bluez' 'bluez-utils' 'syncthing' 'python-setproctitle')
 optdepends=('tailscale: Remote Access VPN backend'
             'wireguard-tools: Remote Access VPN backend (bring-your-own config, via Control Center)'
             'openssh: SSH Remote Terminal status/detection'

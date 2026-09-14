@@ -5,6 +5,11 @@ import subprocess
 import sys
 from pathlib import Path
 
+try:
+    import setproctitle
+except ModuleNotFoundError:
+    setproctitle = None
+
 APP_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(APP_DIR))
 
@@ -606,6 +611,8 @@ class Backend(QObject):
 
 def main():
     _setup_logging()
+    if setproctitle is not None:
+        setproctitle.setproctitle("reyos-connect")
     app = QGuiApplication(sys.argv)
     app.setApplicationName("ReyOS Connect")
     app.setDesktopFileName("org.reyos.Connect")

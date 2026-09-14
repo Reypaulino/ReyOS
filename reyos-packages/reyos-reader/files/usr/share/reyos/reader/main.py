@@ -6,6 +6,11 @@ import sys
 import traceback
 from pathlib import Path
 
+try:
+    import setproctitle
+except ModuleNotFoundError:
+    setproctitle = None
+
 APP_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(APP_DIR))
 
@@ -537,6 +542,9 @@ class Backend(QObject):
 def main():
     _setup_logging()
     register_epub_scheme()
+
+    if setproctitle is not None:
+        setproctitle.setproctitle("reyos-reader")
 
     QtWebEngineQuick.initialize()
     app = QApplication(sys.argv)
