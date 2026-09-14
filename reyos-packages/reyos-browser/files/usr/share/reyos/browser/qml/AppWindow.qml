@@ -16,12 +16,18 @@ ApplicationWindow {
 
     signal lifecycleActiveChanged(bool active)
 
+    property bool keepRunning: false
+
     function isMinimized() {
         return appWindow.visibility === Window.Minimized
     }
 
+    function canFreeze() {
+        return browserBackend.lowMemoryMode && isMinimized() && !keepRunning && !view.recentlyAudible
+    }
+
     function updateLifecycle() {
-        if (!browserBackend.lowMemoryMode || !isMinimized()) {
+        if (!canFreeze()) {
             lifecycleTimer.stop()
             view.lifecycleState = WebEngineView.LifecycleState.Active
             return
@@ -30,6 +36,7 @@ ApplicationWindow {
     }
 
     onVisibilityChanged: updateLifecycle()
+    onKeepRunningChanged: updateLifecycle()
     Component.onCompleted: updateLifecycle()
 
     Connections {
@@ -37,12 +44,17 @@ ApplicationWindow {
         function onLowMemoryChanged() { appWindow.updateLifecycle() }
     }
 
+    Connections {
+        target: view
+        function onRecentlyAudibleChanged() { appWindow.updateLifecycle() }
+    }
+
     Timer {
         id: lifecycleTimer
         interval: view.lifecycleState === WebEngineView.LifecycleState.Active ? 120000 : 480000
         repeat: false
         onTriggered: {
-            if (!appWindow.isMinimized() || !browserBackend.lowMemoryMode) {
+            if (!appWindow.canFreeze()) {
                 return
             }
             if (view.lifecycleState === WebEngineView.LifecycleState.Active) {
@@ -75,6 +87,20 @@ ApplicationWindow {
             contentItem: RowLayout {
                 spacing: 3
                 Item { Layout.fillWidth: true }
+                ToolButton {
+                    id: keepRunningButton
+                    icon.source: Qt.resolvedUrl("../icons/reyos-pin.svg")
+                    icon.width: 16
+                    icon.height: 16
+                    implicitWidth: 28
+                    implicitHeight: 28
+                    opacity: appWindow.keepRunning ? 1.0 : 0.5
+                    background: Rectangle { color: (appWindow.keepRunning || keepRunningButton.hovered) ? "#3B291C" : "transparent"; radius: 6 }
+                    onClicked: appWindow.keepRunning = !appWindow.keepRunning
+                    ToolTip.visible: hovered
+                    ToolTip.text: appWindow.keepRunning ? "Keep running: On — never freezes while minimized (e.g. music or a call)" : "Keep this app running in the background even when minimized"
+                    Accessible.name: "Keep app running in background"
+                }
                 ToolButton {
                     id: memoryButton
                     icon.source: Qt.resolvedUrl("../icons/reyos-memory.svg")

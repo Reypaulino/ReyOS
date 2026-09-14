@@ -39,6 +39,7 @@ if IS_WINDOWS:
 else:
     BROWSER_STATE_DIR = Path.home() / ".local" / "share" / "reyos-browser"
 PASSWORD_BLOCKLIST_PATH = BROWSER_STATE_DIR / "password-blocklist.json"
+SETTINGS_PATH = BROWSER_STATE_DIR / "settings.json"
 PASSWORD_AUTOFILL_SCRIPT_PATH = APP_DIR / "password-autofill.js"
 FINGERPRINT_PROTECTION_SCRIPT_PATH = APP_DIR / "fingerprint-protection.js"
 WEBAPPS_DESKTOP_DIR = Path.home() / ".local" / "share" / "applications"
@@ -464,7 +465,7 @@ class BrowserBackend(QObject):
         self._password_script_source = password_script_source
         self._fingerprint_script_source = load_fingerprint_protection_script_source(secrets.token_hex(16))
         self._password_bridge = PasswordBridge(self)
-        self._low_memory_mode = True
+        self._low_memory_mode = load_low_memory_mode()
         self._blocked_request_count = 0
         self._current_site = ""
         self._search_engine = "DuckDuckGo"
@@ -924,6 +925,7 @@ class BrowserBackend(QObject):
     @Slot()
     def toggleLowMemoryMode(self) -> None:
         self._low_memory_mode = not self._low_memory_mode
+        save_low_memory_mode(self._low_memory_mode)
         self.lowMemoryChanged.emit()
 
     @Slot(str, str)
@@ -1166,6 +1168,40 @@ def load_shields_meta() -> dict:
         return json.loads(SHIELDS_META_PATH.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return {}
+
+
+def load_low_memory_mode() -> bool:
+    """Shared default across the main browser and every installed-app process --
+    each runs as its own OS process with its own BrowserBackend, so this file is
+    the only thing that keeps "Low Memory Mode" feeling like one setting instead
+    of a dozen independent ones. Toggling it anywhere updates this file; other
+    already-open windows pick up the change the next time they launch, not live."""
+    try:
+        data = json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
+        if isinstance(data, dict) and isinstance(data.get("lowMemoryMode"), bool):
+            return data["lowMemoryMode"]
+    except (OSError, json.JSONDecodeError):
+        pass
+    return True
+
+
+def save_low_memory_mode(enabled: bool) -> None:
+    try:
+        SETTINGS_PATH.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        data = {}
+        try:
+            existing = json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
+            if isinstance(existing, dict):
+                data = existing
+        except (OSError, json.JSONDecodeError):
+            pass
+        data["lowMemoryMode"] = enabled
+        temp_path = SETTINGS_PATH.with_suffix(".tmp")
+        temp_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+        os.chmod(temp_path, 0o600)
+        os.replace(temp_path, SETTINGS_PATH)
+    except OSError:
+        pass
 
 
 def load_password_script_source() -> str:
