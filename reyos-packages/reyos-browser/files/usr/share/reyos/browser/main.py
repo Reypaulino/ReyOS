@@ -26,8 +26,8 @@ try:
 except ModuleNotFoundError:
     keyring = None
 
-from PySide6.QtCore import QFile, QIODevice, QObject, Property, QThread, QUrl, QUrlQuery, Signal, Slot
-from PySide6.QtGui import QIcon, QImage
+from PySide6.QtCore import QFile, QIODevice, QObject, Property, Qt, QThread, QUrl, QUrlQuery, Signal, Slot
+from PySide6.QtGui import QIcon, QImage, QPainter, QPixmap
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtWebEngineCore import QWebEngineUrlRequestInfo, QWebEngineUrlRequestInterceptor
 from PySide6.QtWebEngineQuick import QQuickWebEngineProfile, QtWebEngineQuick
@@ -370,6 +370,20 @@ def _webapp_id(url: str, title: str) -> str:
 def _quote_desktop_exec_arg(value: str) -> str:
     escaped = value.replace("\\", "\\\\").replace('"', '\\"').replace("`", "\\`").replace("$", "\\$")
     return f'"{escaped}"'
+
+
+def _dimmed_icon(icon: QIcon) -> QIcon:
+    """A faded copy of an icon, used as the taskbar icon while an app window
+    is frozen/discarded under Low Memory Mode, so the low-resource state is
+    visible at a glance without having to check the window title."""
+    source = icon.pixmap(256, 256)
+    dimmed = QPixmap(source.size())
+    dimmed.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(dimmed)
+    painter.setOpacity(0.35)
+    painter.drawPixmap(0, 0, source)
+    painter.end()
+    return QIcon(dimmed)
 
 
 def _normalized_csv_header(value: str) -> str:
@@ -1276,7 +1290,10 @@ def main():
         if profile is not None:
             profile.setUrlRequestInterceptor(interceptor)
         fallback_icon = QIcon.fromTheme("reyos-browser", QIcon(str(APP_DIR / "assets" / "reyos-r-penguin.png")))
-        window.setIcon(QIcon(app_icon) if app_icon and Path(app_icon).is_file() else fallback_icon)
+        active_icon = QIcon(app_icon) if app_icon and Path(app_icon).is_file() else fallback_icon
+        inactive_icon = _dimmed_icon(active_icon)
+        window.setIcon(active_icon)
+        window.lifecycleActiveChanged.connect(lambda active: window.setIcon(active_icon if active else inactive_icon))
         return app.exec()
 
     app.setApplicationName("ReyOS Browser")

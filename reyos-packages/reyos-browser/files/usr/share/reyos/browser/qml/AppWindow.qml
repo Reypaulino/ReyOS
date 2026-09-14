@@ -14,6 +14,8 @@ ApplicationWindow {
     color: "#15110E"
     title: (view.lifecycleState === WebEngineView.LifecycleState.Frozen ? "❄ " : (view.lifecycleState === WebEngineView.LifecycleState.Discarded ? "◌ " : "")) + (view.title && view.title.length ? view.title : appTitle)
 
+    signal lifecycleActiveChanged(bool active)
+
     function isMinimized() {
         return appWindow.visibility === Window.Minimized
     }
@@ -123,6 +125,7 @@ ApplicationWindow {
             settings.pdfViewerEnabled: true
             settings.pluginsEnabled: true
             onUrlChanged: browserBackend.setCurrentSite(url.toString())
+            onLifecycleStateChanged: appWindow.lifecycleActiveChanged(lifecycleState === WebEngineView.LifecycleState.Active)
         }
     }
 
