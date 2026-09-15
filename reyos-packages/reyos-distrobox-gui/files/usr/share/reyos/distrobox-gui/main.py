@@ -11,10 +11,26 @@ import sys
 from pathlib import Path
 
 from PySide6.QtCore import QObject, Signal, Slot, QThread, QUrl
-from PySide6.QtGui import QGuiApplication, QIcon
+from PySide6.QtGui import QColor, QGuiApplication, QIcon
 from PySide6.QtQml import QQmlApplicationEngine
 
 APP_DIR = Path(__file__).resolve().parent
+
+
+def _reyos_accent_color():
+    # ReyOSStyle.qml's accent used to be hardcoded to the copper default,
+    # so switching Looks (Control Center) never updated this app. kdeglobals
+    # only carries real Colors:Selection values after plasma-apply-colorscheme
+    # has run at least once; the copper default covers the pre-branding case.
+    try:
+        out = subprocess.run(
+            ["kreadconfig6", "--file", "kdeglobals", "--group", "Colors:Selection", "--key", "DecorationFocus"],
+            capture_output=True, text=True, timeout=2,
+        ).stdout.strip()
+        r, g, b = (int(x) for x in out.split(","))
+        return QColor(r, g, b)
+    except Exception:
+        return QColor("#C97932")
 
 # Common, well-known Docker Hub images -- distrobox works with any OCI
 # image, but a curated list is far friendlier than a blank text field for
@@ -241,6 +257,7 @@ def main():
 
     backend = Backend()
     engine.rootContext().setContextProperty("backend", backend)
+    engine.rootContext().setContextProperty("reyosAccentColor", _reyos_accent_color())
     engine.rootContext().setContextProperty("baseImages", BASE_IMAGES)
 
     qml_file = APP_DIR / "qml" / "Main.qml"

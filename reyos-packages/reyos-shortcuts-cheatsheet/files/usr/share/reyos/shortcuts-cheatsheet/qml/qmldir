@@ -1,0 +1,2 @@
+module ReyOSShortcutsCheatsheet
+singleton ReyOSStyle 1.0 ReyOSStyle.qml

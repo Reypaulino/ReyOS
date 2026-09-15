@@ -17,11 +17,28 @@ except ModuleNotFoundError:
     setproctitle = None
 
 from PySide6.QtCore import QObject, Signal, Slot, QThread, QUrl, QTimer
-from PySide6.QtGui import QGuiApplication, QIcon
+from PySide6.QtGui import QColor, QGuiApplication, QIcon
 from PySide6.QtQml import QQmlApplicationEngine
 
 APP_DIR = Path(__file__).resolve().parent
 LOOKS_DIR = Path("/usr/share/reyos/looks")
+
+
+def _reyos_accent_color():
+    # ReyOSStyle.qml's accent used to be hardcoded to the copper default, so
+    # switching Looks here never actually updated Control Center's own chrome
+    # until the next unrelated relaunch. kdeglobals only carries real
+    # Colors:Selection values after plasma-apply-colorscheme has run at least
+    # once; the copper default covers the pre-branding case.
+    try:
+        out = subprocess.run(
+            ["kreadconfig6", "--file", "kdeglobals", "--group", "Colors:Selection", "--key", "DecorationFocus"],
+            capture_output=True, text=True, timeout=2,
+        ).stdout.strip()
+        r, g, b = (int(x) for x in out.split(","))
+        return QColor(r, g, b)
+    except Exception:
+        return QColor("#C97932")
 
 # Bundled ReyOS apps dropped from the base ISO (kept optional to stay lean)
 # that "Update ReyOS Apps" should still backfill for anyone who skipped or
@@ -796,6 +813,45 @@ class Backend(QObject):
                     for tmp, _ in copies:
                         tmp.unlink(missing_ok=True)
                 subprocess.run(["kbuildsycoca6", "--noincremental"], capture_output=True)
+
+                # reyos-browser bakes its accent in as a literal hex too --
+                # the active-tab background in Main.qml and the search
+                # button in home.html -- neither follows a plain
+                # colorscheme switch. Anchored on each literal's own
+                # surrounding syntax (lookaround, like gear_pattern above)
+                # so the replacement is always the plain hex and this keeps
+                # working after a Look switch has already replaced
+                # "#C97932" with some other look's hex.
+                browser_patches = [
+                    (
+                        Path("/usr/share/reyos/browser/qml/Main.qml"),
+                        re.compile(r'(?<=tabButton\.checked \? ")#[0-9A-Fa-f]{6}(?=")'),
+                    ),
+                    (
+                        # home.html's other gradient stops use
+                        # background:radial-gradient(...)/linear-gradient(...),
+                        # not a literal background:#hex -- this only ever
+                        # matches the search button's fill.
+                        Path("/usr/share/reyos/browser/home.html"),
+                        re.compile(r'(?<=background:)#[0-9A-Fa-f]{6}'),
+                    ),
+                ]
+                copies = []
+                for src, pattern in browser_patches:
+                    if not src.is_file():
+                        continue
+                    text = src.read_text()
+                    new_text = pattern.sub(accent_hex, text)
+                    if new_text == text:
+                        continue
+                    tmp = Path(f"/tmp/reyos-look-browser-{src.name}")
+                    tmp.write_text(new_text)
+                    copies.append((tmp, src))
+                if copies:
+                    script = " && ".join(f"cp {tmp} {dest}" for tmp, dest in copies)
+                    subprocess.run(["sudo", "bash", "-c", script])
+                    for tmp, _ in copies:
+                        tmp.unlink(missing_ok=True)
 
             wallpaper_dir = look_dir / "wallpaper"
             if wallpaper_dir.is_dir():
@@ -2895,6 +2951,7 @@ def main():
     backend = Backend()
     app.aboutToQuit.connect(backend.stopStatsWorker)
     engine.rootContext().setContextProperty("backend", backend)
+    engine.rootContext().setContextProperty("reyosAccentColor", _reyos_accent_color())
     # Lets launchers (e.g. ReyOS Welcome's "Check for Updates" button) open
     # straight to a specific page instead of always landing on System Info.
     engine.rootContext().setContextProperty(

@@ -206,6 +206,7 @@ reyos-calamares
 reyos-terminal
 reyos-control-center
 reyos-control-center-gui
+reyos-shortcuts-cheatsheet
 reyos-distrobox-gui
 distrobox
 podman

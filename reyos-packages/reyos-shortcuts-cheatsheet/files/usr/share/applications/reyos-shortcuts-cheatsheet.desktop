@@ -1,0 +1,14 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=ReyOS Shortcuts
+GenericName=Keyboard Shortcuts Cheatsheet
+Comment=Show every keyboard shortcut currently bound on this system
+Exec=reyos-shortcuts-cheatsheet
+Icon=input-keyboard
+Terminal=false
+Categories=System;Utility;
+StartupNotify=true
+StartupWMClass=reyos-shortcuts-cheatsheet
+Keywords=shortcuts;keybindings;hotkeys;cheatsheet;keyboard;
+X-KDE-Shortcuts=Meta+/

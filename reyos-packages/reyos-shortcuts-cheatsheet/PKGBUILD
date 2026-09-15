@@ -1,0 +1,17 @@
+# Maintainer: Rey Paulino
+pkgname=reyos-shortcuts-cheatsheet
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="ReyOS Shortcuts — Meta+/ popup listing every keyboard shortcut currently bound on the system"
+arch=('any')
+license=('MIT')
+depends=('pyside6' 'kirigami')
+source=()
+sha256sums=()
+
+package() {
+    cp -a "$startdir/files/usr" "$pkgdir/"
+    find "$pkgdir/usr/share" -type f -exec chmod 644 {} \;
+    chmod 755 "$pkgdir/usr/bin/reyos-shortcuts-cheatsheet"
+    chmod 755 "$pkgdir/usr/share/reyos/shortcuts-cheatsheet/main.py"
+}

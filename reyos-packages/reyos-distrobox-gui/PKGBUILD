@@ -1,7 +1,7 @@
 # Maintainer: Rey Paulino
 pkgname=reyos-distrobox-gui
 pkgver=1.0.0
-pkgrel=4
+pkgrel=5
 pkgdesc="ReyOS Distrobox — native GUI to create, enter, and export apps from Linux distro containers"
 arch=('any')
 license=('MIT')

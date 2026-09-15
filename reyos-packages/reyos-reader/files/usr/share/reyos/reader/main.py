@@ -2,6 +2,7 @@
 import json
 import logging
 import re
+import subprocess
 import sys
 import traceback
 from pathlib import Path
@@ -15,7 +16,7 @@ APP_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(APP_DIR))
 
 from PySide6.QtCore import Property, QObject, QThread, QUrl, Qt, QTimer, Signal, Slot
-from PySide6.QtGui import QIcon
+from PySide6.QtGui import QColor, QIcon
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtWebEngineQuick import QtWebEngineQuick
 from PySide6.QtWidgets import QApplication
@@ -40,6 +41,24 @@ LOG_FILE = LOG_DIR / "reyos-reader.log"
 
 SUPPORTED_OPEN_FILTER = "Books and comics (*.epub *.pdf *.cbz *.cbr *.zip *.rar)"
 HIGHLIGHTER_SCRIPT_PATH = APP_DIR / "highlighter.js"
+
+
+def _reyos_accent_color():
+    # ReyOSStyle.qml's accent used to be hardcoded to the copper default,
+    # so switching Looks (Control Center) never updated this app. kdeglobals
+    # only carries real Colors:Selection values after plasma-apply-colorscheme
+    # has run at least once; the copper default covers the pre-branding case.
+    # Only the shell chrome's accent follows the look -- the sepia/dark/light
+    # reading-content themes below stay independent by design (docs/reader.md).
+    try:
+        out = subprocess.run(
+            ["kreadconfig6", "--file", "kdeglobals", "--group", "Colors:Selection", "--key", "DecorationFocus"],
+            capture_output=True, text=True, timeout=2,
+        ).stdout.strip()
+        r, g, b = (int(x) for x in out.split(","))
+        return QColor(r, g, b)
+    except Exception:
+        return QColor("#C97932")
 
 
 def load_highlighter_script_source():
@@ -584,6 +603,7 @@ def main():
     # exit releases the handle safely; every write already commits via its
     # own `with self._conn:` transaction, so there's nothing left to flush.
     engine.rootContext().setContextProperty("backend", backend)
+    engine.rootContext().setContextProperty("reyosAccentColor", _reyos_accent_color())
 
     engine.load(QUrl.fromLocalFile(str(APP_DIR / "qml" / "Main.qml")))
     if not engine.rootObjects():
