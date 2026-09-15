@@ -1,7 +1,7 @@
 # Maintainer: Rey Paulino
 pkgname=reyos-shortcuts-cheatsheet
 pkgver=1.0.0
-pkgrel=1
+pkgrel=2
 pkgdesc="ReyOS Shortcuts — Meta+/ popup listing every keyboard shortcut currently bound on the system"
 arch=('any')
 license=('MIT')
