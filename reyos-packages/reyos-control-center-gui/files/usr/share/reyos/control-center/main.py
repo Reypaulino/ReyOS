@@ -40,11 +40,15 @@ def _reyos_accent_color():
     except Exception:
         return QColor("#C97932")
 
-# Bundled ReyOS apps dropped from the base ISO (kept optional to stay lean)
-# that "Update ReyOS Apps" should still backfill for anyone who skipped or
-# unchecked them in Welcome's first-login picker -- installed alongside
-# whatever's already-installed-and-upgradable, not just upgraded.
-REYOS_DEFAULT_APPS = ["reyos-reader"]
+# reyos-* packages "Update ReyOS Apps" should always backfill onto an
+# already-installed system if missing -- installed alongside whatever's
+# already-installed-and-upgradable, not just upgraded. Two cases: apps
+# dropped from the base ISO (kept optional to stay lean) that a user may
+# have skipped/unchecked in Welcome's first-login picker (reyos-reader),
+# and new reyos-* packages.x86_64 additions that existing installs never
+# had a chance to install at all, since the package didn't exist yet at
+# their install time (reyos-shortcuts-cheatsheet, added 2026-09-15).
+REYOS_DEFAULT_APPS = ["reyos-reader", "reyos-shortcuts-cheatsheet"]
 
 PKG_ACTIONS = {
     "check":   (["sudo", "pacman", "-Sy"], None),
