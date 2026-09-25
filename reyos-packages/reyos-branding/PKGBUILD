@@ -1,7 +1,7 @@
 # Maintainer: Rey Paulino
 pkgname=reyos-branding
 pkgver=1.0.0
-pkgrel=4
+pkgrel=6
 pkgdesc="ReyOS branding compatibility package"
 arch=('any')
 license=('MIT')

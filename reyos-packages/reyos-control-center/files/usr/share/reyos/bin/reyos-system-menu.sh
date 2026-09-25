@@ -16,9 +16,25 @@
 # other row's, making the whole box's right edge visibly ragged.
 export LC_ALL=C.utf8
 
-# Midnight Copper terminal palette — true-color escape sequences work in Konsole.
-CYN=$'\033[1;38;2;201;121;50m'    # copper: borders and system actions
-YLW=$'\033[1;38;2;240;180;106m'    # copper highlight: prompts and attention
+# Accent tracks the active Look (Control Center > Looks), read fresh on every
+# launch -- kdeglobals only carries a real Colors:Selection value after
+# plasma-apply-colorscheme has run at least once, so this falls back to the
+# copper default (201,121,50) for the pre-branding case, same fallback used
+# by every GUI app's own _reyos_accent_color().
+_accent_rgb=$(kreadconfig6 --file kdeglobals --group Colors:Selection --key DecorationFocus 2>/dev/null)
+if [[ "$_accent_rgb" =~ ^[0-9]+,[0-9]+,[0-9]+$ ]]; then
+  IFS=',' read -r _ar _ag _ab <<< "$_accent_rgb"
+else
+  _ar=201; _ag=121; _ab=50
+fi
+# YLW is a lightened variant of the accent (prompts/attention need more
+# contrast against the dark background than a plain border does) -- offsets
+# below match copper's own CYN->YLW delta (+39,+59,+56), clamped to 255.
+_ylr=$(( _ar + 39 > 255 ? 255 : _ar + 39 ))
+_ylg=$(( _ag + 59 > 255 ? 255 : _ag + 59 ))
+_ylb=$(( _ab + 56 > 255 ? 255 : _ab + 56 ))
+CYN=$'\033[1;38;2;'"${_ar};${_ag};${_ab}"$'m'    # active-Look accent: borders and system actions
+YLW=$'\033[1;38;2;'"${_ylr};${_ylg};${_ylb}"$'m'  # lightened accent: prompts and attention
 GRN=$'\033[0;38;2;154;216;174m'    # success
 RED=$'\033[0;38;2;237;90;90m'     # warning/error
 WHT=$'\033[1;38;2;255;243;230m'   # ivory heading

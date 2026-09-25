@@ -794,12 +794,30 @@ class Backend(QObject):
             accent_hex = parser.get("Colors:Button", "DecorationFocus", fallback=None)
             if accent_hex:
                 accent_hex = "#" + "".join(f"{int(c):02x}" for c in accent_hex.split(","))
+                # Parsed once here so every patch below (gear/launcher icons,
+                # Konsole, fastfetch) can use plain r/g/b ints without each
+                # re-deriving them from accent_hex.
+                accent_r = int(accent_hex[1:3], 16)
+                accent_g = int(accent_hex[3:5], 16)
+                accent_b = int(accent_hex[5:7], 16)
                 gear_pattern = re.compile(r'(fill="#[0-9A-Fa-f]{6}"(?=[^>]*mask="url\(#gear-mask\)"))')
-                # /usr/share/icons is root-owned -- writing there directly (as
-                # this process runs unprivileged) fails with EACCES. Stage the
-                # recolored files in /tmp, then a single "sudo cp" moves all
-                # three into place with one privilege prompt instead of three.
-                copies = []
+                # /usr/share/icons (and /usr/share/reyos/browser below) are
+                # root-owned -- writing there directly (this process runs
+                # unprivileged) fails with EACCES. Every patch in this
+                # section only stages its recolored file under /tmp; a
+                # single sudo call to the fixed reyos-apply-look-icons.sh
+                # helper (below, after all staging is done) moves everything
+                # into place in one privileged step. A raw "sudo cp"/"sudo
+                # bash -c <built string>" was tried first and silently did
+                # nothing when triggered from a real GUI click -- no NOPASSWD
+                # rule covers arbitrary cp/bash -c (deliberately, per
+                # shellprocess_sudoers_reyos_menu.conf's own comments on why
+                # a wildcard cp/chown is never granted), and sudo has no
+                # controlling terminal to prompt for a password from a GUI
+                # subprocess, so it just failed with no visible error. The
+                # fixed-path helper script can get an exact-match NOPASSWD
+                # rule instead, same precedent as enable-multilib.sh.
+                any_staged = False
                 for size in ("16", "32", "48"):
                     gear_svg = Path(f"/usr/share/icons/ReyOS/apps/{size}/preferences-system.svg")
                     if not gear_svg.is_file():
@@ -808,15 +826,64 @@ class Backend(QObject):
                     new_text = gear_pattern.sub(f'fill="{accent_hex}"', text)
                     if new_text == text:
                         continue
-                    tmp = Path(f"/tmp/reyos-look-gear-{size}.svg")
-                    tmp.write_text(new_text)
-                    copies.append((tmp, gear_svg))
-                if copies:
-                    script = " && ".join(f"cp {tmp} {dest}" for tmp, dest in copies)
-                    subprocess.run(["sudo", "bash", "-c", script])
-                    for tmp, _ in copies:
-                        tmp.unlink(missing_ok=True)
-                subprocess.run(["kbuildsycoca6", "--noincremental"], capture_output=True)
+                    Path(f"/tmp/reyos-look-gear-{size}.svg").write_text(new_text)
+                    any_staged = True
+
+                # The Kickoff/taskbar app-launcher badge and every branded
+                # app icon (Control Center, Browser, Reader, Distrobox GUI)
+                # share the exact same two-stop-gradient badge template
+                # (only the inner glyph and, for the launcher/browser, the
+                # gradient's own <id> differ -- irrelevant here since the
+                # regex below matches the <stop> elements directly, not the
+                # id). All bake copper in as literal hex. Light stop uses
+                # the same +39/+59/+56 lightening already applied to
+                # reyos-system-menu.sh's YLW and reyos-terminal's Konsole
+                # Color3Intense, so this stays visually consistent with the
+                # rest of the accent family.
+                light_hex = "#" + "".join(
+                    f"{min(255, c + d):02x}" for c, d in zip((accent_r, accent_g, accent_b), (39, 59, 56))
+                )
+                # (svg_path, tmp_stem, also_render_png) -- only reyos-launcher
+                # also ships a competing fixed-size 256x256 PNG under the same
+                # icon name (confirmed live 2026-09-25: KDE's icon-theme
+                # resolution can prefer that PNG over this same-named
+                # scalable SVG for panel/taskbar contexts, so the SVG alone
+                # updating on disk didn't change the visible taskbar icon
+                # until a matching PNG was regenerated too). The other four
+                # ship SVG-only, so there's no competing raster to keep in
+                # sync -- rendering one for them would just add a fallback
+                # that never existed before, so they stay SVG-only.
+                app_icons = [
+                    ("/usr/share/icons/hicolor/scalable/apps/reyos-launcher.svg", "launcher", True),
+                    ("/usr/share/icons/hicolor/scalable/apps/reyos-control-center.svg", "control-center", False),
+                    ("/usr/share/icons/hicolor/scalable/apps/reyos-browser.svg", "browser", False),
+                    ("/usr/share/icons/hicolor/scalable/apps/reyos-reader.svg", "reader", False),
+                    ("/usr/share/icons/hicolor/scalable/apps/reyos-distrobox-gui.svg", "distrobox-gui", False),
+                ]
+                for svg_path, tmp_stem, also_render_png in app_icons:
+                    svg_file = Path(svg_path)
+                    if not svg_file.is_file():
+                        continue
+                    text = svg_file.read_text()
+                    new_text = re.sub(
+                        r'(?<=<stop stop-color=")#[0-9A-Fa-f]{6}(?=")', light_hex, text, count=1,
+                    )
+                    new_text = re.sub(
+                        r'(?<=<stop offset="1" stop-color=")#[0-9A-Fa-f]{6}(?=")', accent_hex, new_text, count=1,
+                    )
+                    if new_text == text:
+                        continue
+                    svg_tmp = Path(f"/tmp/reyos-look-{tmp_stem}.svg")
+                    svg_tmp.write_text(new_text)
+                    any_staged = True
+                    if also_render_png:
+                        # rsvg-convert needs no root, so it runs here rather
+                        # than in the sudo helper script.
+                        subprocess.run(
+                            ["rsvg-convert", "-w", "256", "-h", "256",
+                             "-o", f"/tmp/reyos-look-{tmp_stem}.png", str(svg_tmp)],
+                            capture_output=True,
+                        )
 
                 # reyos-browser bakes its accent in as a literal hex too --
                 # the active-tab background in Main.qml and the search
@@ -840,7 +907,6 @@ class Backend(QObject):
                         re.compile(r'(?<=background:)#[0-9A-Fa-f]{6}'),
                     ),
                 ]
-                copies = []
                 for src, pattern in browser_patches:
                     if not src.is_file():
                         continue
@@ -848,14 +914,80 @@ class Backend(QObject):
                     new_text = pattern.sub(accent_hex, text)
                     if new_text == text:
                         continue
-                    tmp = Path(f"/tmp/reyos-look-browser-{src.name}")
-                    tmp.write_text(new_text)
-                    copies.append((tmp, src))
-                if copies:
-                    script = " && ".join(f"cp {tmp} {dest}" for tmp, dest in copies)
-                    subprocess.run(["sudo", "bash", "-c", script])
-                    for tmp, _ in copies:
-                        tmp.unlink(missing_ok=True)
+                    Path(f"/tmp/reyos-look-browser-{src.name}").write_text(new_text)
+                    any_staged = True
+
+                if any_staged:
+                    subprocess.run(["sudo", "/usr/share/reyos/bin/reyos-apply-look-icons.sh"])
+
+                subprocess.run(["kbuildsycoca6", "--noincremental"], capture_output=True)
+
+                # reyos-terminal's Konsole profile bakes its accent in as a
+                # static [Color3]/[Color3Faint]/[Color3Intense] triple too
+                # (the yellow/prompt slot -- same slot reyos-system-menu.sh's
+                # own YLW derives from at launch). Unlike the browser/icon
+                # patches above, this file lives under the user's own home
+                # (~/.local/share/konsole), not a root-owned system path, so
+                # no sudo/tmp-stage dance is needed -- write it directly.
+                konsole_scheme = Path.home() / ".local" / "share" / "konsole" / "ReyOS.colorscheme"
+                if konsole_scheme.is_file():
+                    def _shade(r, g, b, delta):
+                        return ",".join(str(max(0, min(255, c + delta))) for c in (r, g, b))
+                    text = konsole_scheme.read_text()
+                    text = re.sub(
+                        r"(?<=\[Color3\]\nColor=)[0-9]+,[0-9]+,[0-9]+",
+                        f"{accent_r},{accent_g},{accent_b}", text,
+                    )
+                    text = re.sub(
+                        r"(?<=\[Color3Faint\]\nColor=)[0-9]+,[0-9]+,[0-9]+",
+                        _shade(accent_r, accent_g, accent_b, -80), text,
+                    )
+                    text = re.sub(
+                        r"(?<=\[Color3Intense\]\nColor=)[0-9]+,[0-9]+,[0-9]+",
+                        _shade(accent_r, accent_g, accent_b, 25), text,
+                    )
+                    konsole_scheme.write_text(text)
+
+                # fastfetch's ReyOS ASCII logo (shown on every new shell)
+                # bakes the same copper RGB into its raw true-color escape
+                # codes -- the tagline box itself is ivory (theme-invariant,
+                # matches WHT in reyos-system-menu.sh) and must be left
+                # alone. Matching on the specific copper value (like the
+                # Konsole patch's section-anchored regex) would only work
+                # once -- after the first Look switch the file no longer
+                # contains "201;121;50" at all, so this instead matches
+                # *any* "38;2;R;G;Bm" escape and skips whichever one is the
+                # ivory tagline color, so repeated switches keep working.
+                fastfetch_ascii = Path.home() / ".config" / "fastfetch" / "reyos-ascii.txt"
+                if fastfetch_ascii.is_file():
+                    ivory = (255, 243, 230)
+                    def _retarget_logo_color(m):
+                        r, g, b = int(m.group(1)), int(m.group(2)), int(m.group(3))
+                        if (r, g, b) == ivory:
+                            return m.group(0)
+                        return f"38;2;{accent_r};{accent_g};{accent_b}m"
+                    text = fastfetch_ascii.read_text()
+                    new_text = re.sub(
+                        r"38;2;([0-9]+);([0-9]+);([0-9]+)m", _retarget_logo_color, text,
+                    )
+                    if new_text != text:
+                        fastfetch_ascii.write_text(new_text)
+
+                # fastfetch's own info panel (the "user@host" title line and
+                # every "OS"/"Kernel"/"Uptime"/etc. label) is colored via
+                # config.jsonc's display.color.keys/title -- a bare
+                # "R;G;B"-style code, not a full escape sequence, and also
+                # hardcoded copper. Same file, no sudo needed.
+                fastfetch_config = Path.home() / ".config" / "fastfetch" / "config.jsonc"
+                if fastfetch_config.is_file():
+                    accent_code = f"38;2;{accent_r};{accent_g};{accent_b}"
+                    text = fastfetch_config.read_text()
+                    new_text = re.sub(
+                        r'("(?:keys|title)"\s*:\s*")38;2;[0-9]+;[0-9]+;[0-9]+(")',
+                        rf"\g<1>{accent_code}\g<2>", text,
+                    )
+                    if new_text != text:
+                        fastfetch_config.write_text(new_text)
 
             wallpaper_dir = look_dir / "wallpaper"
             if wallpaper_dir.is_dir():

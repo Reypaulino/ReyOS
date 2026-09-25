@@ -1,13 +1,13 @@
 # Maintainer: Rey Paulino
 pkgname=reyos-control-center-gui
 pkgver=1.0.0
-pkgrel=67
+pkgrel=74
 pkgdesc="ReyOS Control Center — Kirigami/QML GUI for updates, performance, network, disk and permissions"
 arch=('any')
 license=('MIT')
 depends=('reyos-control-center' 'reyos-looks' 'pyside6' 'kirigami' 'flatpak' 'kdialog' 'polkit' 'pciutils' 'ufw' 'bluez-utils' 'pipewire-pulse'
          'xorg-xinput' 'xorg-setxkbmap' 'xbindkeys' 'timeshift' 'wireguard-tools' 'usbguard' 'arch-audit'
-         'cups' 'sane' 'sane-airscan' 'xdg-utils' 'python-setproctitle')
+         'cups' 'sane' 'sane-airscan' 'xdg-utils' 'python-setproctitle' 'librsvg')
 source=()
 sha256sums=()
 
@@ -19,6 +19,7 @@ package() {
     find "$pkgdir/usr/local/share/applications" -type f -exec chmod 644 {} \;
     chmod 644 "$pkgdir/usr/share/polkit-1/actions/org.reyos.controlcenter.policy"
     chmod 755 "$pkgdir/usr/share/reyos/control-center/main.py"
+    chmod 755 "$pkgdir/usr/share/reyos/bin/reyos-apply-look-icons.sh"
     chmod 755 "$pkgdir/usr/share/reyos/control-center/reyos-fix-permissions.sh"
     chmod 755 "$pkgdir/usr/share/reyos/control-center/reyos-manage-users.sh"
 }

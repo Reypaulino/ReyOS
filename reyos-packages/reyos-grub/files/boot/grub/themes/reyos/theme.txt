@@ -1,10 +1,10 @@
 # ReyOS GRUB theme
-# Solid navy background with the ReyOS watermark logo centered in the
+# Solid background with the ReyOS watermark logo centered in the
 # upper half (same solid-color + centered-logo pattern as the Plasma
 # login splash) — the boot menu sits in the lower third to avoid it.
 
 title-text: ""
-desktop-color: "#0A1428"
+desktop-color: "#0e0e12"
 terminal-font: "Unifont Regular 16"
 
 + image {

@@ -1,0 +1,14 @@
+# Maintainer: Rey Paulino
+pkgname=reyos-looks
+pkgver=1.0.0
+pkgrel=2
+pkgdesc="ReyOS Looks — palette + wallpaper + keybinding bundles for Control Center's Looks page"
+arch=('any')
+license=('MIT')
+depends=('plasma-workspace')
+source=()
+sha256sums=()
+
+package() {
+    cp -a "$startdir/files/usr" "$pkgdir/"
+}

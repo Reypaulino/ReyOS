@@ -1,13 +1,13 @@
 # Maintainer: Rey Paulino
 pkgname=reyos-wallpapers
 pkgver=1.0.0
-pkgrel=14
+pkgrel=16
 pkgdesc="ReyOS default wallpaper set"
 arch=('any')
 license=('MIT')
 depends=()
 source=('reyos-wallpaper.jpg')
-sha256sums=('277f9476553264e80caf396956ac56c7e85f1c0df8c38bc42ff46f3e8d191c32')
+sha256sums=('2d92063b1acaffc1785e9e373ad6ea754d3055b281a46f5811974ef925d23008')
 
 package() {
     install -Dm644 "$srcdir/reyos-wallpaper.jpg" "$pkgdir/usr/share/backgrounds/reyos-wallpaper.jpg"

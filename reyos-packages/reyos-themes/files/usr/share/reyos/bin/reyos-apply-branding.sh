@@ -133,6 +133,11 @@ apply_panel_layout() {
 
 unlock_panel_layout() {
   qdbus6 org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript 'var e=panels(); for (var p=0; p<e.length; p++) { e[p].immutability=1; }' >/dev/null 2>&1
+  # reyos-edit-mode-guard.service polls editMode and forces it back off every
+  # 0.3s regardless of immutability, so unlocking immutability alone still
+  # leaves Plasma's Edit Mode toggle non-functional -- only stop the guard
+  # here, tied to this explicit opt-in, not unconditionally on every boot.
+  systemctl --user disable --now reyos-edit-mode-guard.service >/dev/null 2>&1
 }
 
 # Wait for Plasma's own first-run bootstrap to write a default panel before

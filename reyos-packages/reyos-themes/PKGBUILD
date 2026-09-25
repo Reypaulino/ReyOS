@@ -1,7 +1,7 @@
 # Maintainer: Rey Paulino
 pkgname=reyos-themes
 pkgver=1.0.0
-pkgrel=53
+pkgrel=55
 pkgdesc="ReyOS Global Theme, color scheme, editable panel/taskbar layout, virtual desktops, and shortcuts"
 arch=('any')
 license=('MIT')

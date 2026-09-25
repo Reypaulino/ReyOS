@@ -1,7 +1,7 @@
 # Maintainer: Rey Paulino
 pkgname=reyos-terminal
 pkgver=1.0.0
-pkgrel=10
+pkgrel=11
 pkgdesc="ReyOS terminal branding — fastfetch ASCII logo + system info, Midnight Copper Konsole color scheme"
 arch=('any')
 license=('MIT')

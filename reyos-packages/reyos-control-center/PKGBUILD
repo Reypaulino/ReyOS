@@ -1,7 +1,7 @@
 # Maintainer: Rey Paulino
 pkgname=reyos-control-center
 pkgver=1.0.0
-pkgrel=22
+pkgrel=23
 pkgdesc="ReyOS System Tools — terminal quick-launcher for system care, updates, network, and disk utilities"
 arch=('any')
 license=('MIT')

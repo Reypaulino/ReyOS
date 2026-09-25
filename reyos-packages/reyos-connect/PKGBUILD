@@ -1,7 +1,7 @@
 # Maintainer: Rey Paulino
 pkgname=reyos-connect
 pkgver=1.0.0
-pkgrel=14
+pkgrel=15
 pkgdesc="ReyOS Connect — unified device dashboard: KDE Connect (LAN), VPN remote access, Bluetooth, and Sync/Migration"
 arch=('any')
 license=('MIT')

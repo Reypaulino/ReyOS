@@ -21,3 +21,15 @@ AVAILABLE = "AVAILABLE"
 UNAVAILABLE = "UNAVAILABLE"
 NOT_TESTED = "NOT_TESTED"
 ERROR = "ERROR"
+
+# Sync folder / migration job states (spec's "Status" section) -- distinct
+# from the AVAILABLE/UNAVAILABLE capability-detection vocabulary above,
+# since a folder can be UP_TO_DATE one minute and SYNCING the next without
+# the underlying capability ever having changed.
+UP_TO_DATE = "UP_TO_DATE"
+SYNCING = "SYNCING"
+PAUSED = "PAUSED"
+OFFLINE = "OFFLINE"
+CONFLICT = "CONFLICT"
+SYNC_ERROR = "SYNC_ERROR"
+NOT_CONFIGURED = "NOT_CONFIGURED"
