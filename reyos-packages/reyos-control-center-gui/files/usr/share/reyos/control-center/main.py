@@ -906,12 +906,19 @@ class Backend(QObject):
                         re.compile(r'(?<=tabButton\.checked \? ")#[0-9A-Fa-f]{6}(?=")'),
                     ),
                     (
-                        # home.html's other gradient stops use
-                        # background:radial-gradient(...)/linear-gradient(...),
-                        # not a literal background:#hex -- this only ever
-                        # matches the search button's fill.
+                        # Anchored on ";color:white" (only the search button's
+                        # CSS rule uses that literal keyword -- everything
+                        # else in this file, including the form field right
+                        # next to it, uses a hex color) rather than the old
+                        # "background:#hex" lookbehind, which also matched
+                        # the form field's own background:#211711E8 -- caught
+                        # live-testing the palette patch below: that form
+                        # field was turning solid accent-colored on a Look
+                        # switch instead of staying a dark surface, since the
+                        # old pattern doesn't stop at 6 hex digits and simply
+                        # never noticed the field wasn't the button.
                         Path("/usr/share/reyos/browser/home.html"),
-                        re.compile(r'(?<=background:)#[0-9A-Fa-f]{6}'),
+                        re.compile(r'#[0-9A-Fa-f]{6}(?=;color:white)'),
                     ),
                 ]
                 for src, pattern in browser_patches:
@@ -919,6 +926,143 @@ class Backend(QObject):
                         continue
                     text = src.read_text()
                     new_text = pattern.sub(accent_hex, text)
+                    if src.name == "home.html":
+                        # The input field's and the form container's own
+                        # backgrounds get the same anchored treatment as the
+                        # button above rather than the value-diff approach
+                        # below -- confirmed live on the Dev VM that the OLD
+                        # over-broad "background:#hex" pattern had already
+                        # corrupted a real file with it: an earlier Violet
+                        # switch turned the button, the form container
+                        # (leaving its own alpha suffix intact, e.g.
+                        # "#a284e0E8"), AND the input field all solid violet
+                        # (should only ever have been the button). A
+                        # value-diff patch can't repair that -- it only
+                        # replaces a shade it can compute the *previous*
+                        # value of, and the corrupted violet doesn't match
+                        # what Copper's input/form should have looked like,
+                        # so it silently leaves both stuck violet forever. An
+                        # anchor doesn't care what's currently there.
+                        new_text = re.sub(
+                            r'#[0-9A-Fa-f]{6}(?=;color:#FFF3E6;font:inherit)',
+                            "#" + "".join(
+                                f"{max(0, min(255, c + d)):02X}"
+                                for c, d in ((accent_r, -153), (accent_g, -87), (accent_b, -27))
+                            ),
+                            new_text,
+                        )
+                        form_bg_shade = "#" + "".join(
+                            f"{max(0, min(255, c + d)):02X}"
+                            for c, d in ((accent_r, -168), (accent_g, -98), (accent_b, -33))
+                        )
+                        new_text = re.sub(
+                            r'#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?(?=;border:1px solid)',
+                            lambda m: form_bg_shade + (m.group(1) or ""),
+                            new_text,
+                        )
+                        # The rest -- the page's two glow gradients, its
+                        # base/mid background stops, and the form's own
+                        # border -- stays a value-diff patch, same as
+                        # Main.qml below: verified live these specific
+                        # literals were NOT touched by the corruption above
+                        # (only "background:" declarations were ever matched
+                        # by the old bug, never "border:"), so there's
+                        # nothing on this VM for a value-diff to fail to
+                        # find. Old accent is reverse-solved from the form
+                        # border (the CSS equivalent of
+                        # Main.qml's border.color anchor, same reasoning --
+                        # don't trust the button literal above to still be in
+                        # sync, same drift class already found once this
+                        # session), using the inverse of this list's last
+                        # delta, (-32,-15,3).
+                        old_match = re.search(r'border:1px solid #([0-9A-Fa-f]{6})', text)
+                        if old_match:
+                            border_r, border_g, border_b = (
+                                int(old_match.group(1)[0:2], 16),
+                                int(old_match.group(1)[2:4], 16),
+                                int(old_match.group(1)[4:6], 16),
+                            )
+                            old_r, old_g, old_b = (
+                                min(255, border_r + 32), min(255, border_g + 15), max(0, border_b - 3),
+                            )
+
+                            def _tint(r, g, b, dr, dg, db):
+                                return "#" + "".join(
+                                    f"{max(0, min(255, c + d)):02X}" for c, d in ((r, dr), (g, dg), (b, db))
+                                )
+
+                            for dr, dg, db in (
+                                (-94, -63, -21),    # top radial glow
+                                (-158, -98, -36),   # bottom radial glow
+                                (-190, -113, -43),  # page background, both gradient stops
+                                (-178, -105, -38),  # page background, middle gradient stop
+                                (-32, -15, 3),       # search form's border
+                            ):
+                                old_shade = _tint(old_r, old_g, old_b, dr, dg, db)
+                                new_shade = _tint(accent_r, accent_g, accent_b, dr, dg, db)
+                                if old_shade != new_shade:
+                                    new_text = new_text.replace(old_shade, new_shade)
+                    if src.name == "Main.qml":
+                        # The rest of the browser chrome -- every popup/dialog
+                        # border, hover/highlighted chip backgrounds, menu and
+                        # window backgrounds, the pinned-tab hover shade, and
+                        # the non-https padlock/label glow -- bakes the same
+                        # accent-derived palette in as more literal hex, but
+                        # none of it sits on syntax unique enough to anchor a
+                        # pattern on like the tab literal above (";hovered ? "
+                        # alone matches a dozen unrelated buttons). Every one
+                        # of these 8 shades is the same fixed per-channel
+                        # offset from the accent color, verified to reproduce
+                        # Main.qml's current Copper-look literals exactly, so
+                        # this derives what the *previous* accent must have
+                        # been and swaps every old-accent-derived shade for
+                        # its new-accent equivalent directly -- no per-role
+                        # anchor needed, and it keeps working after however
+                        # many prior Look switches. Deliberately reverse-solved
+                        # from border.color's own current value, NOT from the
+                        # tab literal above: live-tested on the Dev VM and
+                        # found the two can already be out of sync on a real
+                        # system (an earlier session's narrower two-spot patch
+                        # had moved the tab to one Look's accent while every
+                        # other literal, including border, was still whatever
+                        # it was before that -- deriving from the tab in that
+                        # state reverse-solved the wrong "previous accent" and
+                        # silently no-op'd every replacement below, since the
+                        # computed old shades didn't match anything actually
+                        # in the file). border.color reflects this palette's
+                        # own state, so it stays correct even if the tab drifts
+                        # independently of it again.
+                        old_match = re.search(r'border\.color: "#([0-9A-Fa-f]{6})"', text)
+                        if old_match:
+                            border_r, border_g, border_b = (
+                                int(old_match.group(1)[0:2], 16),
+                                int(old_match.group(1)[2:4], 16),
+                                int(old_match.group(1)[4:6], 16),
+                            )
+                            # inverse of this list's first delta, (-59,-31,-4)
+                            old_r, old_g, old_b = (
+                                min(255, border_r + 59), min(255, border_g + 31), min(255, border_b + 4),
+                            )
+
+                            def _tint(r, g, b, dr, dg, db):
+                                return "#" + "".join(
+                                    f"{max(0, min(255, c + d)):02X}" for c, d in ((r, dr), (g, dg), (b, db))
+                                )
+
+                            for dr, dg, db in (
+                                (-59, -31, -4),      # border -- every popup/dialog border + hairline divider
+                                (-142, -80, -22),    # hover/highlighted/checked-alt chip background
+                                (-153, -87, -27),    # popup/dialog/menu-item default background
+                                (-168, -98, -33),    # deepest background (tab strip, article view, root window)
+                                (-165, -95, -31),    # toolbar background
+                                (-180, -104, -36),   # root window background
+                                (-127, -69, -18),    # pinned ("keep alive") tab's own hover shade
+                                (39, 59, 56),         # non-https padlock / accent label text (same as light_hex)
+                            ):
+                                old_shade = _tint(old_r, old_g, old_b, dr, dg, db)
+                                new_shade = _tint(accent_r, accent_g, accent_b, dr, dg, db)
+                                if old_shade != new_shade:
+                                    new_text = new_text.replace(old_shade, new_shade)
                     if new_text == text:
                         continue
                     Path(f"/tmp/reyos-look-browser-{src.name}").write_text(new_text)
