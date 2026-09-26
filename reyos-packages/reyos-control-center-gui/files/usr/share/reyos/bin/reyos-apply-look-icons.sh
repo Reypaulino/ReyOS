@@ -17,6 +17,7 @@ copy_if_present() {
 copy_if_present /tmp/reyos-look-gear-16.svg /usr/share/icons/ReyOS/apps/16/preferences-system.svg
 copy_if_present /tmp/reyos-look-gear-32.svg /usr/share/icons/ReyOS/apps/32/preferences-system.svg
 copy_if_present /tmp/reyos-look-gear-48.svg /usr/share/icons/ReyOS/apps/48/preferences-system.svg
+copy_if_present /tmp/reyos-look-dolphin-48.svg /usr/share/icons/ReyOS/apps/48/org.kde.dolphin.svg
 copy_if_present /tmp/reyos-look-launcher.svg /usr/share/icons/hicolor/scalable/apps/reyos-launcher.svg
 copy_if_present /tmp/reyos-look-launcher.png /usr/share/icons/hicolor/256x256/apps/reyos-launcher.png
 copy_if_present /tmp/reyos-look-control-center.svg /usr/share/icons/hicolor/scalable/apps/reyos-control-center.svg
@@ -27,6 +28,7 @@ copy_if_present /tmp/reyos-look-browser-Main.qml /usr/share/reyos/browser/qml/Ma
 copy_if_present /tmp/reyos-look-browser-home.html /usr/share/reyos/browser/home.html
 
 rm -f /tmp/reyos-look-gear-16.svg /tmp/reyos-look-gear-32.svg /tmp/reyos-look-gear-48.svg \
+      /tmp/reyos-look-dolphin-48.svg \
       /tmp/reyos-look-launcher.svg /tmp/reyos-look-launcher.png \
       /tmp/reyos-look-control-center.svg /tmp/reyos-look-browser.svg \
       /tmp/reyos-look-reader.svg /tmp/reyos-look-distrobox-gui.svg \

@@ -784,13 +784,14 @@ class Backend(QObject):
                 return False, f"Look '{look_id}' has no ColorScheme id."
             rc = subprocess.run(["plasma-apply-colorscheme", scheme_id]).returncode
 
-            # reyos-icons' own branded overrides (the gear used for every
-            # "preferences-*"-style sidebar icon, among others) bake their
-            # accent in as a literal fill="#RRGGBB" -- a plain color-scheme
-            # switch never touches that file, so the gear stayed copper under
-            # every Look until this rewrites it to match. Anchored on
-            # mask="url(#gear-mask)" (unique to the branded rect) so the
-            # mask definition's own white/black fills are never touched.
+            # reyos-icons' own branded overrides -- the gear used for every
+            # "preferences-*"-style sidebar icon, and the folder-shaped
+            # Dolphin app icon -- bake their accent in as a literal
+            # fill="#RRGGBB" -- a plain color-scheme switch never touches
+            # these files, so they stayed copper under every Look until
+            # this rewrites them to match. Each is anchored on its own
+            # mask id (unique to the branded rect) so the mask definition's
+            # own white/black fills are never touched.
             accent_hex = parser.get("Colors:Button", "DecorationFocus", fallback=None)
             if accent_hex:
                 accent_hex = "#" + "".join(f"{int(c):02x}" for c in accent_hex.split(","))
@@ -800,7 +801,6 @@ class Backend(QObject):
                 accent_r = int(accent_hex[1:3], 16)
                 accent_g = int(accent_hex[3:5], 16)
                 accent_b = int(accent_hex[5:7], 16)
-                gear_pattern = re.compile(r'(fill="#[0-9A-Fa-f]{6}"(?=[^>]*mask="url\(#gear-mask\)"))')
                 # /usr/share/icons (and /usr/share/reyos/browser below) are
                 # root-owned -- writing there directly (this process runs
                 # unprivileged) fails with EACCES. Every patch in this
@@ -818,15 +818,22 @@ class Backend(QObject):
                 # fixed-path helper script can get an exact-match NOPASSWD
                 # rule instead, same precedent as enable-multilib.sh.
                 any_staged = False
-                for size in ("16", "32", "48"):
-                    gear_svg = Path(f"/usr/share/icons/ReyOS/apps/{size}/preferences-system.svg")
-                    if not gear_svg.is_file():
+                masked_icons = [
+                    ("gear-mask", "/usr/share/icons/ReyOS/apps/16/preferences-system.svg", "gear-16"),
+                    ("gear-mask", "/usr/share/icons/ReyOS/apps/32/preferences-system.svg", "gear-32"),
+                    ("gear-mask", "/usr/share/icons/ReyOS/apps/48/preferences-system.svg", "gear-48"),
+                    ("folder-mask", "/usr/share/icons/ReyOS/apps/48/org.kde.dolphin.svg", "dolphin-48"),
+                ]
+                for mask_id, svg_path, tmp_stem in masked_icons:
+                    svg_file = Path(svg_path)
+                    if not svg_file.is_file():
                         continue
-                    text = gear_svg.read_text()
-                    new_text = gear_pattern.sub(f'fill="{accent_hex}"', text)
+                    pattern = re.compile(rf'(fill="#[0-9A-Fa-f]{{6}}"(?=[^>]*mask="url\(#{mask_id}\)"))')
+                    text = svg_file.read_text()
+                    new_text = pattern.sub(f'fill="{accent_hex}"', text)
                     if new_text == text:
                         continue
-                    Path(f"/tmp/reyos-look-gear-{size}.svg").write_text(new_text)
+                    Path(f"/tmp/reyos-look-{tmp_stem}.svg").write_text(new_text)
                     any_staged = True
 
                 # The Kickoff/taskbar app-launcher badge and every branded
