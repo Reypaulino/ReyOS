@@ -2,6 +2,15 @@
 
 Real bugs found and fixed, with root cause. Newest first. See `bugs.md` for what's still open.
 
+## 2026-09-26 — reyos-browser: home page glow made neutral gray instead of accent-tinted (design change, user-requested)
+
+After the two fixes directly below made the New Tab page's background gradient follow the active Look's accent (so Violet's glow rendered purple, Slate's blue, etc.), the user reviewed it and preferred the two radial glow highlights be a fixed neutral gray instead of tinting per Look, across every Look, not just Violet — a deliberate design choice, not a bug.
+
+Changed `home.html`'s two glow colors from `#6B3A1D`/`#2B170E` (Copper's own warm-brown literals, previously the *source* both other colors and every Look's accent-derived shade were computed from) to fixed neutral grays `#5A5A5A`/`#2E2E2E` — same two-tier brightness relationship as the original (bright top glow, dimmer bottom glow), just desaturated to R=G=B. Removed the corresponding two deltas, `(-94,-63,-21)` and `(-158,-98,-36)`, from `applyLook()`'s home.html value-diff loop (`reyos-control-center-gui/main.py`) so a Look switch no longer touches these two literals at all — they stay exactly as shipped, for every Look, forever, rather than being computed from the accent like the rest of the page (search form background/border, input field, button) still is.
+
+Verified locally: simulated the patch for both Violet's new accent and Slate's, confirmed `#5A5A5A`/`#2E2E2E` survive unchanged in both cases while the form/button/border still correctly track each Look's own accent, and confirmed the round trip (Copper → Slate → Copper) still reproduces the original file when the now-constant glow values are excluded from the comparison. Not yet packaged/published as of this entry.
+
+## 2026-09-26 — reyos-looks: the "Violet" Look was actually Slate with a different highlight color
 ## 2026-09-26 — reyos-looks: the "Violet" Look was actually Slate with a different highlight color
 
 User applied Violet from Looks on `ReyOS-Test` (a real install, after the browser Look-switch fix directly below had already been published) and reported the whole app rendered blue, not violet. Root cause, found by diffing `ReyOSViolet.colors` against `ReyOSSlate.colors`: **every single line was byte-identical between the two files except the accent color itself** (`64,156,196` → `162,132,224`) and the `[General]` name/id fields. Every background (`Colors:Button/Complementary/Header/Tooltip/View/Window` `BackgroundNormal`/`BackgroundAlternate`), every general text color (`ForegroundNormal`/`ForegroundInactive`/`ForegroundNeutral`), and the window-decoration colors (`[WM]` section) were unmodified Slate blue — Violet had been created by cloning Slate and only swapping the accent, never actually re-tinting the rest of the palette. Confirmed the ReyOS-specific duplicate (`reyos/looks/violet/colors.colors`, read by `applyLook()`) has the exact same issue, byte-identical to the KDE-format copy.

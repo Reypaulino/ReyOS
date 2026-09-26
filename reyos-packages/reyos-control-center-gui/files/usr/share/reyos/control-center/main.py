@@ -960,16 +960,15 @@ class Backend(QObject):
                             lambda m: form_bg_shade + (m.group(1) or ""),
                             new_text,
                         )
-                        # The rest -- the page's two glow gradients, its
-                        # base/mid background stops, and the form's own
-                        # border -- stays a value-diff patch, same as
-                        # Main.qml below: verified live these specific
-                        # literals were NOT touched by the corruption above
-                        # (only "background:" declarations were ever matched
-                        # by the old bug, never "border:"), so there's
-                        # nothing on this VM for a value-diff to fail to
-                        # find. Old accent is reverse-solved from the form
-                        # border (the CSS equivalent of
+                        # The rest -- the page's base/mid background stops
+                        # and the form's own border -- stays a value-diff
+                        # patch, same as Main.qml below: verified live these
+                        # specific literals were NOT touched by the
+                        # corruption above (only "background:" declarations
+                        # were ever matched by the old bug, never "border:"),
+                        # so there's nothing on this VM for a value-diff to
+                        # fail to find. Old accent is reverse-solved from the
+                        # form border (the CSS equivalent of
                         # Main.qml's border.color anchor, same reasoning --
                         # don't trust the button literal above to still be in
                         # sync, same drift class already found once this
@@ -992,8 +991,6 @@ class Backend(QObject):
                                 )
 
                             for dr, dg, db in (
-                                (-94, -63, -21),    # top radial glow
-                                (-158, -98, -36),   # bottom radial glow
                                 (-190, -113, -43),  # page background, both gradient stops
                                 (-178, -105, -38),  # page background, middle gradient stop
                                 (-32, -15, 3),       # search form's border
