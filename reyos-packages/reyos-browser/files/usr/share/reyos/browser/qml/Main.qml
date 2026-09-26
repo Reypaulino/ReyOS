@@ -13,7 +13,7 @@ ApplicationWindow {
     minimumHeight: 520
     visible: true
     title: currentView && currentView.title ? currentView.title + " — ReyOS Browser" : "ReyOS Browser"
-    color: "#15110E"
+    color: accentSurfaceWindow
 
     property var currentView: pages.itemAt(tabBar.currentIndex)
     property var downloadRequests: ({})
@@ -21,6 +21,28 @@ ApplicationWindow {
     property int findMatchCount: 0
     readonly property string downloadsPath: StandardPaths.writableLocation(StandardPaths.DownloadLocation).toString().replace(/^file:\/\//, "")
     readonly property url homeUrl: Qt.resolvedUrl("../home.html")
+
+    // The active Look's accent, and every shade derived from it, centralized
+    // here instead of scattered as literal hex through ~180 places in this
+    // file. applyLook() (reyos-control-center-gui) patches these 9
+    // declarations directly by name on a Look switch -- a flat per-channel
+    // RGB patch of scattered literals was tried first and needed four
+    // separate bug fixes in one session (wrong derivation source when the
+    // literals drifted out of sync with each other, hue collapsing toward
+    // blue for any accent Copper-shaped math didn't fit, over-broad matching
+    // corrupting an unrelated field, and floating-point rounding silently
+    // breaking the match). A single named property per role has none of
+    // those failure modes: QML's own binding system propagates one change
+    // to every usage, so there's nothing left to scan for or get out of sync.
+    readonly property color accentColor: "#C97932"          // the raw accent
+    readonly property color accentBorder: "#8E5B2E"          // every popup/dialog border + hairline divider
+    readonly property color accentSurfaceHover: "#3B2B1C"    // hover/highlighted/checked-alt chip background
+    readonly property color accentSurfaceRaised: "#302317"   // popup/dialog/menu-item default background
+    readonly property color accentSurfaceBase: "#211911"     // deepest background (tab strip, article view, root window)
+    readonly property color accentSurfaceToolbar: "#241B13"  // toolbar background
+    readonly property color accentSurfaceWindow: "#15110E"   // root window background
+    readonly property color accentHoverStrong: "#4A3420"     // pinned ("keep alive") tab's own hover shade
+    readonly property color accentGlow: "#F0A96A"             // non-https padlock / accent label text
     readonly property string iconLinkFinderScript: "(function() { function abs(href) { try { return new URL(href, document.baseURI).href } catch (e) { return '' } } var links = document.querySelectorAll('link[rel~=\"icon\"], link[rel=\"apple-touch-icon\"], link[rel=\"apple-touch-icon-precomposed\"]'); var best = ''; var bestSize = 0; for (var i = 0; i < links.length; i++) { var link = links[i]; var href = link.getAttribute('href'); if (!href) continue; var size = 32; var sizesAttr = link.getAttribute('sizes') || ''; var match = sizesAttr.match(/(\\d+)x\\d+/); if (match) { size = parseInt(match[1], 10) } else if ((link.getAttribute('rel') || '').indexOf('apple-touch-icon') !== -1) { size = 180 } if (size > bestSize) { bestSize = size; best = href } } return best ? abs(best) : '' })()"
 
     ListModel { id: tabs }
@@ -252,7 +274,7 @@ ApplicationWindow {
         var t = window.escapeReaderHtml(title)
         var u = window.escapeReaderHtml(sourceUrl)
         var body = window.escapeReaderHtml(text)
-        return "<!--reyos-reader-view--><!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Reader: " + t + "</title><style>:root{color-scheme:dark}body{margin:0;background:linear-gradient(145deg,#15110E,#241A13);color:#FFF3E6;font:19px/1.8 Georgia,serif}.shell{max-width:900px;margin:42px auto;padding:0 24px 72px}.mast{border:1px solid #8E5A2E;border-bottom:0;border-radius:18px 18px 0 0;padding:24px 34px 20px;background:linear-gradient(135deg,#3B291C,#302217)}.brand{font:700 13px system-ui,sans-serif;letter-spacing:1.2px;color:#F0B46A;text-transform:uppercase}.source{margin-top:9px;color:#F4D5A8;font:13px system-ui,sans-serif;word-break:break-all}article{background:#211711;border:1px solid #8E5A2E;border-radius:0 0 18px 18px;padding:34px;box-shadow:0 18px 52px #0008;white-space:pre-wrap}h1{font:700 37px/1.18 system-ui,sans-serif;letter-spacing:-.7px;color:#fff;margin:0}</style></head><body><main class=\"shell\"><header class=\"mast\"><div class=\"brand\">ReyOS Reader</div><h1>" + t + "</h1><div class=\"source\">" + u + "</div></header><article>" + body + "</article></main></body></html>"
+        return "<!--reyos-reader-view--><!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Reader: " + t + "</title><style>:root{color-scheme:dark}body{margin:0;background:linear-gradient(145deg,#15110E,#241B13);color:#FFF3E6;font:19px/1.8 Georgia,serif}.shell{max-width:900px;margin:42px auto;padding:0 24px 72px}.mast{border:1px solid #8E5B2E;border-bottom:0;border-radius:18px 18px 0 0;padding:24px 34px 20px;background:linear-gradient(135deg,#3B2B1C,#302317)}.brand{font:700 13px system-ui,sans-serif;letter-spacing:1.2px;color:#F0A96A;text-transform:uppercase}.source{margin-top:9px;color:#F4D5A8;font:13px system-ui,sans-serif;word-break:break-all}article{background:#211911;border:1px solid #8E5B2E;border-radius:0 0 18px 18px;padding:34px;box-shadow:0 18px 52px #0008;white-space:pre-wrap}h1{font:700 37px/1.18 system-ui,sans-serif;letter-spacing:-.7px;color:#fff;margin:0}</style></head><body><main class=\"shell\"><header class=\"mast\"><div class=\"brand\">ReyOS Reader</div><h1>" + t + "</h1><div class=\"source\">" + u + "</div></header><article>" + body + "</article></main></body></html>"
     }
 
     function openReaderMode() {
@@ -395,7 +417,7 @@ ApplicationWindow {
                 address.focus = false
                 Qt.callLater(window.syncCurrentSite)
             }
-            background: Rectangle { color: "#211711" }
+            background: Rectangle { color: accentSurfaceBase }
 
             Repeater {
                 model: tabs
@@ -407,7 +429,7 @@ ApplicationWindow {
                     text: pageTitle.length > 22 ? pageTitle.slice(0, 21) + "…" : pageTitle
                     onClicked: tabBar.currentIndex = index
                     background: Rectangle {
-                        color: tabButton.checked ? "#C97932" : (tabButton.hovered ? "#3B291C" : "#211711")
+                        color: tabButton.checked ? accentColor : (tabButton.hovered ? accentSurfaceHover : accentSurfaceBase)
                         radius: 6
                     }
                     contentItem: RowLayout {
@@ -433,7 +455,7 @@ ApplicationWindow {
                             implicitHeight: 26
                             opacity: tabButton.keepAlive ? 1.0 : 0.75
                             background: Rectangle {
-                                color: keepAliveButton.hovered ? "#4A3420" : (tabButton.keepAlive ? "#3B291C" : "transparent")
+                                color: keepAliveButton.hovered ? accentHoverStrong : (tabButton.keepAlive ? accentSurfaceHover : "transparent")
                                 radius: 6
                             }
                             onClicked: tabs.setProperty(tabButton.index, "keepAlive", !tabButton.keepAlive)
@@ -455,7 +477,7 @@ ApplicationWindow {
                 implicitWidth: 48
                 implicitHeight: 38
                 palette.buttonText: "#FFFFFF"
-                background: Rectangle { color: parent.hovered ? "#3B291C" : "transparent"; radius: 6 }
+                background: Rectangle { color: parent.hovered ? accentSurfaceHover : "transparent"; radius: 6 }
                 onClicked: window.addTab()
             }
         }
@@ -463,7 +485,7 @@ ApplicationWindow {
         ToolBar {
             Layout.fillWidth: true
             implicitHeight: 46
-            background: Rectangle { color: "#302217" }
+            background: Rectangle { color: accentSurfaceRaised }
             contentItem: RowLayout {
                 spacing: 3
 
@@ -476,7 +498,7 @@ ApplicationWindow {
                     implicitHeight: 42
                     enabled: currentView && currentView.canGoBack
                     opacity: enabled ? 1.0 : 0.5
-                    background: Rectangle { color: backButton.hovered ? "#3B291C" : "transparent"; radius: 8 }
+                    background: Rectangle { color: backButton.hovered ? accentSurfaceHover : "transparent"; radius: 8 }
                     onClicked: currentView.goBack()
                     ToolTip.visible: hovered
                     ToolTip.text: "Back"
@@ -492,7 +514,7 @@ ApplicationWindow {
                     implicitHeight: 42
                     enabled: currentView && currentView.canGoForward
                     opacity: enabled ? 1.0 : 0.5
-                    background: Rectangle { color: forwardButton.hovered ? "#3B291C" : "transparent"; radius: 8 }
+                    background: Rectangle { color: forwardButton.hovered ? accentSurfaceHover : "transparent"; radius: 8 }
                     onClicked: currentView.goForward()
                     ToolTip.visible: hovered
                     ToolTip.text: "Forward"
@@ -506,7 +528,7 @@ ApplicationWindow {
                     icon.height: 20
                     implicitWidth: 38
                     implicitHeight: 42
-                    background: Rectangle { color: reloadButton.hovered ? "#3B291C" : "transparent"; radius: 8 }
+                    background: Rectangle { color: reloadButton.hovered ? accentSurfaceHover : "transparent"; radius: 8 }
                     onClicked: currentView.reload()
                     ToolTip.visible: hovered
                     ToolTip.text: "Reload"
@@ -533,7 +555,7 @@ ApplicationWindow {
                     implicitWidth: 38
                     implicitHeight: 42
                     opacity: currentView && browserBackend.isBookmarked(currentView.url.toString()) ? 1.0 : 0.72
-                    background: Rectangle { color: bookmarkButton.hovered ? "#3B291C" : "transparent"; radius: 8 }
+                    background: Rectangle { color: bookmarkButton.hovered ? accentSurfaceHover : "transparent"; radius: 8 }
                     onClicked: window.toggleBookmark()
                     ToolTip.visible: hovered
                     ToolTip.text: currentView && browserBackend.isBookmarked(currentView.url.toString()) ? "Remove bookmark" : "Bookmark this page"
@@ -548,7 +570,7 @@ ApplicationWindow {
                     implicitWidth: 38
                     implicitHeight: 42
                     opacity: window.readerIsActive() ? 0.72 : 1.0
-                    background: Rectangle { color: readerButton.hovered ? "#3B291C" : "transparent"; radius: 8 }
+                    background: Rectangle { color: readerButton.hovered ? accentSurfaceHover : "transparent"; radius: 8 }
                     onClicked: window.openReaderMode()
                     ToolTip.visible: hovered
                     ToolTip.text: window.readerIsActive() ? "Return to original page" : "Reader Mode"
@@ -562,7 +584,7 @@ ApplicationWindow {
                     icon.height: 20
                     implicitWidth: 38
                     implicitHeight: 42
-                    background: Rectangle { color: historyButton.hovered ? "#3B291C" : "transparent"; radius: 8 }
+                    background: Rectangle { color: historyButton.hovered ? accentSurfaceHover : "transparent"; radius: 8 }
                     onClicked: historyDialog.open()
                     ToolTip.visible: hovered
                     ToolTip.text: "Private session history"
@@ -577,7 +599,7 @@ ApplicationWindow {
                     implicitWidth: 38
                     implicitHeight: 42
                     opacity: browserBackend.lowMemoryMode ? 1.0 : 0.5
-                    background: Rectangle { color: memoryButton.hovered ? "#3B291C" : "transparent"; radius: 8 }
+                    background: Rectangle { color: memoryButton.hovered ? accentSurfaceHover : "transparent"; radius: 8 }
                     onClicked: browserBackend.toggleLowMemoryMode()
                     ToolTip.visible: hovered
                     ToolTip.text: browserBackend.lowMemoryMode ? "Low Memory Mode: On" : "Low Memory Mode: Off"
@@ -592,7 +614,7 @@ ApplicationWindow {
                     implicitWidth: 40
                     implicitHeight: 42
                     opacity: browserBackend.shieldsEnabled ? 1.0 : 0.5
-                    background: Rectangle { color: shieldsButton.hovered ? "#3B291C" : "transparent"; radius: 8 }
+                    background: Rectangle { color: shieldsButton.hovered ? accentSurfaceHover : "transparent"; radius: 8 }
                     onClicked: siteSafetyDialog.open()
                     ToolTip.visible: hovered
                     ToolTip.text: "Site Safety"
@@ -606,7 +628,7 @@ ApplicationWindow {
                     icon.height: 22
                     implicitWidth: 38
                     implicitHeight: 42
-                    background: Rectangle { color: browserMenuButton.hovered ? "#3B291C" : "transparent"; radius: 8 }
+                    background: Rectangle { color: browserMenuButton.hovered ? accentSurfaceHover : "transparent"; radius: 8 }
                     onClicked: browserMenu.open()
                     ToolTip.visible: hovered
                     ToolTip.text: "Browser menu"
@@ -620,8 +642,8 @@ ApplicationWindow {
             Layout.fillWidth: true
             implicitHeight: visible ? 42 : 0
             visible: browserBackend.bookmarks.length > 0
-            color: "#241A13"
-            border.color: "#8E5A2E"
+            color: accentSurfaceToolbar
+            border.color: accentBorder
             border.width: 0
 
             property var groupedBar: {
@@ -682,8 +704,8 @@ ApplicationWindow {
                                     implicitWidth: Math.min(220, bookmarkLabel.implicitWidth + 22)
                                     padding: 0
                                     background: Rectangle {
-                                        color: parent.hovered ? "#3B291C" : "#302217"
-                                        border.color: "#8E5A2E"
+                                        color: parent.hovered ? accentSurfaceHover : accentSurfaceRaised
+                                        border.color: accentBorder
                                         border.width: 1
                                         radius: 7
                                     }
@@ -708,8 +730,8 @@ ApplicationWindow {
                                 implicitHeight: 28
                                 padding: 0
                                 background: Rectangle {
-                                    color: folderChip.hovered || folderPopup.visible ? "#3B291C" : "#302217"
-                                    border.color: "#8E5A2E"
+                                    color: folderChip.hovered || folderPopup.visible ? accentSurfaceHover : accentSurfaceRaised
+                                    border.color: accentBorder
                                     border.width: 1
                                     radius: 7
                                 }
@@ -740,8 +762,8 @@ ApplicationWindow {
                                     modal: false
                                     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
                                     background: Rectangle {
-                                        color: "#302217"
-                                        border.color: "#8E5A2E"
+                                        color: accentSurfaceRaised
+                                        border.color: accentBorder
                                         border.width: 1
                                         radius: 10
                                     }
@@ -760,7 +782,7 @@ ApplicationWindow {
                                                     implicitHeight: 44
                                                     flat: true
                                                     background: Rectangle {
-                                                        color: parent.hovered ? "#3B291C" : "transparent"
+                                                        color: parent.hovered ? accentSurfaceHover : "transparent"
                                                         radius: 6
                                                     }
                                                     contentItem: ColumnLayout {
@@ -807,8 +829,8 @@ ApplicationWindow {
                     implicitWidth: 32
                     padding: 0
                     background: Rectangle {
-                        color: bookmarksOverflowButton.hovered ? "#3B291C" : "#302217"
-                        border.color: "#8E5A2E"
+                        color: bookmarksOverflowButton.hovered ? accentSurfaceHover : accentSurfaceRaised
+                        border.color: accentBorder
                         border.width: 1
                         radius: 7
                     }
@@ -840,8 +862,8 @@ ApplicationWindow {
         modal: false
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
         background: Rectangle {
-            color: "#302217"
-            border.color: "#8E5A2E"
+            color: accentSurfaceRaised
+            border.color: accentBorder
             border.width: 1
             radius: 12
         }
@@ -916,8 +938,8 @@ ApplicationWindow {
             return result
         }
         background: Rectangle {
-            color: "#302217"
-            border.color: "#8E5A2E"
+            color: accentSurfaceRaised
+            border.color: accentBorder
             border.width: 1
             radius: 12
         }
@@ -968,7 +990,7 @@ ApplicationWindow {
                                     Layout.fillWidth: true
                                     implicitHeight: 66
                                     radius: 7
-                                    color: "#211711"
+                                    color: accentSurfaceBase
                                     RowLayout {
                                         anchors.fill: parent
                                         anchors.margins: 9
@@ -1018,7 +1040,7 @@ ApplicationWindow {
         width: 360
         anchors.centerIn: parent
         padding: 18
-        background: Rectangle { color: "#302217"; border.color: "#8E5A2E"; border.width: 1; radius: 12 }
+        background: Rectangle { color: accentSurfaceRaised; border.color: accentBorder; border.width: 1; radius: 12 }
         contentItem: ColumnLayout {
             spacing: 14
             Label {
@@ -1061,8 +1083,8 @@ ApplicationWindow {
             importMessage = ""
         }
         background: Rectangle {
-            color: "#302217"
-            border.color: "#8E5A2E"
+            color: accentSurfaceRaised
+            border.color: accentBorder
             border.width: 1
             radius: 12
         }
@@ -1116,8 +1138,8 @@ ApplicationWindow {
                             required property string modelData
                             width: passwordsContent.width
                             radius: 8
-                            color: "#211711"
-                            border.color: "#8E5A2E"
+                            color: accentSurfaceBase
+                            border.color: accentBorder
                             border.width: 1
                             implicitHeight: passwordColumn.implicitHeight + 18
                             ColumnLayout {
@@ -1140,7 +1162,7 @@ ApplicationWindow {
                                         Layout.fillWidth: true
                                         implicitHeight: 52
                                         radius: 7
-                                        color: "#302217"
+                                        color: accentSurfaceRaised
                                         RowLayout {
                                             anchors.fill: parent
                                             anchors.margins: 8
@@ -1177,7 +1199,7 @@ ApplicationWindow {
         width: 360
         anchors.centerIn: parent
         padding: 18
-        background: Rectangle { color: "#302217"; border.color: "#8E5A2E"; border.width: 1; radius: 12 }
+        background: Rectangle { color: accentSurfaceRaised; border.color: accentBorder; border.width: 1; radius: 12 }
         contentItem: ColumnLayout {
             spacing: 14
             Label {
@@ -1208,7 +1230,7 @@ ApplicationWindow {
         width: 450
         anchors.centerIn: parent
         padding: 18
-        background: Rectangle { color: "#302217"; border.color: "#8E5A2E"; border.width: 1; radius: 12 }
+        background: Rectangle { color: accentSurfaceRaised; border.color: accentBorder; border.width: 1; radius: 12 }
         contentItem: ColumnLayout {
             spacing: 12
             Label {
@@ -1222,7 +1244,7 @@ ApplicationWindow {
             Label {
                 text: currentView && currentView.url.scheme === "https" ? "Connection: Secure HTTPS" : "Connection: Not secure — this page does not use HTTPS"
                 wrapMode: Text.Wrap
-                color: currentView && currentView.url.scheme === "https" ? "#9AD8AE" : "#F0B46A"
+                color: currentView && currentView.url.scheme === "https" ? "#9AD8AE" : accentGlow
                 Layout.fillWidth: true
             }
             Label {
@@ -1231,7 +1253,7 @@ ApplicationWindow {
                 color: "#D7C1AA"
                 Layout.fillWidth: true
             }
-            Rectangle { Layout.fillWidth: true; height: 1; color: "#8E5A2E" }
+            Rectangle { Layout.fillWidth: true; height: 1; color: accentBorder }
             Label {
                 text: "ReyOS Shields: " + (browserBackend.shieldsEnabled ? "On" : "Off") + " · " + browserBackend.blockedRequestCount + " requests blocked this session"
                 wrapMode: Text.Wrap
@@ -1269,7 +1291,7 @@ ApplicationWindow {
         padding: 18
         property string pendingUrl: ""
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-        background: Rectangle { color: "#302217"; border.color: "#8E5A2E"; border.width: 1; radius: 12 }
+        background: Rectangle { color: accentSurfaceRaised; border.color: accentBorder; border.width: 1; radius: 12 }
         contentItem: ColumnLayout {
             spacing: 12
             Label {
@@ -1282,7 +1304,7 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 selectByMouse: true
                 color: "#FFF3E6"
-                background: Rectangle { color: "#3B291C"; radius: 6; border.color: "#8E5A2E"; border.width: 1 }
+                background: Rectangle { color: accentSurfaceHover; radius: 6; border.color: accentBorder; border.width: 1 }
                 onAccepted: if (installAppInstallButton.enabled) installAppInstallButton.clicked()
             }
             RowLayout {
@@ -1312,7 +1334,7 @@ ApplicationWindow {
         height: Math.min(480, window.height - 80)
         anchors.centerIn: parent
         padding: 18
-        background: Rectangle { color: "#302217"; border.color: "#8E5A2E"; border.width: 1; radius: 12 }
+        background: Rectangle { color: accentSurfaceRaised; border.color: accentBorder; border.width: 1; radius: 12 }
         contentItem: ColumnLayout {
             spacing: 10
             Label {
@@ -1340,7 +1362,7 @@ ApplicationWindow {
                             Layout.fillWidth: true
                             implicitHeight: 60
                             radius: 7
-                            color: "#211711"
+                            color: accentSurfaceBase
                             RowLayout {
                                 anchors.fill: parent
                                 anchors.margins: 9
@@ -1411,7 +1433,7 @@ ApplicationWindow {
         padding: 8
         modal: false
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-        background: Rectangle { color: "#302217"; border.color: "#8E5A2E"; border.width: 1; radius: 10 }
+        background: Rectangle { color: accentSurfaceRaised; border.color: accentBorder; border.width: 1; radius: 10 }
         contentItem: ColumnLayout {
             spacing: 3
 
@@ -1419,7 +1441,7 @@ ApplicationWindow {
                 id: bookmarksMenuButton
                 Layout.fillWidth: true
                 implicitHeight: 36
-                background: Rectangle { color: bookmarksMenuButton.hovered ? "#3B291C" : "transparent"; radius: 7 }
+                background: Rectangle { color: bookmarksMenuButton.hovered ? accentSurfaceHover : "transparent"; radius: 7 }
                 contentItem: RowLayout {
                     spacing: 10
                     Image { source: Qt.resolvedUrl("../icons/reyos-bookmark.svg"); sourceSize.width: 20; sourceSize.height: 20; Layout.leftMargin: 10 }
@@ -1435,7 +1457,7 @@ ApplicationWindow {
                 id: passwordsMenuButton
                 Layout.fillWidth: true
                 implicitHeight: 36
-                background: Rectangle { color: passwordsMenuButton.hovered ? "#3B291C" : "transparent"; radius: 7 }
+                background: Rectangle { color: passwordsMenuButton.hovered ? accentSurfaceHover : "transparent"; radius: 7 }
                 contentItem: RowLayout {
                     spacing: 10
                     Image { source: Qt.resolvedUrl("../icons/reyos-password.svg"); sourceSize.width: 20; sourceSize.height: 20; Layout.leftMargin: 10 }
@@ -1451,7 +1473,7 @@ ApplicationWindow {
                 id: openSystemPasswordsMenuButton
                 Layout.fillWidth: true
                 implicitHeight: 36
-                background: Rectangle { color: openSystemPasswordsMenuButton.hovered ? "#3B291C" : "transparent"; radius: 7 }
+                background: Rectangle { color: openSystemPasswordsMenuButton.hovered ? accentSurfaceHover : "transparent"; radius: 7 }
                 contentItem: RowLayout {
                     spacing: 10
                     Image { source: Qt.resolvedUrl("../icons/reyos-external-key.svg"); sourceSize.width: 20; sourceSize.height: 20; Layout.leftMargin: 10 }
@@ -1467,7 +1489,7 @@ ApplicationWindow {
                 id: findMenuButton
                 Layout.fillWidth: true
                 implicitHeight: 36
-                background: Rectangle { color: findMenuButton.hovered ? "#3B291C" : "transparent"; radius: 7 }
+                background: Rectangle { color: findMenuButton.hovered ? accentSurfaceHover : "transparent"; radius: 7 }
                 contentItem: RowLayout {
                     spacing: 10
                     Image { source: Qt.resolvedUrl("../icons/reyos-find.svg"); sourceSize.width: 20; sourceSize.height: 20; Layout.leftMargin: 10 }
@@ -1483,7 +1505,7 @@ ApplicationWindow {
                 id: downloadsMenuButton
                 Layout.fillWidth: true
                 implicitHeight: 36
-                background: Rectangle { color: downloadsMenuButton.hovered ? "#3B291C" : "transparent"; radius: 7 }
+                background: Rectangle { color: downloadsMenuButton.hovered ? accentSurfaceHover : "transparent"; radius: 7 }
                 contentItem: RowLayout {
                     spacing: 10
                     Image { source: Qt.resolvedUrl("../icons/reyos-download.svg"); sourceSize.width: 20; sourceSize.height: 20; Layout.leftMargin: 10 }
@@ -1500,7 +1522,7 @@ ApplicationWindow {
                 enabled: browserBackend.currentSite.length > 0
                 Layout.fillWidth: true
                 implicitHeight: 36
-                background: Rectangle { color: shieldsMenuButton.hovered ? "#3B291C" : "transparent"; radius: 7 }
+                background: Rectangle { color: shieldsMenuButton.hovered ? accentSurfaceHover : "transparent"; radius: 7 }
                 contentItem: RowLayout {
                     spacing: 10
                     Image {
@@ -1529,7 +1551,7 @@ ApplicationWindow {
                 enabled: currentView && !isHomeUrl(currentView.url.toString())
                 Layout.fillWidth: true
                 implicitHeight: 36
-                background: Rectangle { color: installAppMenuButton.hovered ? "#3B291C" : "transparent"; radius: 7 }
+                background: Rectangle { color: installAppMenuButton.hovered ? accentSurfaceHover : "transparent"; radius: 7 }
                 contentItem: RowLayout {
                     spacing: 10
                     Image {
@@ -1557,7 +1579,7 @@ ApplicationWindow {
                 id: manageAppsMenuButton
                 Layout.fillWidth: true
                 implicitHeight: 36
-                background: Rectangle { color: manageAppsMenuButton.hovered ? "#3B291C" : "transparent"; radius: 7 }
+                background: Rectangle { color: manageAppsMenuButton.hovered ? accentSurfaceHover : "transparent"; radius: 7 }
                 contentItem: RowLayout {
                     spacing: 10
                     Image { source: Qt.resolvedUrl("../icons/reyos-webapp.svg"); sourceSize.width: 20; sourceSize.height: 20; Layout.leftMargin: 10 }
@@ -1569,13 +1591,13 @@ ApplicationWindow {
                 }
             }
 
-            Rectangle { Layout.fillWidth: true; height: 1; color: "#8E5A2E"; Layout.topMargin: 3; Layout.bottomMargin: 3 }
+            Rectangle { Layout.fillWidth: true; height: 1; color: accentBorder; Layout.topMargin: 3; Layout.bottomMargin: 3 }
 
             Button {
                 id: settingsMenuButton
                 Layout.fillWidth: true
                 implicitHeight: 36
-                background: Rectangle { color: settingsMenuButton.hovered ? "#3B291C" : "transparent"; radius: 7 }
+                background: Rectangle { color: settingsMenuButton.hovered ? accentSurfaceHover : "transparent"; radius: 7 }
                 contentItem: RowLayout {
                     spacing: 10
                     Image { source: Qt.resolvedUrl("../icons/reyos-settings.svg"); sourceSize.width: 20; sourceSize.height: 20; Layout.leftMargin: 10 }
@@ -1597,7 +1619,7 @@ ApplicationWindow {
         height: 470
         anchors.centerIn: parent
         padding: 18
-        background: Rectangle { color: "#302217"; border.color: "#8E5A2E"; border.width: 1; radius: 12 }
+        background: Rectangle { color: accentSurfaceRaised; border.color: accentBorder; border.width: 1; radius: 12 }
         contentItem: ColumnLayout {
             spacing: 10
             Label { text: "Only this browser session · cleared when ReyOS Browser closes"; color: "#D7C1AA"; Layout.fillWidth: true }
@@ -1619,7 +1641,7 @@ ApplicationWindow {
                         Label { text: pageTitle; color: "#FFF3E6"; elide: Text.ElideRight; Layout.fillWidth: true }
                         Label { text: pageUrl; color: "#D7C1AA"; font.pixelSize: 11; elide: Text.ElideRight; Layout.fillWidth: true }
                     }
-                    background: Rectangle { color: hovered ? "#3B291C" : "#211711"; radius: 7 }
+                    background: Rectangle { color: hovered ? accentSurfaceHover : accentSurfaceBase; radius: 7 }
                 }
             }
             RowLayout {
@@ -1639,7 +1661,7 @@ ApplicationWindow {
         x: Math.max(12, window.width - width - 24)
         y: 92
         padding: 14
-        background: Rectangle { color: "#302217"; border.color: "#8E5A2E"; border.width: 1; radius: 10 }
+        background: Rectangle { color: accentSurfaceRaised; border.color: accentBorder; border.width: 1; radius: 10 }
         onClosed: {
             window.findInPage("", false)
             window.findMatchCount = 0
@@ -1709,12 +1731,12 @@ ApplicationWindow {
         width: 455
         anchors.centerIn: parent
         padding: 20
-        background: Rectangle { color: "#302217"; border.color: "#8E5A2E"; border.width: 1; radius: 12 }
+        background: Rectangle { color: accentSurfaceRaised; border.color: accentBorder; border.width: 1; radius: 12 }
         contentItem: ColumnLayout {
             spacing: 14
             Label { text: "Private session"; font.bold: true; font.pixelSize: 19; color: "#FFF3E6" }
             Label { text: "Your choices reset when ReyOS Browser closes."; wrapMode: Text.Wrap; color: "#F4D5A8"; Layout.fillWidth: true }
-            Rectangle { Layout.fillWidth: true; height: 1; color: "#8E5A2E" }
+            Rectangle { Layout.fillWidth: true; height: 1; color: accentBorder }
             Label { text: "Search engine"; font.bold: true; color: "#FFF3E6" }
             ComboBox {
                 id: searchEnginePicker
@@ -1729,13 +1751,13 @@ ApplicationWindow {
                     verticalAlignment: Text.AlignVCenter
                     elide: Text.ElideRight
                 }
-                background: Rectangle { color: "#211711"; border.color: "#8E5A2E"; radius: 7 }
+                background: Rectangle { color: accentSurfaceBase; border.color: accentBorder; radius: 7 }
                 popup: Popup {
                     y: searchEnginePicker.height - 1
                     width: searchEnginePicker.width
                     implicitHeight: contentItem.implicitHeight
                     padding: 4
-                    background: Rectangle { color: "#302217"; border.color: "#8E5A2E"; radius: 7 }
+                    background: Rectangle { color: accentSurfaceRaised; border.color: accentBorder; radius: 7 }
                     contentItem: ListView {
                         clip: true
                         implicitHeight: contentHeight
@@ -1749,11 +1771,11 @@ ApplicationWindow {
                     height: 34
                     highlighted: searchEnginePicker.highlightedIndex === index
                     contentItem: Text { text: modelData; color: "#FFF3E6"; verticalAlignment: Text.AlignVCenter; leftPadding: 8 }
-                    background: Rectangle { color: highlighted ? "#3B291C" : "transparent"; radius: 5 }
+                    background: Rectangle { color: highlighted ? accentSurfaceHover : "transparent"; radius: 5 }
                 }
                 onActivated: browserBackend.setSearchEngine(currentText)
             }
-            Rectangle { Layout.fillWidth: true; height: 1; color: "#8E5A2E" }
+            Rectangle { Layout.fillWidth: true; height: 1; color: accentBorder }
             Label { text: "Performance"; font.bold: true; color: "#FFF3E6" }
             Switch {
                 text: "Low Memory Mode"
@@ -1766,7 +1788,7 @@ ApplicationWindow {
                 }
             }
             Label { text: "Freezes safe inactive tabs, then discards them later to save memory."; wrapMode: Text.Wrap; color: "#D7C1AA"; Layout.fillWidth: true }
-            Rectangle { Layout.fillWidth: true; height: 1; color: "#8E5A2E" }
+            Rectangle { Layout.fillWidth: true; height: 1; color: accentBorder }
             Label { text: "ReyOS Shields"; font.bold: true; color: "#FFF3E6" }
             Label { text: (browserBackend.shieldsEnabled ? "On" : "Off") + " · " + browserBackend.blockedRequestCount + " requests blocked this session"; wrapMode: Text.Wrap; color: "#F4D5A8"; Layout.fillWidth: true }
             Label { text: "Filter list: " + browserBackend.shieldsDomainCount + " domains · updated " + browserBackend.shieldsLastUpdated; wrapMode: Text.Wrap; color: "#D7C1AA"; Layout.fillWidth: true }
@@ -1785,7 +1807,7 @@ ApplicationWindow {
                 Layout.alignment: Qt.AlignRight
                 implicitWidth: 82
                 contentItem: Text { text: "Close"; color: "#FFF3E6"; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-                background: Rectangle { color: parent.hovered ? "#3B291C" : "#211711"; border.color: "#8E5A2E"; radius: 7 }
+                background: Rectangle { color: parent.hovered ? accentSurfaceHover : accentSurfaceBase; border.color: accentBorder; radius: 7 }
                 onClicked: settingsDialog.close()
             }
         }
@@ -1799,7 +1821,7 @@ ApplicationWindow {
         height: Math.max(205, Math.min(440, downloads.count * 86 + 125))
         anchors.centerIn: parent
         padding: 18
-        background: Rectangle { color: "#302217"; border.color: "#8E5A2E"; radius: 12 }
+        background: Rectangle { color: accentSurfaceRaised; border.color: accentBorder; radius: 12 }
         contentItem: ColumnLayout {
             spacing: 10
             Label { visible: downloads.count === 0; text: "No downloads in this private session"; color: "#D7C1AA" }
@@ -1822,7 +1844,7 @@ ApplicationWindow {
                     width: ListView.view.width
                     height: 76
                     radius: 7
-                    color: "#211711"
+                    color: accentSurfaceBase
                     ColumnLayout {
                         anchors.fill: parent
                         anchors.margins: 8
