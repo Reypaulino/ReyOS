@@ -2,6 +2,12 @@
 
 Real bugs found and fixed, with root cause. Newest first. See `bugs.md` for what's still open.
 
+## 2026-09-28 — Control Center “Install updates” failed without a terminal
+
+Reproduced directly on the installed `ReyOS-Test` VM after the timestamp fix below: **Install updates** ran `sudo pacman -Syu`, but the scoped Calamares-installed sudoers policy deliberately grants the noninteractive GUI form, `/usr/bin/pacman -Syu --noconfirm`. Sudoers matches the literal argument vector, so the missing flag meant no NOPASSWD match; because the GUI has no controlling terminal for a password prompt, sudo exited immediately and Control Center reported “Update failed.” **Full update** already used the permitted argument vector and was unaffected.
+
+Changed the Install path and its displayed command to `sudo pacman -Syu --noconfirm`, matching both the existing sudoers rule and the GUI's noninteractive execution model. Also corrected the stale `PKG_ACTIONS` metadata from split `-Su` to atomic `-Syu`. Package release bumped to `1.0.0-81`.
+
 ## 2026-09-28 — Control Center updates did not reset the three-day reminder
 
 Confirmed on the installed `ReyOS-Test` VM after a successful full system update: the login notifier still judged the system by the old `~/.last_pkg_update` timestamp. The terminal System Tools update path already touched this file after `pacman -Syu`, but Control Center's **Install updates** and **Full update** workers never wrote it, despite the notifier explicitly treating the stamp as the record of a successful update. This made the reminder return every three days even when the user updated successfully through the main GUI.

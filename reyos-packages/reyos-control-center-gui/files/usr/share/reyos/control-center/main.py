@@ -53,7 +53,7 @@ REYOS_DEFAULT_APPS = ["reyos-reader", "reyos-shortcuts-cheatsheet"]
 
 PKG_ACTIONS = {
     "check":   (["sudo", "pacman", "-Sy"], None),
-    "upgrade": (["sudo", "pacman", "-Su", "--noconfirm"], None),
+    "upgrade": (["sudo", "pacman", "-Syu", "--noconfirm"], None),
     # "full" and "clean" are handled specially in PkgWorker (multiple commands).
     "full":    (None, None),
     "clean":   (None, None),
@@ -283,8 +283,8 @@ class PkgWorker(QThread):
                     self.finished_ok.emit(False, "Could not check updates. Verify your network connection.")
             elif self.action == "upgrade":
                 _wait_for_pacman_lock(emit)
-                emit("$ sudo pacman -Syu")
-                rc = _run(["sudo", "pacman", "-Syu"], emit)
+                emit("$ sudo pacman -Syu --noconfirm")
+                rc = _run(["sudo", "pacman", "-Syu", "--noconfirm"], emit)
                 if rc == 0:
                     _record_successful_update(emit)
                 self.finished_ok.emit(rc == 0, "Updates installed." if rc == 0 else "Update failed.")
