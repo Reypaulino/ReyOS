@@ -1,10 +1,11 @@
 # Maintainer: Rey Paulino
 pkgname=reyos-sddm
 pkgver=1.0.3
-pkgrel=14
+pkgrel=15
 pkgdesc="ReyOS login screen — dedicated branded theme (dark navy + copper accent, dedicated background)"
 arch=('any')
 license=('MIT')
+install=reyos-sddm.install
 # qt5-declarative isn't in sddm's hard Depends (only listed as an optional
 # "for using Qt5 themes" dep) but the actual sddm-greeter binary shipped by
 # this sddm build is linked against Qt5 (libQt5Quick/Qml/Network/Gui/Core),
@@ -12,7 +13,7 @@ license=('MIT')
 # greeter fails to exec at all (dynamic linker can't resolve those libs)
 # and sddm crash-loops with "exited with 127". Confirmed live on the dev
 # VM 2026-08-11.
-depends=('sddm' 'qt5-declarative')
+depends=('sddm' 'qt5-declarative' 'plasma-workspace' 'plasma-x11-session')
 source=()
 sha256sums=()
 
@@ -20,5 +21,7 @@ package() {
     cp -a "$startdir/files/etc" "$pkgdir/"
     cp -a "$startdir/files/usr" "$pkgdir/"
     find "$pkgdir/etc" -type f -exec chmod 644 {} \;
+    find "$pkgdir/etc" "$pkgdir/usr" -type d -exec chmod 755 {} \;
     find "$pkgdir/usr" -type f -exec chmod 644 {} \;
+    chmod 755 "$pkgdir/usr/share/reyos/bin/reyos-brand-sddm-sessions"
 }

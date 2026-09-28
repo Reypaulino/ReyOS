@@ -1,0 +1,11 @@
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = plasma-workspace
+Target = plasma-x11-session
+
+[Action]
+Description = Refreshing ReyOS SDDM session labels...
+When = PostTransaction
+Exec = /usr/share/reyos/bin/reyos-brand-sddm-sessions

@@ -62,6 +62,19 @@ for lnf in org.kde.breeze.desktop org.kde.breezedark.desktop org.kde.breezetwili
   fi
 done
 
+# Give SDDM's session dropdown user-facing ReyOS names instead of exposing
+# the Wayland/X11 implementation detail. reyos-sddm's helper copies the
+# current upstream entries into SDDM's higher-priority /usr/local session
+# directories, so the files remain owned by their Plasma packages and future
+# upgrades can refresh the overrides through the package's pacman hook.
+# X11 remains installed as the proven VM/no-DRM fallback (see packages.x86_64).
+/usr/share/reyos/bin/reyos-brand-sddm-sessions
+
+# Fail the ISO build if an upstream filename/layout change made either
+# required ReyOS session override impossible to generate.
+grep -Fqx 'Name=ReyOS Desktop' /usr/local/share/wayland-sessions/plasma.desktop
+grep -Fqx 'Name=ReyOS Desktop (Compatibility Mode)' /usr/local/share/xsessions/plasmax11.desktop
+
 # ReyOS branding: auto-run neofetch (REY ASCII logo + system info) on every
 # new terminal. Appended here rather than shipped as a full /etc/skel/.bashrc
 # in reyos-terminal's own package — the bash package already owns that path,

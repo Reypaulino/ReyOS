@@ -1,19 +1,29 @@
 # reyos-sddm
 
-ReyOS login screen branding — a `theme.conf.user` override for the stock
-`breeze` SDDM theme (not a from-scratch theme), plus the ReyOS logo.
+ReyOS login-screen branding. This package ships the dedicated ReyOS SDDM
+theme under `/usr/share/sddm/themes/reyos/`; it is not a downloaded or stock
+internet theme. `/etc/sddm.conf.d/zz-reyos-theme.conf` selects it explicitly.
 
-`theme.conf.user` is SDDM's own supported override mechanism for a
-theme's `theme.conf` — it wins on top of the theme's own settings, so
-this never touches files owned by the `sddm` package and survives
-`sddm` updates cleanly.
+## Theme assets
 
-## What it sets
-- `background` — ReyOS wallpaper (must match the actual file installed
-  by `reyos-wallpapers`, currently a `.jpg` — this tripped up an earlier
-  ad-hoc attempt that referenced a `.png` from before the package split)
-- `color` — `#0070FF`, ReyOS accent blue
-- `logo` — ReyOS logo, shown (stock default hides it)
+- `Main.qml` — ReyOS-owned greeter layout and behavior
+- `SDDM-reyos.bmp` — dedicated login background
+- `angle-down.png` / `rectangle.png` — local greeter controls
+- `theme.conf` — theme metadata and asset selection
 
-`/etc/sddm.conf.d/10-reyos-theme.conf` explicitly selects `breeze` as
-the active theme rather than relying on it staying the upstream default.
+## Desktop session labels
+
+Plasma owns the actual Wayland and X11 session files. The
+`reyos-brand-sddm-sessions` helper copies their current metadata into SDDM's
+higher-priority `/usr/local/share/*sessions` directories and labels them:
+
+- `ReyOS Desktop` — normal Wayland session
+- `ReyOS Desktop (Compatibility Mode)` — X11 fallback for hardware/VMs where
+  Wayland cannot start
+
+The matching filenames make SDDM deduplicate the upstream entries, so the
+menu still contains only two choices. Localized upstream `Name[...]` values
+are removed because SDDM otherwise prefers them over the branded base name.
+An ALPM hook regenerates both overrides after Plasma session package updates,
+preserving upstream command/metadata changes without editing pacman-owned
+files.

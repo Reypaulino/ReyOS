@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# SDDM searches /usr/local/share/*sessions before /usr/share/*sessions and
+# deduplicates entries with the same filename. Keep Plasma's package-owned
+# files untouched: copy their current metadata into the higher-priority local
+# path, then change only the user-facing name. Re-running this after a Plasma
+# upgrade also carries forward any upstream Exec/TryExec/metadata changes.
+brand_session() {
+    local source_file=$1
+    local target_file=$2
+    local display_name=$3
+
+    if [[ ! -f "$source_file" ]]; then
+        printf 'Skipping missing SDDM session source: %s\n' "$source_file" >&2
+        return 0
+    fi
+
+    install -Dm0644 -- "$source_file" "$target_file"
+
+    if ! grep -q '^Name=' "$target_file"; then
+        printf 'SDDM session source has no Name entry: %s\n' "$source_file" >&2
+        rm -f -- "$target_file"
+        return 1
+    fi
+
+    # SDDM prefers Name[locale] over Name=. Remove localized upstream names so
+    # every locale falls back to the consistent ReyOS label used by the rest
+    # of the distribution's currently English-only interface.
+    sed -i -E \
+        -e '/^Name\[[^]]+\]=/d' \
+        -e "s|^Name=.*$|Name=${display_name}|" \
+        "$target_file"
+    grep -Fqx "Name=${display_name}" "$target_file"
+}
+
+brand_session /usr/share/wayland-sessions/plasma.desktop \
+    /usr/local/share/wayland-sessions/plasma.desktop 'ReyOS Desktop'
+brand_session /usr/share/xsessions/plasmax11.desktop \
+    /usr/local/share/xsessions/plasmax11.desktop 'ReyOS Desktop (Compatibility Mode)'

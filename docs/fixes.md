@@ -2,6 +2,16 @@
 
 Real bugs found and fixed, with root cause. Newest first. See `bugs.md` for what's still open.
 
+## 2026-09-28 — SDDM session choices branded without modifying Plasma-owned files
+
+Finished Claude's in-progress SDDM session-label change. The login screen already uses ReyOS's dedicated in-repo theme (its own `Main.qml`, background, and controls), but the session dropdown still exposed the upstream names “Plasma (Wayland)” and “Plasma (X11).” The first draft directly changed `/usr/share` after ISO package installation. That would work on the initial image, but a later `plasma-workspace` or `plasma-x11-session` upgrade would overwrite the branding.
+
+Moved the behavior into `reyos-sddm`: `reyos-brand-sddm-sessions` copies the current upstream desktop entries into SDDM's higher-priority `/usr/local/share/wayland-sessions` and `/usr/local/share/xsessions` paths, retaining the same filenames so SDDM deduplicates them, then labels them **ReyOS Desktop** and **ReyOS Desktop (Compatibility Mode)**. It removes upstream localized `Name[...]` fields because SDDM 0.21 prefers a locale-specific name over the base `Name=` field; without that, non-English locales would still show the Plasma labels. A package install/upgrade script creates the overrides immediately, and an ALPM hook refreshes them after either Plasma session package changes, carrying forward new upstream `Exec`/metadata while preserving the ReyOS names. The ISO customization step invokes and verifies the same helper. `reyos-sddm` bumped to `1.0.3-15`.
+
+The underlying Wayland/X11 sessions and commands are unchanged. X11 remains the clearly labeled compatibility fallback for VM or hardware configurations where Wayland cannot acquire a DRM render node.
+
+Live-verified on the installed ReyOS VM: `reyos-sddm 1.0.3-15` installed with its dedicated theme still selected, `pacman -Qkk reyos-sddm` reports 20 files and zero altered files, both `/usr/local` entries have byte-identical non-name metadata to their upstream sources, the helper is idempotent, the real SDDM greeter runs in offscreen test mode without a QML/theme crash, and the system has zero failed units.
+
 ## 2026-09-28 — Control Center “Install updates” failed without a terminal
 
 Reproduced directly on the installed `ReyOS-Test` VM after the timestamp fix below: **Install updates** ran `sudo pacman -Syu`, but the scoped Calamares-installed sudoers policy deliberately grants the noninteractive GUI form, `/usr/bin/pacman -Syu --noconfirm`. Sudoers matches the literal argument vector, so the missing flag meant no NOPASSWD match; because the GUI has no controlling terminal for a password prompt, sudo exited immediately and Control Center reported “Update failed.” **Full update** already used the permitted argument vector and was unaffected.
