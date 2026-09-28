@@ -527,9 +527,36 @@ class Backend(QObject):
             return
 
         def task(emit):
-            emit("$ sudo pacman -S --needed --noconfirm steam gamemode lib32-gamemode")
-            rc = _run(["sudo", "pacman", "-S", "--needed", "--noconfirm", "steam", "gamemode", "lib32-gamemode"], emit)
-            return rc == 0, ("Steam and GameMode installed." if rc == 0 else "Install failed -- check your network connection and try again.")
+            # steam and lib32-gamemode are multilib-only packages, and
+            # multilib ships disabled in ReyOS's own pacman.conf -- without
+            # this the install always fails with "target not found: steam".
+            # Reuses reyos-welcome's exact helper/NOPASSWD rule (same
+            # precedent: a hand-escaped sudo sed for `[multilib]` risks
+            # breaking visudo -c for the whole sudoers file).
+            if "#[multilib]" in Path("/etc/pacman.conf").read_text():
+                emit("Enabling multilib repository...")
+                _run(["sudo", "/usr/share/reyos/welcome/enable-multilib.sh"], emit)
+
+            emit("$ sudo pacman -Sy --noconfirm")
+            rc = _run(["sudo", "pacman", "-Sy", "--noconfirm"], emit)
+            if rc != 0:
+                return False, "Could not sync package databases -- check your network connection."
+
+            # One `pacman -S` call per fixed package group, not combined --
+            # each call's argv must match one of the fixed, individually
+            # listed NOPASSWD sudoers lines Calamares writes for this user
+            # (see shellprocess_sudoers_reyos_menu.conf), same reasoning as
+            # reyos-welcome's InstallWorker. A combined "steam gamemode
+            # lib32-gamemode" argv matches neither fixed line and silently
+            # fails with "a password is required" (no controlling terminal
+            # to prompt on from a GUI subprocess).
+            for group in (["steam"], ["gamemode", "lib32-gamemode", "mangohud", "lib32-mangohud"]):
+                emit("$ sudo pacman -S --needed --noconfirm " + " ".join(group))
+                rc = _run(["sudo", "pacman", "-S", "--needed", "--noconfirm"] + group, emit)
+                if rc != 0:
+                    return False, f"Install failed ({' '.join(group)}) -- check your network connection and try again."
+
+            return True, "Steam, GameMode, and MangoHud installed."
         self._gaming_worker = ActionWorker(task)
         self._gaming_worker.progress.connect(self.gamingProgress.emit)
         self._gaming_worker.finished_ok.connect(self.gamingFinished.emit)

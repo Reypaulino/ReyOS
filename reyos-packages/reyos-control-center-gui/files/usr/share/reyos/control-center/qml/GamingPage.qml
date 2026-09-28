@@ -45,7 +45,7 @@ Kirigami.ScrollablePage {
                 Controls.Label {
                     Layout.fillWidth: true
                     wrapMode: Text.Wrap
-                    text: "Installs Steam (with 32-bit compatibility libraries) and GameMode, which requests a temporary performance boost from the system while a game is running."
+                    text: "Installs Steam (with 32-bit compatibility libraries), GameMode (a temporary performance boost while a game is running), and MangoHud (an in-game performance overlay)."
                 }
                 Controls.Label {
                     Layout.fillWidth: true
