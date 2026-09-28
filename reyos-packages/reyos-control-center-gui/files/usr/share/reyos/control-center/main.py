@@ -142,6 +142,34 @@ def _run(cmd, progress_emit=None):
     return proc.wait()
 
 
+def _restart_plasmashell_and_wait(timeout=30):
+    # kquitapp6 sends a graceful quit request and returns immediately --
+    # it does NOT block until the old process actually releases its D-Bus
+    # name/rendering surfaces. Firing kstart right after it (as this code
+    # used to, in both applyLook() and applyLookAndFeel()) is a real race:
+    # if the old process hasn't finished tearing down yet, the new kstart
+    # can silently lose to it and no fresh process ever actually takes
+    # over, leaving the still-dying old one to just keep running with its
+    # already-cached (pre-switch) icon state. That matches a real report:
+    # a Look's icon looking stale until Apply is clicked a second time,
+    # which just gives the race another, independently-timed shot at
+    # succeeding. reyos-apply-branding.sh's restart_plasmashell_for_icons()
+    # already solved this the same way for the branding-apply path -- poll
+    # for the new process to actually reappear before moving on, instead
+    # of firing both commands back-to-back and hoping.
+    subprocess.run(["kquitapp6", "plasmashell"], capture_output=True)
+    subprocess.Popen(
+        ["kstart", "plasmashell"],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    for _ in range(timeout):
+        if subprocess.run(["pgrep", "-x", "plasmashell"], capture_output=True).returncode == 0:
+            break
+        time.sleep(1)
+    time.sleep(2)
+
+
 def _wait_for_pacman_lock(progress_emit=None, timeout=60):
     """pacman's db lock (/var/lib/pacman/db.lck) is exclusive -- a second
     concurrent pacman invocation (this app's own Full Update still running
@@ -743,12 +771,7 @@ class Backend(QObject):
                 # thing that actually refreshed them in testing; brief
                 # flicker is an acceptable tradeoff for icons that are
                 # otherwise invisible against the new background.
-                subprocess.run(["kquitapp6", "plasmashell"], capture_output=True)
-                subprocess.Popen(
-                    ["kstart", "plasmashell"],
-                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                    start_new_session=True,
-                )
+                _restart_plasmashell_and_wait()
                 return rc == 0, ("Look and feel applied; matching wallpaper set when available." if rc == 0 else "Failed to apply color scheme.")
             rc = subprocess.run(["plasma-apply-lookandfeel", "--apply", package_id]).returncode
             return rc == 0, ("Look and feel applied." if rc == 0 else "Failed to apply look and feel.")
@@ -1176,12 +1199,7 @@ class Backend(QObject):
             # repaint panel/systray icons on its own just because kdeglobals
             # changed underneath it -- a full restart is the only thing that
             # reliably refreshed them in testing.
-            subprocess.run(["kquitapp6", "plasmashell"], capture_output=True)
-            subprocess.Popen(
-                ["kstart", "plasmashell"],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                start_new_session=True,
-            )
+            _restart_plasmashell_and_wait()
             return rc == 0, (f"{look_id.capitalize()} applied." if rc == 0 else "Failed to apply color scheme.")
 
         worker = ActionWorker(task)
