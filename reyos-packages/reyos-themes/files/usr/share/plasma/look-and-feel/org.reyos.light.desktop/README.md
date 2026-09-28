@@ -19,6 +19,7 @@ org.reyos.light.desktop/
     defaults                          — tells Plasma which colors/icons/splash to use
     splash/Splash.qml                 — the login splash screen (shared with org.reyos.desktop)
     splash/images/watermark.png       — ReyOS logo (shared with org.reyos.desktop)
+    logout/                           — Plasma-compatible power/logout dialog (copied at build time)
     previews/preview.png              — thumbnail shown in the theme picker (currently reuses
                                          the dark theme's preview -- not visually accurate,
                                          swap in a real light-theme screenshot when available)

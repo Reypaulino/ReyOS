@@ -2,6 +2,14 @@
 
 Real bugs found and fixed, with root cause. Newest first. See `bugs.md` for what's still open.
 
+## 2026-09-28 — Logout dialog could not open with ReyOS global themes
+
+Reproduced on `ReyOS-Test`: clicking Log Out started `ksmserver-logout-greeter`, but the process logged `Couldn't find a theme for the Shutdown dialog ""`, failed to obtain focus, and stayed alive. Every later click was ignored because `org.kde.LogoutPrompt` believed the invisible prompt was already showing. The active `org.reyos.desktop` look-and-feel supplied colors and a splash screen but no `contents/logout` component. ReyOS also intentionally excludes the stock Breeze global-theme directories through pacman's `NoExtract`, so Plasma had no default logout component to fall back to.
+
+Added Plasma 6.7's compatible `Logout.qml`, `LogoutButton.qml`, and `timer.js` components to the ReyOS dark theme and copy the same component into ReyOS Light at package build time. The upstream GPL license is preserved and declared alongside the package's MIT content. `reyos-themes` bumped to `1.0.0-57`.
+
+Live-verified before packaging: installed the component into the active ReyOS theme, terminated only the stale logout-greeter process, and reopened `org.kde.LogoutPrompt.promptAll`. A fresh greeter started without the missing-theme message or the three-second focus failure; the desktop session itself remained active.
+
 ## 2026-09-28 — SDDM session choices branded without modifying Plasma-owned files
 
 Finished Claude's in-progress SDDM session-label change. The login screen already uses ReyOS's dedicated in-repo theme (its own `Main.qml`, background, and controls), but the session dropdown still exposed the upstream names “Plasma (Wayland)” and “Plasma (X11).” The first draft directly changed `/usr/share` after ISO package installation. That would work on the initial image, but a later `plasma-workspace` or `plasma-x11-session` upgrade would overwrite the branding.

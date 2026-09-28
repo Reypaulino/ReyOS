@@ -30,7 +30,10 @@ org.reyos.desktop/
   metadata.json                       — theme identity
   contents/
     defaults                          — tells Plasma which colors/icons/splash to use
-    splash/Splash.qml                 — the login splash screen
+    splash/Splash.qml                 — the session splash screen
+    logout/Logout.qml                 — the logout/restart/shutdown dialog
+    logout/LogoutButton.qml           — power-dialog action buttons
+    logout/timer.js                   — timed-action cancellation support
     splash/images/watermark.png       — placeholder logo (swap for final logo later)
     previews/preview.png              — thumbnail shown in the theme picker
 ```
@@ -52,8 +55,8 @@ rm ~/.local/share/color-schemes/ReyOS.colors
 ```
 Then pick a different theme in System Settings → Global Theme.
 
-## Next: login screen (SDDM)
+## Login screen (SDDM)
 
 This package themes the *desktop session* (colors, splash after login). The
-SDDM **login screen itself** (before you log in) is a separate theme system —
-that's the next piece to build.
+SDDM **login screen itself** (before you log in) is a separate theme system,
+provided by the `reyos-sddm` package.

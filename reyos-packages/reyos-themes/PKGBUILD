@@ -1,10 +1,10 @@
 # Maintainer: Rey Paulino
 pkgname=reyos-themes
 pkgver=1.0.0
-pkgrel=56
+pkgrel=57
 pkgdesc="ReyOS Global Theme, color scheme, editable panel/taskbar layout, virtual desktops, and shortcuts"
 arch=('any')
-license=('MIT')
+license=('MIT' 'GPL-2.0-or-later')
 depends=('plasma-workspace' 'kconfig' 'reyos-kde-customization' 'reyos-browser')
 source=()
 sha256sums=()
@@ -12,6 +12,11 @@ sha256sums=()
 package() {
     cp -a "$startdir/files/etc" "$pkgdir/"
     cp -a "$startdir/files/usr" "$pkgdir/"
+    # Both ReyOS looks use Plasma's compatible logout UI. Keep one source
+    # copy and duplicate it into the light package at build time.
+    cp -a \
+        "$pkgdir/usr/share/plasma/look-and-feel/org.reyos.desktop/contents/logout" \
+        "$pkgdir/usr/share/plasma/look-and-feel/org.reyos.light.desktop/contents/"
     find "$pkgdir/etc" -type f -exec chmod 644 {} \;
     find "$pkgdir/usr" -type f -exec chmod 644 {} \;
     chmod 755 "$pkgdir/usr/share/reyos/bin/reyos-apply-branding.sh"
