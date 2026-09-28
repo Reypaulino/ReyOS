@@ -4,7 +4,7 @@
      for icons/decoration.svg) and compiles the result to a real XCursor
      file with xcursorgen. Off-white fill (#f5efe8, close to every Look's
      own ForegroundNormal) plus a dark contrast rim keeps the pointer
-     readable over any wallpaper regardless of accent. The 2px inner rim
+     readable over any wallpaper regardless of accent. The 4px inner rim
      carries the Look's own color and leaves a narrow dark outer keyline for
      contrast; this makes the matching accent clearly visible without turning
      the pointer into a large or heavy cursor. -->
@@ -12,5 +12,5 @@
   <path d="M4,3 L4,26.5 L9.2,21.3 L13.4,29.6 L17.3,27.6 L13.1,19.4 L21,19.4 Z"
         fill="#0d0a08" stroke="#0d0a08" stroke-width="3.2" stroke-linejoin="round"/>
   <path d="M4,3 L4,26.5 L9.2,21.3 L13.4,29.6 L17.3,27.6 L13.1,19.4 L21,19.4 Z"
-        fill="#f5efe8" stroke="ACCENT_HEX_PLACEHOLDER" stroke-width="2" stroke-linejoin="round"/>
+        fill="#f5efe8" stroke="ACCENT_HEX_PLACEHOLDER" stroke-width="4" stroke-linejoin="round"/>
 </svg>
