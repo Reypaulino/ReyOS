@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- ReyOS panel background, solid/opaque variant. Same rounded shape as
+     the translucent widgets/panel-background.svg, just fully opaque
+     fill, used when panel opacity mode resolves to Opaque instead of
+     Adaptive/Translucent. See that file for the design rationale. -->
+<svg
+   width="26"
+   height="26"
+   viewBox="0 0 26 26"
+   version="1.1"
+   xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <style type="text/css">
+      .reyos-panel-fill { fill:#14100d; fill-opacity:1; }
+      .reyos-panel-rim { fill:none; stroke:#c97932; stroke-opacity:0.18; stroke-width:1; }
+    </style>
+  </defs>
+
+  <rect id="center" class="reyos-panel-fill" x="9" y="9" width="8" height="8" />
+
+  <rect id="top" class="reyos-panel-fill" x="9" y="0" width="8" height="9" />
+  <rect id="bottom" class="reyos-panel-fill" x="9" y="17" width="8" height="9" />
+  <rect id="left" class="reyos-panel-fill" x="0" y="9" width="9" height="8" />
+  <rect id="right" class="reyos-panel-fill" x="17" y="9" width="9" height="8" />
+
+  <path id="topleft" class="reyos-panel-fill"
+        d="M 9,0 L 7,0 A 7,7 0 0 0 0,7 L 0,9 L 9,9 Z" />
+  <path id="topright" class="reyos-panel-fill"
+        d="M 17,0 L 19,0 A 7,7 0 0 1 26,7 L 26,9 L 17,9 Z" />
+  <path id="bottomleft" class="reyos-panel-fill"
+        d="M 0,17 L 9,17 L 9,26 L 2,26 A 7,7 0 0 1 0,19 Z" />
+  <path id="bottomright" class="reyos-panel-fill"
+        d="M 17,17 L 26,17 L 26,19 A 7,7 0 0 1 19,26 L 17,26 Z" />
+
+  <path class="reyos-panel-rim"
+        d="M 7,0.5 L 19,0.5 A 6.5,6.5 0 0 1 25.5,7 L 25.5,19 A 6.5,6.5 0 0 1 19,25.5 L 7,25.5 A 6.5,6.5 0 0 1 0.5,19 L 0.5,7 A 6.5,6.5 0 0 1 7,0.5 Z" />
+
+  <rect id="hint-top-margin" x="11" y="0" width="4" height="4" fill="#ff00ff" />
+  <rect id="hint-bottom-margin" x="11" y="22" width="4" height="4" fill="#ff00ff" />
+  <rect id="hint-left-margin" x="0" y="11" width="4" height="4" fill="#ff00ff" />
+  <rect id="hint-right-margin" x="22" y="11" width="4" height="4" fill="#ff00ff" />
+</svg>

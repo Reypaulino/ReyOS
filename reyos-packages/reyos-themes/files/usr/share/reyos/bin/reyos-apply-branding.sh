@@ -6,7 +6,7 @@
 # since Welcome can trigger this on every exit, not just the first one.
 MARKER="$HOME/.config/reyos-branding-applied"
 # Existing marker files must not block a corrected ReyOS visual identity.
-BRANDING_VERSION="midnight-copper-4"
+BRANDING_VERSION="midnight-copper-5"
 PANEL_EDIT_MARKER="$HOME/.config/reyos-panel-editing-requested"
 [ "$(cat "$MARKER" 2>/dev/null)" = "$BRANDING_VERSION" ] && exit 0
 
@@ -22,6 +22,12 @@ apply_visual_identity() {
   # and every other icon consumer falls back to whatever Plasma's compiled-in
   # default is instead of ReyOS branding.
   kwriteconfig6 --file kdeglobals --group Icons --key Theme ReyOS
+  # Plasma theme (panel-background.svg etc), separate from the color scheme
+  # and LookAndFeel package above. Ships only widgets/panel-background.svg +
+  # solid/widgets/panel-background.svg (rounded, Midnight Copper, flat
+  # translucent fill -- no blur); everything else silently falls back to
+  # Breeze, confirmed live (buttons/dialogs/etc render normally).
+  kwriteconfig6 --file kdeglobals --group Theme --key name ReyOS
   kbuildsycoca6 --noincremental >/dev/null 2>&1 || true
 }
 
@@ -128,7 +134,32 @@ shortcuts_still_bound() {
 apply_panel_layout() {
   # Use Plasma's stable scripting API; saved containment IDs vary per user and
   # caused fresh installs to restore the legacy panel template.
-  qdbus6 org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript 'var e=panels(); for(var p=e.length-1;p>=0;--p){e[p].remove();} var t=new Panel; t.location="top"; t.height=30; t.floating=false; t.immutability=3; t.addWidget("org.reyos.workspacedots"); t.addWidget("org.kde.plasma.panelspacer"); var c=t.addWidget("org.kde.plasma.digitalclock"); c.currentConfigGroup=["Appearance"]; c.writeConfig("showDate",true); c.writeConfig("dateDisplayFormat","Custom"); c.writeConfig("customDateFormat","ddd, MMM d"); t.addWidget("org.kde.plasma.panelspacer"); var tray=t.addWidget("org.kde.plasma.systemtray"); tray.currentConfigGroup=["General"]; tray.writeConfig("shownItems","org.kde.plasma.notifications,org.kde.plasma.clipboard"); t.addWidget("org.kde.plasma.lock_logout"); var b=new Panel; b.location="bottom"; b.height=40; b.floating=false; b.immutability=3; var l=b.addWidget("org.kde.plasma.kickoff"); l.currentConfigGroup=["General"]; l.writeConfig("icon","reyos-launcher"); var it=b.addWidget("org.kde.plasma.icontasks"); it.currentConfigGroup=["General"]; it.writeConfig("launchers","applications:systemsettings.desktop,applications:org.kde.discover.desktop,applications:reyos-control-center.desktop,applications:org.kde.dolphin.desktop,applications:reyos-browser.desktop");' >/dev/null 2>&1
+  qdbus6 org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript 'var e=panels(); for(var p=e.length-1;p>=0;--p){e[p].remove();} var t=new Panel; t.location="top"; t.height=30; t.floating=false; t.immutability=3; t.addWidget("org.reyos.workspacedots"); t.addWidget("org.kde.plasma.panelspacer"); var c=t.addWidget("org.kde.plasma.digitalclock"); c.currentConfigGroup=["Appearance"]; c.writeConfig("showDate",true); c.writeConfig("dateDisplayFormat","Custom"); c.writeConfig("customDateFormat","ddd, MMM d"); t.addWidget("org.kde.plasma.panelspacer"); var ll=t.addWidget("org.kde.plasma.lock_logout"); ll.currentConfigGroup=["General"]; ll.writeConfig("actionsOrder","lockScreen,requestShutDown,requestReboot,requestLogoutScreen,suspendToRam,requestLogout,switchUser,suspendToDisk"); ll.writeConfig("show_requestReboot",true); ll.writeConfig("show_requestShutDown",true); var tray=t.addWidget("org.kde.plasma.systemtray"); tray.currentConfigGroup=["General"]; tray.writeConfig("shownItems","org.kde.plasma.notifications,org.kde.plasma.clipboard,org.kde.plasma.bluetooth,org.kde.plasma.volume,org.kde.plasma.networkmanagement"); var b=new Panel; b.location="bottom"; b.height=40; b.floating=false; b.immutability=3; var l=b.addWidget("org.kde.plasma.kickoff"); l.currentConfigGroup=["General"]; l.writeConfig("icon","reyos-launcher"); var it=b.addWidget("org.kde.plasma.icontasks"); it.currentConfigGroup=["General"]; it.writeConfig("launchers","applications:systemsettings.desktop,applications:org.kde.discover.desktop,applications:reyos-control-center.desktop,applications:org.kde.dolphin.desktop,applications:reyos-browser.desktop");' >/dev/null 2>&1
+}
+
+apply_panel_opacity() {
+  # opacityMode isn't reliably settable through PlasmaShell's scripting API
+  # (panel.opacityMode = ... accepts the write with no error, read-back even
+  # confirms it in the same script session, but it never reaches this config
+  # file and the live render never changes) -- confirmed by direct testing,
+  # unlike height/location/widget configs which do persist through scripting.
+  # Write the containment-level key directly instead, same as apply_shortcuts()
+  # already does for kglobalshortcutsrc.
+  #
+  # Known limitation, not fixed here: the top panel (location=3/TopEdge)
+  # never renders panel-background.svg's rounded corners regardless of
+  # content -- confirmed by testing a bare single-widget top panel with no
+  # systemtray. Only the bottom panel (location=4/BottomEdge) does. This is
+  # a Plasma 6.7.5 platform bug (matches the class of upstream reports around
+  # floating-panel corner/mask rendering, e.g. bugs.kde.org #454467), not
+  # something wrong in ReyOS's own panel-background.svg -- the identical
+  # file renders correctly the moment the same content is on the bottom
+  # panel. Left as-is per explicit product decision: keep both panels,
+  # accept the top one stays square.
+  local id
+  for id in $(awk '/^\[Containments\]\[[0-9]+\]$/{gsub(/[^0-9]/,"",$0); id=$0} /^location=[34]$/{print id}' "$CONFIG_FILE"); do
+    kwriteconfig6 --file plasma-org.kde.plasma.desktop-appletsrc --group Containments --group "$id" --group General --key opacityMode Translucent
+  done
 }
 
 unlock_panel_layout() {
@@ -194,6 +225,7 @@ for attempt in $(seq 1 5); do
   fi
 done
 
+apply_panel_opacity
 [ -f "$PANEL_EDIT_MARKER" ] && unlock_panel_layout
 restart_plasmashell_for_icons
 printf '%s\n' "$BRANDING_VERSION" > "$MARKER"
