@@ -2,6 +2,12 @@
 
 Real bugs found and fixed, with root cause. Newest first. See `bugs.md` for what's still open.
 
+## 2026-09-28 — Control Center updates did not reset the three-day reminder
+
+Confirmed on the installed `ReyOS-Test` VM after a successful full system update: the login notifier still judged the system by the old `~/.last_pkg_update` timestamp. The terminal System Tools update path already touched this file after `pacman -Syu`, but Control Center's **Install updates** and **Full update** workers never wrote it, despite the notifier explicitly treating the stamp as the record of a successful update. This made the reminder return every three days even when the user updated successfully through the main GUI.
+
+Added a shared `_record_successful_update()` helper to `reyos-control-center-gui` and call it only after `pacman -Syu` succeeds in either GUI update path. A failure to write the reminder state is shown as a warning in the update log without falsely reporting the already-successful package transaction as failed. Failed package updates do not touch the stamp. Package release bumped to `1.0.0-80`.
+
 ## 2026-09-26 — reyos-browser: Violet still rendered blue in the background; architecture rewrite
 
 After the neutral-gray-glow fix directly below shipped, user applied Violet on real hardware/VM and reported the background still looked blue. Root cause, found by computing exactly what the shipped formula produced for Violet's new accent (186,104,200): every one of the 8 derived "surface" shades came out blue-dominant (e.g. the deepest background computed to `#1206A7`, R18 G6 B167). The flat per-channel RGB offsets used since the original "extend the patch list" fix were reverse-engineered from Copper's own hand-tuned hex values, where red is the dominant channel — subtracting the same fixed amount from every channel only stays hue-correct for accents shaped like Copper's. Violet's accent has blue as the dominant channel, so subtracting far more from red/green than from blue left blue completely dominating every darkened shade, regardless of what the source accent's hue actually was.

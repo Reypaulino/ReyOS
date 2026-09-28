@@ -119,6 +119,18 @@ def _is_live_session():
     return "archisobasedir=" in cmdline or "archisolabel=" in cmdline
 
 
+def _record_successful_update(progress_emit=None):
+    """Reset the login reminder after a successful system update."""
+    try:
+        (Path.home() / ".last_pkg_update").touch()
+    except OSError as exc:
+        # The package transaction already succeeded, so a reminder-state
+        # write failure should be visible without misreporting the update as
+        # failed.
+        if progress_emit:
+            progress_emit(f"Warning: could not reset the update reminder: {exc}")
+
+
 def _run(cmd, progress_emit=None):
     proc = subprocess.Popen(
         cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -273,6 +285,8 @@ class PkgWorker(QThread):
                 _wait_for_pacman_lock(emit)
                 emit("$ sudo pacman -Syu")
                 rc = _run(["sudo", "pacman", "-Syu"], emit)
+                if rc == 0:
+                    _record_successful_update(emit)
                 self.finished_ok.emit(rc == 0, "Updates installed." if rc == 0 else "Update failed.")
             elif self.action == "full":
                 _wait_for_pacman_lock(emit)
@@ -293,6 +307,7 @@ class PkgWorker(QThread):
                 _run(["sudo", "pacman", "-Sc", "--noconfirm"], emit)
                 emit("[3/3] Flatpak update...")
                 _run(["flatpak", "update", "-y"], emit)
+                _record_successful_update(emit)
                 self.finished_ok.emit(True, "Full update complete.")
             elif self.action == "reyos":
                 _wait_for_pacman_lock(emit)
