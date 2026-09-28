@@ -2927,6 +2927,43 @@ class Backend(QObject):
     # single global [Mouse] group here (the first draft, before checking)
     # would have silently written to a group nothing ever reads.
 
+    @Slot(result=int)
+    def mouseCursorSize(self):
+        try:
+            out = subprocess.check_output(
+                ["kreadconfig6", "--file", "kcminputrc", "--group", "Mouse", "--key", "cursorSize"],
+                text=True, timeout=2,
+            ).strip()
+            size = int(out) if out else 24
+            return size if size in (24, 32, 48, 64) else 24
+        except Exception:
+            return 24
+
+    @Slot(int)
+    def setMouseCursorSize(self, size):
+        if size not in (24, 32, 48, 64):
+            self.actionFinished.emit(False, "Choose a supported cursor size.")
+            return
+
+        def task(emit):
+            saved = subprocess.run(
+                ["kwriteconfig6", "--file", "kcminputrc", "--group", "Mouse", "--key", "cursorSize", str(size)],
+                capture_output=True, text=True, timeout=5,
+            ).returncode == 0
+            if not saved:
+                return False, "Could not save the cursor size."
+
+            theme = subprocess.run(
+                ["kreadconfig6", "--file", "kcminputrc", "--group", "Mouse", "--key", "cursorTheme"],
+                capture_output=True, text=True, timeout=5,
+            ).stdout.strip() or "ReyOS-Copper"
+            applied = subprocess.run(
+                ["plasma-apply-cursortheme", theme, "--size", str(size)],
+                capture_output=True, text=True, timeout=10,
+            ).returncode == 0
+            return True, (f"Cursor size set to {size} px." if applied else f"Cursor size saved as {size} px; it will apply at next login.")
+        self._run_action(task)
+
     @staticmethod
     def _pointer_devices():
         try:

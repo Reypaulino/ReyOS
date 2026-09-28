@@ -4,9 +4,12 @@ import QtQuick.Controls as Controls
 import org.kde.kirigami as Kirigami
 
 Kirigami.ScrollablePage {
+    id: page
     title: "Mouse"
 
     property bool busy: false
+    property var cursorSizes: [24, 32, 48, 64]
+    property int selectedCursorSize: backend.mouseCursorSize()
 
     actions: [
         Kirigami.Action {
@@ -43,6 +46,32 @@ Kirigami.ScrollablePage {
         y: Kirigami.Units.gridUnit
         width: parent.width - Kirigami.Units.gridUnit * 2
         spacing: Kirigami.Units.gridUnit
+
+        Kirigami.AbstractCard {
+            Layout.fillWidth: true
+            padding: Kirigami.Units.gridUnit
+            contentItem: ColumnLayout {
+                spacing: Kirigami.Units.smallSpacing
+                Kirigami.Heading { text: "Cursor size"; level: 3 }
+                Controls.Label {
+                    Layout.fillWidth: true
+                    wrapMode: Text.Wrap
+                    text: "Choose a comfortable pointer size. Your ReyOS accent-colored cursor stays the same design."
+                    opacity: 0.7
+                }
+                Controls.ComboBox {
+                    id: cursorSizeSelector
+                    Layout.fillWidth: true
+                    model: ["24 px", "32 px", "48 px", "64 px"]
+                    currentIndex: Math.max(0, page.cursorSizes.indexOf(page.selectedCursorSize))
+                    onActivated: {
+                        var size = page.cursorSizes[currentIndex]
+                        page.selectedCursorSize = size
+                        backend.setMouseCursorSize(size)
+                    }
+                }
+            }
+        }
 
         Repeater {
             model: deviceModel

@@ -2,6 +2,12 @@
 
 Real bugs found and fixed, with root cause. Newest first. See `bugs.md` for what's still open.
 
+## 2026-09-28 — Control Center Mouse page gains a cursor-size option
+
+The Mouse page already exposed per-device pointer speed, handedness, and natural scrolling, but there was no way to enlarge the on-screen cursor. Added a separate global **Cursor size** selector with the four sizes (24, 32, 48, and 64 px) actually present in ReyOS's custom XCursor assets. The backend persists the choice in Plasma's `kcminputrc` and calls `plasma-apply-cursortheme` with the currently selected cursor theme, so increasing size preserves the active Look's accent-colored ReyOS pointer instead of switching to a generic cursor. Unsupported values are rejected; if live application is unavailable, the saved size takes effect at next login. `reyos-control-center-gui` bumped to `1.0.0-84`.
+
+Also checked the requested Ollama services on this machine: `ollama.service` is already active and enabled, so no service-state change was needed.
+
 ## 2026-09-28 — Logout dialog could not open with ReyOS global themes
 
 Reproduced on `ReyOS-Test`: clicking Log Out started `ksmserver-logout-greeter`, but the process logged `Couldn't find a theme for the Shutdown dialog ""`, failed to obtain focus, and stayed alive. Every later click was ignored because `org.kde.LogoutPrompt` believed the invisible prompt was already showing. The active `org.reyos.desktop` look-and-feel supplied colors and a splash screen but no `contents/logout` component. ReyOS also intentionally excludes the stock Breeze global-theme directories through pacman's `NoExtract`, so Plasma had no default logout component to fall back to.
