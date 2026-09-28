@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- ReyOS close button. The full-size, nearly-transparent rect in each state
+     fixes the FrameSvg element bounds; removing it makes KSvg crop to the X
+     itself and stretch that crop across the entire titlebar button. -->
+<svg width="20" height="20" viewBox="0 0 20 20" version="1.1" xmlns="http://www.w3.org/2000/svg">
+  <g id="active-center">
+    <rect x="0" y="0" width="20" height="20" fill="#000000" fill-opacity="0.003" />
+    <path d="M 6,6 L 14,14 M 14,6 L 6,14" stroke="#e8dcd0" stroke-width="1.6" stroke-linecap="round" fill="none" />
+  </g>
+  <g id="hover-center">
+    <rect x="0" y="0" width="20" height="20" fill="#000000" fill-opacity="0.003" />
+    <circle cx="10" cy="10" r="8" fill="#ed5a5a" fill-opacity="0.85" />
+    <path d="M 6,6 L 14,14 M 14,6 L 6,14" stroke="#fff3e6" stroke-width="1.6" stroke-linecap="round" fill="none" />
+  </g>
+</svg>

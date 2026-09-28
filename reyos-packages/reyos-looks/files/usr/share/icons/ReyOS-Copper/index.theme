@@ -1,0 +1,4 @@
+[Icon Theme]
+Name=ReyOS-Copper
+Comment=ReyOS copper pointer, everything else inherited from Breeze
+Inherits=breeze_cursors

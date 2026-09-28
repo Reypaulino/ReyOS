@@ -1,0 +1,4 @@
+[Icon Theme]
+Name=ReyOS-Graphite
+Comment=ReyOS graphite pointer, everything else inherited from Breeze
+Inherits=breeze_cursors

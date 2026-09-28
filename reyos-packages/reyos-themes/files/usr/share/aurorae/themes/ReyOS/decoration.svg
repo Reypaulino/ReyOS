@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- ReyOS window decoration frame (Aurorae v2 / KSvg::FrameSvg). Same
+     9-patch/rounded-corner convention as desktoptheme/ReyOS/widgets/
+     panel-background.svg, re-prefixed "decoration-"/"decoration-inactive-"
+     per Aurorae's own piece-naming convention, corner radius 8.
+
+     Two hard-won lessons from live testing on the real Dev VM, both
+     load-bearing, do not "simplify" this file without re-testing live:
+
+     1. FrameSvg reads "decoration(-inactive)-hint-*-margin" elements to
+        know where each prefix's corner art ends and the stretchable edge
+        begins. It does NOT derive that from ReyOSrc's Border*/TitleEdge*
+        values (those only set logical hit-test thickness). Omit the hints
+        and every corner renders as a plain unrounded square, no error, no
+        crash, just silently wrong.
+
+     2. FrameSvg renders each named piece via its own tight bounding-box
+        crop, so a stroke drawn exactly ON a piece's true outer edge gets
+        half its width clipped by that crop and disappears. The accent rim
+        below is a SEPARATE small inset path/line per piece (2px in from
+        the true edge, class reyos-deco-rim, no fill), safely inside each
+        piece's own bounding box, not a stroke on the fill shape itself. A
+        freestanding single perimeter-only path (tried first) was invisible
+        for a different reason: FrameSvg only ever looks up the fixed piece
+        ids it knows about, never arbitrary sibling shapes.
+
+     Both bugs looked identical on screen (flat unrounded/unrimmed square)
+     and needed two separate fixes. If the rim or the rounding vanishes
+     again after an edit, re-check both mechanisms independently, they are
+     not the same failure. -->
+<svg
+   width="28"
+   height="28"
+   viewBox="0 0 28 28"
+   version="1.1"
+   xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <style type="text/css">
+      .reyos-deco-fill { fill:#14100d; fill-opacity:0.97; }
+      .reyos-deco-fill-inactive { fill:#14100d; fill-opacity:0.86; }
+      .reyos-deco-rim { fill:none; stroke:#c97932; stroke-opacity:0.85; stroke-width:1.4; stroke-linecap:round; }
+    </style>
+  </defs>
+
+  <!-- ===== active (focused window) ===== -->
+  <g id="decoration">
+    <rect id="decoration-center" class="reyos-deco-fill" x="10" y="10" width="8" height="8" />
+    <g id="decoration-top">
+      <rect class="reyos-deco-fill" x="10" y="0" width="8" height="10" />
+      <line class="reyos-deco-rim" x1="10" y1="2" x2="18" y2="2" />
+    </g>
+    <g id="decoration-bottom">
+      <rect class="reyos-deco-fill" x="10" y="18" width="8" height="10" />
+      <line class="reyos-deco-rim" x1="10" y1="26" x2="18" y2="26" />
+    </g>
+    <g id="decoration-left">
+      <rect class="reyos-deco-fill" x="0" y="10" width="10" height="8" />
+      <line class="reyos-deco-rim" x1="2" y1="10" x2="2" y2="18" />
+    </g>
+    <g id="decoration-right">
+      <rect class="reyos-deco-fill" x="18" y="10" width="10" height="8" />
+      <line class="reyos-deco-rim" x1="26" y1="10" x2="26" y2="18" />
+    </g>
+    <g id="decoration-topleft">
+      <path class="reyos-deco-fill" d="M 10,0 L 8,0 A 8,8 0 0 0 0,8 L 0,10 L 10,10 Z" />
+      <path class="reyos-deco-rim" d="M 2,8 A 6,6 0 0 1 8,2" />
+    </g>
+    <g id="decoration-topright">
+      <path class="reyos-deco-fill" d="M 18,0 L 20,0 A 8,8 0 0 1 28,8 L 28,10 L 18,10 Z" />
+      <path class="reyos-deco-rim" d="M 20,2 A 6,6 0 0 1 26,8" />
+    </g>
+    <g id="decoration-bottomleft">
+      <path class="reyos-deco-fill" d="M 0,18 L 10,18 L 10,28 L 2,28 A 8,8 0 0 1 0,20 Z" />
+      <path class="reyos-deco-rim" d="M 8,26 A 6,6 0 0 1 2,20" />
+    </g>
+    <g id="decoration-bottomright">
+      <path class="reyos-deco-fill" d="M 18,18 L 28,18 L 28,20 A 8,8 0 0 1 20,28 L 18,28 Z" />
+      <path class="reyos-deco-rim" d="M 26,20 A 6,6 0 0 1 20,26" />
+    </g>
+  </g>
+
+  <rect id="decoration-hint-top-margin" x="13" y="0" width="2" height="10" fill="#ff00ff" />
+  <rect id="decoration-hint-bottom-margin" x="13" y="18" width="2" height="10" fill="#ff00ff" />
+  <rect id="decoration-hint-left-margin" x="0" y="13" width="10" height="2" fill="#ff00ff" />
+  <rect id="decoration-hint-right-margin" x="18" y="13" width="10" height="2" fill="#ff00ff" />
+  <rect id="decoration-inactive-hint-top-margin" x="13" y="0" width="2" height="10" fill="#ff00ff" />
+  <rect id="decoration-inactive-hint-bottom-margin" x="13" y="18" width="2" height="10" fill="#ff00ff" />
+  <rect id="decoration-inactive-hint-left-margin" x="0" y="13" width="10" height="2" fill="#ff00ff" />
+  <rect id="decoration-inactive-hint-right-margin" x="18" y="13" width="10" height="2" fill="#ff00ff" />
+
+  <!-- ===== inactive (unfocused window): flat fill only, no rim ===== -->
+  <g id="decoration-inactive">
+    <rect id="decoration-inactive-center" class="reyos-deco-fill-inactive" x="10" y="10" width="8" height="8" />
+    <rect id="decoration-inactive-top" class="reyos-deco-fill-inactive" x="10" y="0" width="8" height="10" />
+    <rect id="decoration-inactive-bottom" class="reyos-deco-fill-inactive" x="10" y="18" width="8" height="10" />
+    <rect id="decoration-inactive-left" class="reyos-deco-fill-inactive" x="0" y="10" width="10" height="8" />
+    <rect id="decoration-inactive-right" class="reyos-deco-fill-inactive" x="18" y="10" width="10" height="8" />
+    <path id="decoration-inactive-topleft" class="reyos-deco-fill-inactive"
+          d="M 10,0 L 8,0 A 8,8 0 0 0 0,8 L 0,10 L 10,10 Z" />
+    <path id="decoration-inactive-topright" class="reyos-deco-fill-inactive"
+          d="M 18,0 L 20,0 A 8,8 0 0 1 28,8 L 28,10 L 18,10 Z" />
+    <path id="decoration-inactive-bottomleft" class="reyos-deco-fill-inactive"
+          d="M 0,18 L 10,18 L 10,28 L 2,28 A 8,8 0 0 1 0,20 Z" />
+    <path id="decoration-inactive-bottomright" class="reyos-deco-fill-inactive"
+          d="M 18,18 L 28,18 L 28,20 A 8,8 0 0 1 20,28 L 18,28 Z" />
+  </g>
+</svg>

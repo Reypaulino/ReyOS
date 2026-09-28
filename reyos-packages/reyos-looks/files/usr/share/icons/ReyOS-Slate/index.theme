@@ -1,0 +1,4 @@
+[Icon Theme]
+Name=ReyOS-Slate
+Comment=ReyOS slate pointer, everything else inherited from Breeze
+Inherits=breeze_cursors

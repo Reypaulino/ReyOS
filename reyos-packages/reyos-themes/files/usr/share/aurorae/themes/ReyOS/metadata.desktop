@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=ReyOS
+Comment=ReyOS Midnight Copper window decoration - slim border, rounded corners, accent-colored active window outline
+Type=Service
+X-KDE-PluginInfo-Name=ReyOS
+X-KDE-PluginInfo-Author=Rey Paulino
+X-KDE-PluginInfo-Email=noreply@reyos.local
+X-KDE-PluginInfo-Version=1.0
+X-KDE-PluginInfo-Website=https://reypaulino.github.io/ReyOS/
+X-KDE-PluginInfo-License=MIT
+X-KDE-ServiceTypes=KWinDecoration

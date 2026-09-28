@@ -1,0 +1,43 @@
+# close.svg, maximize.svg, restore.svg, and minimize.svg each include a nearly-
+# transparent 20x20 rect inside every FrameSvg state. That rect is structural:
+# KSvg crops
+# a "*-center" element to its own bounding box before scaling it to the button
+# size. Without the full-size rect, the small glyph itself becomes the crop and
+# gets enlarged to fill the whole button (the oversized X/box/solid bar seen in
+# the original build). Keep the rects even though they are visually invisible.
+[General]
+TitleAlignment=Left
+TitleVerticalAlignment=Center
+Animation=150
+ActiveTextColor=255,243,230,255
+InactiveTextColor=190,169,148,200
+UseTextShadow=false
+LeftButtons=
+RightButtons=IAX
+Shadow=true
+DecorationPosition=0
+
+[Layout]
+BorderLeft=8
+BorderRight=8
+BorderBottom=8
+TitleEdgeTop=8
+TitleEdgeBottom=4
+TitleEdgeLeft=8
+TitleEdgeRight=8
+TitleEdgeTopMaximized=0
+TitleEdgeBottomMaximized=0
+TitleEdgeLeftMaximized=0
+TitleEdgeRightMaximized=0
+TitleBorderLeft=6
+TitleBorderRight=6
+TitleHeight=26
+ButtonWidth=20
+ButtonHeight=20
+ButtonSpacing=6
+ButtonMarginTop=0
+ExplicitButtonSpacer=10
+PaddingTop=0
+PaddingBottom=0
+PaddingLeft=0
+PaddingRight=0

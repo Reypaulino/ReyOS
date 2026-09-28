@@ -1,0 +1,4 @@
+[Icon Theme]
+Name=ReyOS-Violet
+Comment=ReyOS violet pointer, everything else inherited from Breeze
+Inherits=breeze_cursors

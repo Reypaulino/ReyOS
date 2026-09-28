@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- ReyOS minimize button. The nearly-transparent rects give the horizontal
+     line a non-degenerate 20x20 FrameSvg crop instead of a zero-height crop. -->
+<svg width="20" height="20" viewBox="0 0 20 20" version="1.1" xmlns="http://www.w3.org/2000/svg">
+  <g id="active-center">
+    <rect x="0" y="0" width="20" height="20" fill="#000000" fill-opacity="0.003" />
+    <path d="M 6,13 L 14,13" stroke="#e8dcd0" stroke-width="1.6" stroke-linecap="round" fill="none" />
+  </g>
+  <g id="hover-center">
+    <rect x="0" y="0" width="20" height="20" fill="#000000" fill-opacity="0.003" />
+    <circle cx="10" cy="10" r="8" fill="#e8dcd0" fill-opacity="0.16" />
+    <path d="M 6,13 L 14,13" stroke="#fff3e6" stroke-width="1.6" stroke-linecap="round" fill="none" />
+  </g>
+</svg>

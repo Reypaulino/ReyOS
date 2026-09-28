@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- ReyOS maximize/restore button. The nearly-transparent rects define the
+     complete FrameSvg state bounds and must not be removed. -->
+<svg width="20" height="20" viewBox="0 0 20 20" version="1.1" xmlns="http://www.w3.org/2000/svg">
+  <g id="active-center">
+    <rect x="0" y="0" width="20" height="20" fill="#000000" fill-opacity="0.003" />
+    <rect x="6" y="6" width="8" height="8" rx="1" stroke="#e8dcd0" stroke-width="1.4" fill="none" />
+  </g>
+  <g id="hover-center">
+    <rect x="0" y="0" width="20" height="20" fill="#000000" fill-opacity="0.003" />
+    <circle cx="10" cy="10" r="8" fill="#e8dcd0" fill-opacity="0.16" />
+    <rect x="6" y="6" width="8" height="8" rx="1" stroke="#fff3e6" stroke-width="1.4" fill="none" />
+  </g>
+</svg>

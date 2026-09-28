@@ -7,6 +7,7 @@ import json
 import os
 import pwd
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -850,6 +851,18 @@ class Backend(QObject):
                 return False, f"Look '{look_id}' has no ColorScheme id."
             rc = subprocess.run(["plasma-apply-colorscheme", scheme_id]).returncode
 
+            # Per-Look mouse pointer (reyos-looks ships a prebuilt XCursor
+            # theme per Look, ReyOS-Copper/-Crimson/-etc -- see assets/cursor/
+            # build-cursors.sh; everything but the pointer's own accent rim
+            # inherits from breeze_cursors, so this is the one "compact"
+            # cursor asset, not a full cursor-set redesign). kcminputrc is a
+            # per-user file (unlike the icons/decoration patches below), so
+            # this needs no /tmp staging or sudo helper -- same reasoning as
+            # plasma-apply-colorscheme/-wallpaperimage above.
+            cursor_theme = f"ReyOS-{look_id.capitalize()}"
+            if Path(f"/usr/share/icons/{cursor_theme}").is_dir():
+                subprocess.run(["plasma-apply-cursortheme", cursor_theme], capture_output=True)
+
             # reyos-icons' own branded overrides -- the gear used for every
             # "preferences-*"-style sidebar icon, and the folder-shaped
             # Dolphin app icon -- bake their accent in as a literal
@@ -901,6 +914,24 @@ class Backend(QObject):
                         continue
                     Path(f"/tmp/reyos-look-{tmp_stem}.svg").write_text(new_text)
                     any_staged = True
+
+                # reyos-themes' Aurorae window decoration (usr/share/aurorae/
+                # themes/ReyOS/decoration.svg) centralizes its one accent spot
+                # in a named CSS class (.reyos-deco-rim) rather than a bare
+                # fill/stroke attribute -- same anchor-on-stable-structure
+                # reasoning as the masked_icons loop above (match by what the
+                # element IS, not by diffing against whatever hex the last
+                # Look happened to leave behind).
+                deco_svg = Path("/usr/share/aurorae/themes/ReyOS/decoration.svg")
+                if deco_svg.is_file():
+                    text = deco_svg.read_text()
+                    new_text = re.sub(
+                        r'(?<=\.reyos-deco-rim \{ fill:none; stroke:)#[0-9A-Fa-f]{6}',
+                        accent_hex, text,
+                    )
+                    if new_text != text:
+                        Path("/tmp/reyos-look-decoration.svg").write_text(new_text)
+                        any_staged = True
 
                 # The Kickoff/taskbar app-launcher badge and every branded
                 # app icon (Control Center, Browser, Reader, Distrobox GUI)
@@ -1194,6 +1225,33 @@ class Backend(QObject):
                 # specific call is KWin's documented way to re-read
                 # kglobalshortcutsrc for its own global shortcuts.
                 subprocess.run(["qdbus6", "org.kde.KWin", "/KWin", "org.kde.KWin.reconfigure"], capture_output=True)
+
+            # Unconditional (unlike the shortcuts-gated call above): KWin
+            # caches the parsed Aurorae decoration.svg in its own process,
+            # separate from plasmashell -- this is what actually picks up
+            # decoration.svg's freshly-repainted .reyos-deco-rim stroke
+            # after the sudo helper above moves it into place. Safe to call
+            # even when nothing decoration-related changed this time.
+            #
+            # Confirmed live (2026-09-28): reconfigure alone is NOT enough --
+            # KSvg (the library backing Aurorae's FrameSvg rendering) keeps
+            # its own on-disk element-geometry cache at ~/.cache/ksvg-elements
+            # that does not invalidate just because decoration.svg's content
+            # changed on disk. Without clearing it first, an existing window
+            # kept showing the PREVIOUS Look's rim color indefinitely, even
+            # across repeated reconfigure calls and even for freshly-opened
+            # windows -- only removing this cache made KWin actually
+            # re-parse the file. This is a per-user cache (not root-owned),
+            # safe to remove outright; KSvg regenerates it. It's a plain
+            # FILE, not a directory (confirmed live) -- shutil.rmtree()
+            # silently no-ops on it via NotADirectoryError swallowed by
+            # ignore_errors=True, which is exactly how this was missed the
+            # first time: no exception, no error, just a cache that quietly
+            # never cleared. Path.unlink() is the correct call here.
+            ksvg_cache = Path.home() / ".cache" / "ksvg-elements"
+            ksvg_cache.is_dir() and shutil.rmtree(ksvg_cache, ignore_errors=True)
+            ksvg_cache.unlink(missing_ok=True)
+            subprocess.run(["qdbus6", "org.kde.KWin", "/KWin", "org.kde.KWin.reconfigure"], capture_output=True)
 
             # Same lesson as applyLookAndFeel() above: plasmashell doesn't
             # repaint panel/systray icons on its own just because kdeglobals

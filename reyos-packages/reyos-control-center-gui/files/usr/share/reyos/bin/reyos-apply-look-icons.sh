@@ -26,10 +26,12 @@ copy_if_present /tmp/reyos-look-reader.svg /usr/share/icons/hicolor/scalable/app
 copy_if_present /tmp/reyos-look-distrobox-gui.svg /usr/share/icons/hicolor/scalable/apps/reyos-distrobox-gui.svg
 copy_if_present /tmp/reyos-look-browser-Main.qml /usr/share/reyos/browser/qml/Main.qml
 copy_if_present /tmp/reyos-look-browser-home.html /usr/share/reyos/browser/home.html
+copy_if_present /tmp/reyos-look-decoration.svg /usr/share/aurorae/themes/ReyOS/decoration.svg
 
 rm -f /tmp/reyos-look-gear-16.svg /tmp/reyos-look-gear-32.svg /tmp/reyos-look-gear-48.svg \
       /tmp/reyos-look-dolphin-48.svg \
       /tmp/reyos-look-launcher.svg /tmp/reyos-look-launcher.png \
       /tmp/reyos-look-control-center.svg /tmp/reyos-look-browser.svg \
       /tmp/reyos-look-reader.svg /tmp/reyos-look-distrobox-gui.svg \
-      /tmp/reyos-look-browser-Main.qml /tmp/reyos-look-browser-home.html
+      /tmp/reyos-look-browser-Main.qml /tmp/reyos-look-browser-home.html \
+      /tmp/reyos-look-decoration.svg

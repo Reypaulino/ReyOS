@@ -2,6 +2,14 @@
 
 Real bugs found and fixed, with root cause. Newest first. See `bugs.md` for what's still open.
 
+## 2026-09-28 — Aurorae titlebar glyphs were enlarged into blocks; per-Look cursor accent was too subtle
+
+The new ReyOS Aurorae frame rendered correctly (rounded window, colored active border), but its minimize/maximize/close artwork did not: close became a titlebar-sized X, maximize became a large outline box, and minimize became a solid rounded block. The first live comparison was misleading because removing the three SVG files produced the same pixels while KWin still held the already-parsed theme in memory. Cross-checking the deleted Claude file snapshots against KDE's Aurorae/FrameSvg contract exposed the actual shared cause: every `*-center` state contained only the small glyph. KSvg crops an element to its own bounding box before scaling that crop to `ButtonWidth`/`ButtonHeight`, so it enlarged each small glyph to fill the full 20x20 button; the minimize line's degenerate-height bounds produced the block.
+
+Restored `close.svg`, `maximize.svg`, and `minimize.svg` with a nearly-transparent full 20x20 rectangle inside every state to establish stable FrameSvg bounds, then added `restore.svg` so maximized windows show the proper overlapping-window symbol. This remains a ReyOS design—not an Omarchy copy: visible conventional window controls, rounded dark titlebar, and the current Look's colored border. Also widened the per-Look cursor's matching accent rim from 1.4px to 2px while retaining its light fill and narrow dark contrast keyline, then regenerated all six XCursor themes (Copper, Crimson, Forest, Graphite, Slate, Violet).
+
+Live-verified on the Dev VM with `reyos-themes 1.0.0-58` and `reyos-looks 1.0.0-11`: a fresh Konsole under the real `__aurorae__svg__ReyOS` theme shows the normal line/square/X controls with the copper window border; maximizing it changes the middle button to the new restore glyph. `kcminputrc` reports `ReyOS-Copper`, and all six generated cursor binaries are distinct and rebuild successfully from their Look color schemes.
+
 ## 2026-09-28 — Control Center Mouse page gains a cursor-size option
 
 The Mouse page already exposed per-device pointer speed, handedness, and natural scrolling, but there was no way to enlarge the on-screen cursor. Added a separate global **Cursor size** selector with the four sizes (24, 32, 48, and 64 px) actually present in ReyOS's custom XCursor assets. The backend persists the choice in Plasma's `kcminputrc` and calls `plasma-apply-cursortheme` with the currently selected cursor theme, so increasing size preserves the active Look's accent-colored ReyOS pointer instead of switching to a generic cursor. Unsupported values are rejected; if live application is unavailable, the saved size takes effect at next login. `reyos-control-center-gui` bumped to `1.0.0-84`.

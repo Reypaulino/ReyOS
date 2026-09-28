@@ -6,7 +6,7 @@
 # since Welcome can trigger this on every exit, not just the first one.
 MARKER="$HOME/.config/reyos-branding-applied"
 # Existing marker files must not block a corrected ReyOS visual identity.
-BRANDING_VERSION="midnight-copper-5"
+BRANDING_VERSION="midnight-copper-6"
 PANEL_EDIT_MARKER="$HOME/.config/reyos-panel-editing-requested"
 [ "$(cat "$MARKER" 2>/dev/null)" = "$BRANDING_VERSION" ] && exit 0
 
@@ -15,6 +15,13 @@ mkdir -p "$HOME/.config"
 
 apply_visual_identity() {
   plasma-apply-colorscheme ReyOS >/dev/null 2>&1 || true
+  # Default pointer for a fresh account -- Copper is ReyOS's own default
+  # Look. Control Center's applyLook() (reyos-control-center-gui) swaps this
+  # to the matching ReyOS-<Look> theme on every later Look switch; this is
+  # only the first-login seed. Guarded (not `|| true` on the whole line) so
+  # a Dev VM/older reyos-looks build that predates the cursor themes doesn't
+  # spam a confusing error -- silently skipped if not present yet.
+  [ -d /usr/share/icons/ReyOS-Copper ] && plasma-apply-cursortheme ReyOS-Copper >/dev/null 2>&1
   kwriteconfig6 --file kdeglobals --group KDE --key LookAndFeelPackage org.reyos.desktop
   # LookAndFeelPackage above is informational only -- it doesn't make Plasma
   # actually apply that package's bundled defaults, including its icon theme.
@@ -162,6 +169,29 @@ apply_panel_opacity() {
   done
 }
 
+apply_window_decoration() {
+  # ReyOS's own Aurorae theme (usr/share/aurorae/themes/ReyOS) -- rounded
+  # corners, slim 2px side/bottom border, thin copper rim on the active
+  # window, matching the panel's own flat Midnight Copper language. Unlike
+  # kdeglobals' color scheme, KWin doesn't pick up a new decoration just
+  # because kwinrc changed underneath it -- `KWin reconfigure` (used
+  # elsewhere in this script for kglobalshortcutsrc) does reliably reload
+  # the decoration too, confirmed live, no plasmashell restart needed for
+  # this part.
+  kwriteconfig6 --file kwinrc --group org.kde.kdecoration2 --key library org.kde.kwin.aurorae
+  kwriteconfig6 --file kwinrc --group org.kde.kdecoration2 --key theme __aurorae__svg__ReyOS
+  kwriteconfig6 --file kwinrc --group org.kde.kdecoration2 --key BorderSize BorderTiny
+  # KSvg (Aurorae's FrameSvg backend) caches parsed element geometry at
+  # ~/.cache/ksvg-elements and does not invalidate it just because
+  # decoration.svg's content changed on disk -- confirmed live, a stale
+  # cache here silently keeps rendering the previous decoration.svg's
+  # colors/shape forever, reconfigure alone does not fix it. Only matters
+  # on a re-branding pass (an already-used account); harmless no-op on a
+  # brand new one with no cache yet.
+  rm -rf "$HOME/.cache/ksvg-elements"
+  qdbus6 org.kde.KWin /KWin org.kde.KWin.reconfigure >/dev/null 2>&1 || true
+}
+
 unlock_panel_layout() {
   qdbus6 org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript 'var e=panels(); for (var p=0; p<e.length; p++) { e[p].immutability=1; }' >/dev/null 2>&1
   # reyos-edit-mode-guard.service polls editMode and forces it back off every
@@ -226,6 +256,7 @@ for attempt in $(seq 1 5); do
 done
 
 apply_panel_opacity
+apply_window_decoration
 [ -f "$PANEL_EDIT_MARKER" ] && unlock_panel_layout
 restart_plasmashell_for_icons
 printf '%s\n' "$BRANDING_VERSION" > "$MARKER"

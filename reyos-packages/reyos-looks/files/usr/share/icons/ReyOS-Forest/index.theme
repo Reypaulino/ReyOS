@@ -1,0 +1,4 @@
+[Icon Theme]
+Name=ReyOS-Forest
+Comment=ReyOS forest pointer, everything else inherited from Breeze
+Inherits=breeze_cursors

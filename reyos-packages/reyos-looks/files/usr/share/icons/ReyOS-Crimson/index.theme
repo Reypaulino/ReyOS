@@ -1,0 +1,4 @@
+[Icon Theme]
+Name=ReyOS-Crimson
+Comment=ReyOS crimson pointer, everything else inherited from Breeze
+Inherits=breeze_cursors
