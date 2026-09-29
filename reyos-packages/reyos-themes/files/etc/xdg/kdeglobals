@@ -4,6 +4,13 @@ ColorScheme=ReyOS
 [KDE]
 LookAndFeelPackage=org.reyos.desktop
 
+# ReyOS Plasma theme (rounded translucent panels). reyos-apply-branding.sh
+# also selects it per-user at first login, but only installs made after the
+# theme existed ever ran that -- this system-wide default (plasmarc reads
+# kdeglobals too) covers older installs after a plain pacman -Syu.
+[Theme]
+name=ReyOS
+
 # Simplified System Settings — Ubuntu/GNOME-style scope, hiding KDE-specific
 # and advanced pages most users never touch. Uses the standard KIOSK action
 # restrictions mechanism ($i = immutable/system-enforced) — this hides the
