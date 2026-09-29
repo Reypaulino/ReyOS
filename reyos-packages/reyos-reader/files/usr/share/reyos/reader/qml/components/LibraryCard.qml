@@ -73,7 +73,7 @@ Rectangle {
             opacity: 0.7
             font.pointSize: Kirigami.Theme.smallFont.pointSize
         }
-        Controls.ProgressBar {
+        ReyOSProgressBar {
             Layout.fillWidth: true
             visible: item.progress_percent > 0
             from: 0; to: 100

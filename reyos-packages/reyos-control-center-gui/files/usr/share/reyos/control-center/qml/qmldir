@@ -21,3 +21,4 @@ KeyboardPage 1.0 KeyboardPage.qml
 MousePage 1.0 MousePage.qml
 BackupPage 1.0 BackupPage.qml
 GamingPage 1.0 GamingPage.qml
+ReyOSProgressBar 1.0 ReyOSProgressBar.qml

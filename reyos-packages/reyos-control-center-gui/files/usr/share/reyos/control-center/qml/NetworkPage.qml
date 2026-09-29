@@ -74,7 +74,7 @@ Kirigami.ScrollablePage {
         width: parent.width - Kirigami.Units.gridUnit * 2
         spacing: Kirigami.Units.gridUnit
 
-        Controls.ProgressBar {
+        ReyOSProgressBar {
             Layout.fillWidth: true
             indeterminate: true
             visible: loading
@@ -167,7 +167,7 @@ Kirigami.ScrollablePage {
                     opacity: 0.7
                 }
 
-                Controls.ProgressBar {
+                ReyOSProgressBar {
                     Layout.fillWidth: true
                     indeterminate: true
                     visible: wgBusy

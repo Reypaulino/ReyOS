@@ -48,7 +48,7 @@ Kirigami.ScrollablePage {
         width: parent.width
         spacing: Kirigami.Units.largeSpacing
 
-        Controls.ProgressBar { Layout.fillWidth: true; indeterminate: true; visible: busy }
+        ReyOSProgressBar { Layout.fillWidth: true; indeterminate: true; visible: busy }
 
         Kirigami.AbstractCard {
             Layout.fillWidth: true

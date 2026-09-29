@@ -43,7 +43,7 @@ Kirigami.ScrollablePage {
         width: parent.width - Kirigami.Units.gridUnit * 2
         spacing: Kirigami.Units.gridUnit
 
-        Controls.ProgressBar {
+        ReyOSProgressBar {
             Layout.fillWidth: true
             indeterminate: true
             visible: loading
@@ -67,7 +67,7 @@ Kirigami.ScrollablePage {
                             Item { Layout.fillWidth: true }
                             Controls.Label { text: used + " / " + size + "  (" + pct + ")" }
                         }
-                        Controls.ProgressBar {
+                        ReyOSProgressBar {
                             Layout.fillWidth: true
                             from: 0; to: 100
                             value: parseInt(pct)

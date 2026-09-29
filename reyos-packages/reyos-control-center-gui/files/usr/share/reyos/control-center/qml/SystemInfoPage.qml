@@ -115,7 +115,7 @@ Kirigami.ScrollablePage {
                     Item { Layout.fillWidth: true }
                     Controls.Label { text: cpuPct.toFixed(1) + "%" }
                 }
-                Controls.ProgressBar {
+                ReyOSProgressBar {
                     Layout.fillWidth: true
                     from: 0; to: 100
                     value: cpuPct
@@ -128,7 +128,7 @@ Kirigami.ScrollablePage {
                     Item { Layout.fillWidth: true }
                     Controls.Label { text: memUsed + " / " + memTotal + " MB  (" + memPct + "%)" }
                 }
-                Controls.ProgressBar {
+                ReyOSProgressBar {
                     Layout.fillWidth: true
                     from: 0; to: 100
                     value: memPct

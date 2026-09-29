@@ -126,7 +126,7 @@ Kirigami.ScrollablePage {
             text: "Changes apply immediately on this session (via xinput) and are saved for next login too. If a device doesn't support live apply, the setting still takes effect at next login."
         }
 
-        Controls.ProgressBar {
+        ReyOSProgressBar {
             Layout.fillWidth: true
             indeterminate: true
             visible: busy

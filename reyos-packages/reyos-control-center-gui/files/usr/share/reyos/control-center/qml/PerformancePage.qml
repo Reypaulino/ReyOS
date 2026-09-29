@@ -133,7 +133,7 @@ Kirigami.ScrollablePage {
             wrapMode: Text.Wrap
         }
 
-        Controls.ProgressBar {
+        ReyOSProgressBar {
             Layout.fillWidth: true
             indeterminate: busy
             visible: busy

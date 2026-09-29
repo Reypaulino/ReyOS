@@ -302,7 +302,7 @@ Kirigami.ScrollablePage {
             }
         }
 
-        Controls.ProgressBar {
+        ReyOSProgressBar {
             Layout.fillWidth: true
             indeterminate: running
             visible: running

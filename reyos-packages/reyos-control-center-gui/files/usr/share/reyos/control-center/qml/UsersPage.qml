@@ -264,7 +264,7 @@ Kirigami.ScrollablePage {
             onClicked: addUserDialog.open()
         }
 
-        Controls.ProgressBar {
+        ReyOSProgressBar {
             Layout.fillWidth: true
             indeterminate: true
             visible: busy

@@ -46,7 +46,7 @@ Rectangle {
                 text: Math.round(item.progress_percent) + "%"
                 opacity: 0.7
             }
-            Controls.ProgressBar {
+            ReyOSProgressBar {
                 Layout.fillWidth: true
                 from: 0; to: 100
                 value: item.progress_percent

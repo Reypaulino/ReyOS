@@ -213,7 +213,7 @@ Kirigami.ScrollablePage {
             }
         }
 
-        Controls.ProgressBar { Layout.fillWidth: true; indeterminate: true; visible: busy }
+        ReyOSProgressBar { Layout.fillWidth: true; indeterminate: true; visible: busy }
         Controls.Label { id: statusLabel; Layout.fillWidth: true; wrapMode: Text.Wrap }
     }
 }

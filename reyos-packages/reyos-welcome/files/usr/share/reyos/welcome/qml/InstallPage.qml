@@ -45,7 +45,7 @@ Kirigami.Page {
                 color: ReyOSStyle.text
             }
 
-            Controls.ProgressBar {
+            ReyOSProgressBar {
                 Layout.fillWidth: true
                 indeterminate: !done
                 value: done ? 1 : 0
