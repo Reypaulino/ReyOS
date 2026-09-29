@@ -2,6 +2,12 @@
 
 Real bugs found and fixed, with root cause. Newest first. See `bugs.md` for what's still open.
 
+## 2026-09-29 — reyos-browser CPU/memory check (no ReyOS leak) + one more wallpaper per Look
+
+**Browser** (`reyos-browser` 0.1.0-98, Dev VM, real desktop-session launch; on VMs the launcher forces `--disable-gpu` + `QT_QUICK_BACKEND=software`): idle 0% CPU on its home page (5 processes, ~520 MB PSS) and 0% on a loaded Wikipedia web-app window (~600 MB PSS, flat). 30 tab open→visit→close cycles: +72 MB then +7 MB (caches warming, plateaus). **Repeated reloads of the same site grow the renderer ~+115 MB per 20 reloads, linearly** (709→824→940 MB) — but a bare QtWebEngine window with none of ReyOS's code (no Shields/password/fingerprint scripts) grows identically (507→618→739→843 MB), so it's QtWebEngine/Chromium renderer behavior, not a ReyOS leak; the browser main process stays flat. Leaving the site in the same tab drops it back (677→566 MB; Chromium swaps the renderer process), and Low Memory Mode discards background tabs. After a real download finished, idle stayed 0% (the download-list `ProgressBar` didn't reproduce the Control Center repaint bug here — but VMs use the software Qt Quick backend, so re-check on real GPU hardware).
+
+**Wallpapers** (`reyos-looks` 1.0.0-13): one more per Look, GPL-2.0 from `mylinuxforwork/wallpaper`, 1920x1080 q85, candidates that duplicated an existing wallpaper skipped — copper `mesa`, crimson `ember`, forest `canopy`, graphite `summit`, slate `current`, violet `nebula`. Published `reyos-pages` `a6fa255`.
+
 ## 2026-09-29 — Control Center idled at ~200% CPU: QtQuick.Controls ProgressBar under the KDE style
 
 Found while checking performance/memory leaks on request. On ReyOS-Test, Control Center averaged 50% CPU over its lifetime and measured **170–215% CPU + 88–190% in KWin** whenever it was on screen (busy threads: `llvmpipe` + `QSGRenderThread` — continuous repainting). Per-page A/B with a real desktop-session launch: Looks page 0%, every other page ~190%; the Looks page is the only one without a `Controls.ProgressBar`. Removing just the Appearance page's one *hidden, non-indeterminate* ProgressBar took it from 191% to 0%. Root cause: under the KDE desktop QQC2 style, `Controls.ProgressBar` keeps the window repainting nonstop regardless of visibility. Also meant Control Center's own Home-page "CPU" bar was mostly measuring Control Center itself (read 81–86%, now 0%).
