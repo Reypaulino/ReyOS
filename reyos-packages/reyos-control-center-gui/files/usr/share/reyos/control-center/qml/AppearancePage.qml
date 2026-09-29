@@ -140,24 +140,25 @@ Kirigami.ScrollablePage {
                 Kirigami.Heading { text: "Panel transparency"; level: 4 }
                 RowLayout {
                     spacing: Kirigami.Units.largeSpacing
-                    Controls.Label { text: "Clear" }
+                    // Slider value is transparency (the backend stores opacity).
+                    Controls.Label { text: "Less transparent" }
                     Controls.Slider {
-                        id: panelOpacitySlider
+                        id: panelTransparencySlider
                         Layout.fillWidth: true
-                        from: 10
-                        to: 100
+                        from: 0
+                        to: 90
                         stepSize: 5
-                        value: backend.panelOpacity()
+                        value: 100 - backend.panelOpacity()
                     }
-                    Controls.Label { text: "Solid" }
+                    Controls.Label { text: "More transparent" }
                     Controls.Label {
                         Layout.preferredWidth: Kirigami.Units.gridUnit * 2.5
-                        text: Math.round(panelOpacitySlider.value) + "%"
+                        text: Math.round(panelTransparencySlider.value) + "%"
                     }
                     Controls.Button {
                         text: "Apply"
                         enabled: !busy
-                        onClicked: { busy = true; backend.applyPanelOpacity(Math.round(panelOpacitySlider.value)) }
+                        onClicked: { busy = true; backend.applyPanelOpacity(100 - Math.round(panelTransparencySlider.value)) }
                     }
                 }
             }

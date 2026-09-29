@@ -1481,7 +1481,7 @@ class Backend(QObject):
                         containment = None
             _write_panel_theme()
             _restart_plasmashell_and_wait()
-            return True, f"Panel opacity set to {int(percent)}%."
+            return True, f"Panel transparency set to {100 - int(percent)}%."
         self._run_action(task)
 
     @Slot()
