@@ -33,8 +33,8 @@ Kirigami.ScrollablePage {
         }
         function onActionFinished(ok, message) {
             running = false
-            pkgStatusLabel.text = message
-            pkgStatusLabel.color = ok ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.negativeTextColor
+            pkgStatusLabel.text = ok ? "" : message  // success is shown by Main.qml's toast
+            pkgStatusLabel.color = Kirigami.Theme.negativeTextColor
             if (ok) backend.searchPackages(pkgSearchField.text)
         }
         function onPackageInfoReady(name, info) {

@@ -41,8 +41,8 @@ Kirigami.ScrollablePage {
         function onActionFinished(ok, message) {
             wgBusy = false
             if (message.length > 0) {
-                wgStatusLabel.text = message
-                wgStatusLabel.color = ok ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.negativeTextColor
+                wgStatusLabel.text = ok ? "" : message  // success is shown by Main.qml's toast
+                wgStatusLabel.color = Kirigami.Theme.negativeTextColor
             }
             if (ok) backend.refreshWireguardStatus()
         }

@@ -41,8 +41,8 @@ Kirigami.ScrollablePage {
         }
         function onActionFinished(ok, message) {
             busy = false
-            usbGuardStatusLabel.text = message
-            usbGuardStatusLabel.color = ok ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.negativeTextColor
+            usbGuardStatusLabel.text = ok ? "" : message  // success is shown by Main.qml's toast
+            usbGuardStatusLabel.color = Kirigami.Theme.negativeTextColor
             if (ok) refresh()
         }
     }

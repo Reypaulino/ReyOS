@@ -28,8 +28,8 @@ Kirigami.ScrollablePage {
                 activeThemeId = pendingThemeId
                 pendingThemeId = ""
             }
-            statusLabel.text = message
-            statusLabel.color = ok ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.negativeTextColor
+            statusLabel.text = ok ? "" : message  // success is shown by Main.qml's toast
+            statusLabel.color = Kirigami.Theme.negativeTextColor
         }
         function onImageSelected(path) {
             busy = false

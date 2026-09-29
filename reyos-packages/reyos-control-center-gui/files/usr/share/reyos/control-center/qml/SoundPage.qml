@@ -31,8 +31,8 @@ Kirigami.ScrollablePage {
             for (var j = 0; j < info.sources.length; j++) sourceModel.append(info.sources[j])
         }
         function onActionFinished(ok, message) {
-            statusLabel.text = message
-            statusLabel.color = ok ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.negativeTextColor
+            statusLabel.text = ok ? "" : message  // success is shown by Main.qml's toast
+            statusLabel.color = Kirigami.Theme.negativeTextColor
             if (ok) refresh()
         }
     }

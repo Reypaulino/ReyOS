@@ -14,8 +14,8 @@ Kirigami.ScrollablePage {
     Connections {
         target: backend
         function onActionFinished(ok, message) {
-            statusLabel.text = message
-            statusLabel.color = ok ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.negativeTextColor
+            statusLabel.text = ok ? "" : message  // success is shown by Main.qml's toast
+            statusLabel.color = Kirigami.Theme.negativeTextColor
             reload()
         }
     }

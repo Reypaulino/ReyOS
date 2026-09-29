@@ -34,8 +34,8 @@ Kirigami.ScrollablePage {
             for (var i = 0; i < info.devices.length; i++) deviceModel.append(info.devices[i])
         }
         function onActionFinished(ok, message) {
-            statusLabel.text = message
-            statusLabel.color = ok ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.negativeTextColor
+            statusLabel.text = ok ? "" : message  // success is shown by Main.qml's toast
+            statusLabel.color = Kirigami.Theme.negativeTextColor
             refresh()
         }
     }
