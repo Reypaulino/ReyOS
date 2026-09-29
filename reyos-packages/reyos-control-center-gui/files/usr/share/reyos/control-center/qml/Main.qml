@@ -250,6 +250,64 @@ Kirigami.ApplicationWindow {
 
     Connections { target: backend; function onPageRequested(page) { appWindow.openReyosPage(page) } }
 
+    // App-wide action feedback. Pages still show their own inline status,
+    // but that line often sits below the fold (or a page has none), so a
+    // click could look like it did nothing. Every backend action now also
+    // shows a "Working..." bar while it runs, a toast when it succeeds, and
+    // a dialog when it fails -- whichever page it came from.
+    property int runningActions: 0
+
+    function reportResult(ok, message) {
+        if (!message || message.length === 0) return
+        if (ok) {
+            showPassiveNotification(message, "long")
+        } else {
+            errorDialog.message = message
+            errorDialog.open()
+        }
+    }
+
+    Connections {
+        target: backend
+        function onActionStarted() { appWindow.runningActions++ }
+        function onActionFinished(ok, message) {
+            appWindow.runningActions = Math.max(0, appWindow.runningActions - 1)
+            appWindow.reportResult(ok, message)
+        }
+        function onPkgFinished(ok, message) { appWindow.reportResult(ok, message) }
+        function onGamingFinished(ok, message) { appWindow.reportResult(ok, message) }
+    }
+
+    Controls.Dialog {
+        id: errorDialog
+        property string message: ""
+        title: "Something went wrong"
+        modal: true
+        anchors.centerIn: Controls.Overlay.overlay
+        width: Math.min(appWindow.width * 0.8, 460)
+        standardButtons: Controls.Dialog.Ok
+        Controls.Label {
+            width: parent.width
+            text: errorDialog.message
+            wrapMode: Text.Wrap
+        }
+    }
+
+    footer: Controls.ToolBar {
+        visible: appWindow.runningActions > 0
+        RowLayout {
+            anchors.fill: parent
+            anchors.leftMargin: Kirigami.Units.largeSpacing
+            spacing: Kirigami.Units.largeSpacing
+            Controls.BusyIndicator {
+                running: parent.parent.visible
+                Layout.preferredWidth: Kirigami.Units.iconSizes.medium
+                Layout.preferredHeight: Kirigami.Units.iconSizes.medium
+            }
+            Controls.Label { text: "Working…"; Layout.fillWidth: true }
+        }
+    }
+
     pageStack.initialPage: Qt.resolvedUrl(initialPage)
     // Titles bar (not None like Welcome's wizard) -- this is a persistent
     // multi-page app, each page needs its own header/back-context, unlike

@@ -574,6 +574,9 @@ class Backend(QObject):
     pkgProgress = Signal(str)
     pkgFinished = Signal(bool, str)
     restartRecommended = Signal()
+    # Emitted when any background action starts, so Main.qml can show one
+    # app-wide "Working..." message instead of every page needing its own.
+    actionStarted = Signal()
     orphansListed = Signal("QVariantList")
     actionFinished = Signal(bool, str)
     imageSelected = Signal(str)
@@ -646,11 +649,15 @@ class Backend(QObject):
     def openTerminalToolbox(self):
         # Keep the terminal open after the menu exits so its result remains visible.
         subprocess.Popen(["konsole", "--hold", "-e", "reyos-tools"])
+        self.actionFinished.emit(True, "Opening ReyOS System Tools...")
 
     @Slot()
     def openTimeshift(self):
         try:
             subprocess.Popen(["timeshift-launcher"])
+            # Timeshift asks for the admin password first and takes a few
+            # seconds to appear -- say something so the click isn't silent.
+            self.actionFinished.emit(True, "Opening Timeshift -- it will ask for your password.")
         except FileNotFoundError:
             self.actionFinished.emit(False, "Timeshift is not installed yet. Reboot into the next ReyOS ISO build.")
 
@@ -719,6 +726,7 @@ class Backend(QObject):
     def _run_action(self, fn):
         self._action_worker = ActionWorker(fn)
         self._action_worker.finished_ok.connect(self.actionFinished.emit)
+        self.actionStarted.emit()
         self._action_worker.start()
 
     @Slot(result="QVariantMap")
@@ -958,6 +966,7 @@ class Backend(QObject):
         # the new window back to this same Appearance page.
         worker.finished_ok.connect(lambda ok, _msg: ok and self._relaunch_self())
         self._lookandfeel_worker = worker
+        self.actionStarted.emit()
         worker.start()
 
     def _relaunch_self(self, page="AppearancePage.qml"):
@@ -1438,6 +1447,7 @@ class Backend(QObject):
         # chrome doesn't hot-reload on a live color-scheme switch.
         worker.finished_ok.connect(lambda ok, _msg: ok and self._relaunch_self("LooksPage.qml"))
         self._looks_worker = worker
+        self.actionStarted.emit()
         worker.start()
 
     @Slot()
