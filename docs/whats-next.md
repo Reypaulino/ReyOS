@@ -235,6 +235,8 @@ Published as a GitHub Release on `Reypaulino/ReyOS` (`reyos-browser-v0.1.0-84ubu
 
 **Real gap this exposes**: the Debian packaging (`DEBIAN/control`, staging tree at `~/reyos-browser-deb`) lives entirely outside git — unlike the Arch `PKGBUILD` or the new Flatpak manifest, there's no version-controlled source of truth for it. Worth bringing into the repo properly (e.g. a `debian/` dir under `reyos-packages/reyos-browser/`) before the next rebuild, so this exact bug class doesn't silently reappear from an untracked, unreviewed staging directory.
 
+**Done, 2026-09-29**: `reyos-packages/reyos-browser/debian/` added (`control`, `postinst`, `postrm`, `requirements.txt`, `reyos-browser` launcher, `reyos-browser.desktop`, `build.sh`), replacing the untracked `~/reyos-browser-deb` staging tree (which no longer exists on this host). See `docs/fixes.md`'s 2026-09-29 entry for the actual bug this was written in response to (a corrupted/incomplete bundled venv on a real user install — first diagnosed, wrongly, as a Python-version issue; corrected in that entry) and why `postinst` now builds the venv fresh at install time instead of shipping a hand-built one with no reviewable source of truth. **`build.sh` hasn't been run** (no `dpkg-deb` in the sandbox this was written in) — needs a real Debian/Ubuntu machine to actually build and verify the next `.deb`, same as the original 2026-08-24 fix.
+
 ## Flathub submission (started 2026-08-24)
 - [x] Flatpak manifest scaffold (`flatpak/`), local build/export/install/launch all verified working.
 - [x] **License decided and `LICENSE` added** (2026-08-31) — MPL-2.0, matching the metainfo's existing `project_license`.

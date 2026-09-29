@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=ReyOS Browser
+Comment=Private browsing and tracking protection by default
+Exec=/usr/bin/reyos-browser %U
+Icon=reyos-browser
+Terminal=false
+Categories=Network;WebBrowser;
+StartupWMClass=ReyOS Browser

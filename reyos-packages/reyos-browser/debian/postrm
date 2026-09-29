@@ -1,0 +1,10 @@
+#!/bin/sh
+# Removes the venv built by postinst -- dpkg doesn't know about it since
+# it wasn't shipped in the package, only created at install time.
+set -e
+
+if [ "$1" = "purge" ] || [ "$1" = "remove" ]; then
+    rm -rf /opt/reyos-browser/.venv
+fi
+
+exit 0

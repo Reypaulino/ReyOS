@@ -1,0 +1,40 @@
+#!/bin/sh
+# Self-healing launcher: the app installs its venv system-wide at
+# $SYSTEM_VENV (root-owned, built by postinst). If that venv ever stops
+# working -- a future system Python upgrade, a corrupted install, anything
+# -- a normal desktop launch has no root to fix it in place. Rather than
+# fail silently (the original bug this was written for: icon click, no
+# window, no error, since desktop launchers show no terminal), fall back
+# to a private per-user venv that any user can build without root.
+set -e
+
+APP_DIR=/opt/reyos-browser
+SYSTEM_VENV="$APP_DIR/.venv"
+USER_VENV="$HOME/.local/share/reyos-browser/venv"
+
+venv_works() {
+    [ -x "$1/bin/python3" ] && "$1/bin/python3" -c "import PySide6.QtCore" >/dev/null 2>&1
+}
+
+if venv_works "$SYSTEM_VENV"; then
+    VENV="$SYSTEM_VENV"
+elif venv_works "$USER_VENV"; then
+    VENV="$USER_VENV"
+else
+    if command -v notify-send >/dev/null 2>&1; then
+        notify-send "ReyOS Browser" "Preparing runtime environment, this may take a minute..." 2>/dev/null || true
+    fi
+    mkdir -p "$(dirname "$USER_VENV")"
+    rm -rf "$USER_VENV"
+    if ! python3 -m venv "$USER_VENV" \
+        || ! "$USER_VENV/bin/python3" -m pip install --no-cache-dir --upgrade pip >/dev/null \
+        || ! "$USER_VENV/bin/python3" -m pip install --no-cache-dir -r "$APP_DIR/requirements.txt" >/dev/null; then
+        if command -v kdialog >/dev/null 2>&1; then
+            kdialog --error "ReyOS Browser couldn't prepare its runtime environment (needs internet on first repair). Check your connection and try again."
+        fi
+        exit 1
+    fi
+    VENV="$USER_VENV"
+fi
+
+exec "$VENV/bin/python3" "$APP_DIR/main.py" "$@"

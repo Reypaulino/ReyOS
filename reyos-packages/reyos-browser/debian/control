@@ -1,0 +1,21 @@
+Package: reyos-browser
+Version: REPLACE_VERSION
+Section: web
+Priority: optional
+Architecture: amd64
+Maintainer: Rey Paulino
+Depends: python3 (>= 3.10), python3-venv, python3-pip, kdialog, libnotify-bin, libnspr4, libnss3, libxcb-cursor0, libatk1.0-0t64, libatk-bridge2.0-0t64, libcups2t64, libdrm2, libgbm1, libxcomposite1, libxdamage1, libxfixes3, libxrandr2, libxkbcommon0, libasound2t64, libpango-1.0-0, libcairo2, libxss1, libxtst6, fonts-liberation
+Description: ReyOS Browser -- private-by-default Qt web browser
+ A native Qt/PySide6 web browser with tracking protection, Shields,
+ password manager integration, and "install as app" support.
+ .
+ This package builds its own Python virtual environment at install
+ time (see postinst) instead of shipping a pre-built one. A prior
+ hand-built venv ended up with its PySide6 install incomplete (CLI
+ helper scripts present, the actual package missing from
+ site-packages -- most likely an install cut short by low disk space),
+ and the app silently failed to launch (ModuleNotFoundError: PySide6)
+ with no visible error, since desktop launchers show no terminal.
+ Building fresh from requirements.txt at install time, from a tracked
+ source instead of an ad hoc staging directory, removes that failure
+ mode.
