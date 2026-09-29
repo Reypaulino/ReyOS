@@ -2,6 +2,12 @@
 
 Real bugs found and fixed, with root cause. Newest first. See `bugs.md` for what's still open.
 
+## 2026-09-29 — Restart prompt after updates; Control Center clicks that looked like they did nothing
+
+**Restart prompt** (`reyos-control-center-gui` 88, `reyos-control-center` 24): after an Updates-page action that actually upgraded/installed something (detected from pacman's own `upgrading`/`installing` transaction lines), a "Restart to finish updating" dialog offers **Restart now** (Plasma's `org.kde.Shutdown.logoutAndReboot`, falls back to `systemctl reboot`) or **Later**. No prompt when nothing changed. The terminal System Tools menu's "Install updates" asks the same (y/N), detected from new `[ALPM] upgraded|installed` lines in `/var/log/pacman.log`. Verified on the Dev VM with a real 2-package update → dialog appeared → Restart now actually rebooted it; terminal-menu detection checked against the real log for both the changed and nothing-changed cases.
+
+**No-feedback clicks** (user report): audit of all 25 pages found almost every backend action does emit a result, but most pages show it only as a small status line at the very bottom of a long scrollable page (usually off-screen), and Backup (Timeshift launcher), Home (System Tools launcher) showed nothing at all on success. Fix (`reyos-control-center-gui` 89): `Main.qml` now handles every `actionFinished`/`pkgFinished`/`gamingFinished` app-wide — success → Kirigami toast, failure → "Something went wrong" dialog; a new `actionStarted` signal (emitted by `_run_action` and the two Look workers) drives a "Working…" footer bar while anything runs; both launchers now report "Opening…". Verified on the Dev VM: Lock panel layout → toast; bogus wallpaper path → error dialog; panel-transparency Apply → Working bar + toast. Sliders only fire on release, so no toast flooding. Published at `79692c3` (88/24) and `e5b3cd1` (89).
+
 ## 2026-09-29 — Light theme and Looks undid each other; panels never followed Light; panel transparency slider
 
 User report: applying ReyOS Light dropped the current Look, and applying a Look afterwards put the dark panels back. **Root cause**: `reyos-control-center-gui`'s `applyLookAndFeel()` applied a fixed scheme per entry (`ReyOS`/`ReyOSLight`, both copper), and `applyLook()` applied the Look's own scheme — every Look only ships a dark one. Separately, `reyos-themes`' `panel-background.svg` hardcodes a dark `#14100d` fill and copper rim, so the panels themselves never changed with either choice.
