@@ -171,6 +171,131 @@ def _restart_plasmashell_and_wait(timeout=30):
     time.sleep(2)
 
 
+# Light/Dark (the Appearance page's "Look and feel") and the Look (accent +
+# wallpaper) are two independent choices. They used to each apply one fixed
+# color scheme, so each silently undid the other: switching to Light reset
+# the accent to copper, and applying any Look (every Look ships a dark
+# scheme only) put the dark palette back. Both now resolve the one scheme
+# that matches BOTH choices via _scheme_for(), and remember their own half
+# in kdeglobals' [ReyOS] group so the other side can read it back.
+LIGHT_LOOKANDFEEL = "org.reyos.light.desktop"
+_COPPER_RGB = "201,121,50"
+_LIGHT_BASE_SCHEME = Path("/usr/share/color-schemes/ReyOSLight.colors")
+_PANEL_THEME_SRC = Path("/usr/share/plasma/desktoptheme/ReyOS")
+_PANEL_FILL_DARK = "#14100d"
+_PANEL_FILL_LIGHT = "#eff0f1"
+PANEL_OPACITY_DEFAULT = 82
+
+
+def _kread(file, group, key, default=""):
+    try:
+        value = subprocess.check_output(
+            ["kreadconfig6", "--file", file, "--group", group, "--key", key],
+            text=True, stderr=subprocess.DEVNULL,
+        ).strip()
+        return value or default
+    except (OSError, subprocess.CalledProcessError):
+        return default
+
+
+def _kwrite(file, group, key, value):
+    subprocess.run(["kwriteconfig6", "--file", file, "--group", group, "--key", key, str(value)])
+
+
+def _look_parser(look_id):
+    parser = configparser.ConfigParser(strict=False, interpolation=None)
+    parser.read(LOOKS_DIR / look_id / "colors.colors")
+    return parser
+
+
+def _is_light_mode():
+    return _kread("kdeglobals", "KDE", "LookAndFeelPackage") == LIGHT_LOOKANDFEEL
+
+
+def _current_look_id():
+    look_id = _kread("kdeglobals", "ReyOS", "Look")
+    if look_id and (LOOKS_DIR / look_id / "colors.colors").is_file():
+        return look_id
+    # Systems that picked a Look before [ReyOS] Look existed: recover it
+    # from the active scheme name (dark ids come straight from each Look's
+    # colors.colors; light ones are ReyOS<Look>Light, see _scheme_for()).
+    current = _kread("kdeglobals", "General", "ColorScheme")
+    if LOOKS_DIR.is_dir():
+        for look_dir in LOOKS_DIR.iterdir():
+            if not (look_dir / "colors.colors").is_file():
+                continue
+            if current in (_look_parser(look_dir.name).get("General", "ColorScheme", fallback=""),
+                           f"ReyOS{look_dir.name.capitalize()}Light"):
+                return look_dir.name
+    return "copper"
+
+
+def _look_accent_rgb(look_id):
+    return _look_parser(look_id).get("Colors:Button", "DecorationFocus", fallback=_COPPER_RGB).strip()
+
+
+def _scheme_for(look_id, light):
+    """Return the registered color-scheme name for this Look in this mode,
+    generating the light variant on demand (ReyOSLight's palette with every
+    copper accent swapped for the Look's own) under the user's own
+    ~/.local/share/color-schemes, where plasma-apply-colorscheme resolves
+    it by name just like a system-installed one."""
+    if not light:
+        return _look_parser(look_id).get("General", "ColorScheme", fallback="ReyOS")
+    accent = _look_accent_rgb(look_id)
+    if look_id == "copper" or accent == _COPPER_RGB or not _LIGHT_BASE_SCHEME.is_file():
+        return "ReyOSLight"
+    scheme_id = f"ReyOS{look_id.capitalize()}Light"
+    text = _LIGHT_BASE_SCHEME.read_text().replace(_COPPER_RGB, accent)
+    text = re.sub(r"(?m)^ColorScheme=.*$", f"ColorScheme={scheme_id}", text)
+    text = re.sub(r"(?m)^Name=.*$", f"Name=ReyOS {look_id.capitalize()} Light", text)
+    out = Path.home() / ".local" / "share" / "color-schemes" / f"{scheme_id}.colors"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(text)
+    return scheme_id
+
+
+def _panel_opacity():
+    try:
+        return max(10, min(100, int(_kread("kdeglobals", "ReyOS", "PanelOpacity", PANEL_OPACITY_DEFAULT))))
+    except ValueError:
+        return PANEL_OPACITY_DEFAULT
+
+
+def _write_panel_theme():
+    """reyos-themes' panel-background.svg hardcodes a dark fill, a copper rim
+    and 0.82 opacity, so the panels stayed dark under Light and copper under
+    every Look. Write a per-user copy of the ReyOS Plasma theme instead
+    (~/.local/share wins over /usr/share per file, and it's user-owned, so no
+    sudo helper needed) with the fill matching the mode, the rim matching the
+    Look, and the translucent variant's opacity from the Appearance slider.
+    Callers restart plasmashell afterwards; the caches cleared here are what
+    would otherwise keep serving the previously rendered panel."""
+    if not (_PANEL_THEME_SRC / "metadata.json").is_file():
+        return
+    fill = _PANEL_FILL_LIGHT if _is_light_mode() else _PANEL_FILL_DARK
+    rim = "#" + "".join(f"{int(c):02x}" for c in _look_accent_rgb(_current_look_id()).split(","))
+    opacity = _panel_opacity() / 100
+    dest = Path.home() / ".local" / "share" / "plasma" / "desktoptheme" / "ReyOS"
+    dest.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(_PANEL_THEME_SRC / "metadata.json", dest / "metadata.json")
+    for rel, fill_opacity in (("widgets/panel-background.svg", opacity), ("solid/widgets/panel-background.svg", 1)):
+        src = _PANEL_THEME_SRC / rel
+        if not src.is_file():
+            continue
+        text = src.read_text()
+        text = re.sub(r"\.reyos-panel-fill \{[^}]*\}",
+                      f".reyos-panel-fill {{ fill:{fill}; fill-opacity:{fill_opacity:g}; }}", text)
+        text = re.sub(r"(?<=\.reyos-panel-rim \{ fill:none; stroke:)#[0-9A-Fa-f]{6}", rim, text)
+        out = dest / rel
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(text)
+    cache = Path.home() / ".cache"
+    for pattern in ("plasma_theme_*.kcache", "plasma-svgelements*", "ksvg-elements*"):
+        for p in cache.glob(pattern):
+            shutil.rmtree(p, ignore_errors=True) if p.is_dir() else p.unlink(missing_ok=True)
+
+
 def _wait_for_pacman_lock(progress_emit=None, timeout=60):
     """pacman's db lock (/var/lib/pacman/db.lck) is exclusive -- a second
     concurrent pacman invocation (this app's own Full Update still running
@@ -711,9 +836,14 @@ class Backend(QObject):
     # while colors/wallpaper were otherwise unchanged fixed it immediately.
     # Dark keeps blur on since a dark wallpaper behind a dark-styled popup
     # doesn't have the same mismatch.
+    # The color scheme itself is no longer fixed per entry -- see
+    # _scheme_for(): it follows whichever Look is active. Dark uses the
+    # ReyOS icon theme (what reyos-apply-branding.sh seeds on first login,
+    # and what applyLook() recolors); it used to be breeze-dark here, so a
+    # Light->Dark round trip silently dropped the branded icons.
     _REYOS_LOOKANDFEEL = {
-        "org.reyos.desktop": ("ReyOS", "breeze-dark", None, True),
-        "org.reyos.light.desktop": ("ReyOSLight", "breeze", None, False),
+        "org.reyos.desktop": (False, "ReyOS", None, True),
+        LIGHT_LOOKANDFEEL: (True, "breeze", None, False),
     }
 
     @Slot(result=str)
@@ -731,7 +861,8 @@ class Backend(QObject):
     def applyLookAndFeel(self, package_id):
         def task(emit):
             if package_id in self._REYOS_LOOKANDFEEL:
-                colorscheme, icons, wallpaper, blur_enabled = self._REYOS_LOOKANDFEEL[package_id]
+                light, icons, wallpaper, blur_enabled = self._REYOS_LOOKANDFEEL[package_id]
+                colorscheme = _scheme_for(_current_look_id(), light)
                 rc = subprocess.run(["plasma-apply-colorscheme", colorscheme]).returncode
                 if wallpaper:
                     subprocess.run(["plasma-apply-wallpaperimage", wallpaper])
@@ -763,6 +894,7 @@ class Backend(QObject):
                 # point on, though icons already painted before the switch
                 # may still need the page/app reopened to fully repaint.
                 QIcon.setThemeName(icons)
+                _write_panel_theme()
                 # The panel/taskbar/systray icons are drawn by plasmashell,
                 # a separate already-running process -- confirmed live that
                 # neither the kwriteconfig6 write nor a KGlobalSettings
@@ -802,14 +934,10 @@ class Backend(QObject):
 
     @Slot(result="QVariantList")
     def looksInfo(self):
-        current = None
-        try:
-            current = subprocess.check_output(
-                ["kreadconfig6", "--file", "kdeglobals", "--group", "General", "--key", "ColorScheme"],
-                text=True, stderr=subprocess.DEVNULL,
-            ).strip() or None
-        except (OSError, subprocess.CalledProcessError):
-            pass
+        current = _current_look_id()
+        light = _is_light_mode()
+        light_base = configparser.ConfigParser(strict=False, interpolation=None)
+        light and light_base.read(_LIGHT_BASE_SCHEME)
 
         looks = []
         if not LOOKS_DIR.is_dir():
@@ -820,14 +948,16 @@ class Backend(QObject):
                 continue
             parser = configparser.ConfigParser(strict=False)
             parser.read(colors_file)
-            scheme_id = parser.get("General", "ColorScheme", fallback=look_dir.name)
+            # Preview swatch shows the surfaces this Look will actually get
+            # in the current Light/Dark mode, not always its dark scheme.
+            surfaces = light_base if light_base.has_section("Colors:Window") else parser
             looks.append({
                 "id": look_dir.name,
                 "name": parser.get("General", "Name", fallback=look_dir.name.capitalize()),
-                "background": "#" + "".join(f"{int(c):02x}" for c in parser.get("Colors:Window", "BackgroundNormal", fallback="20,20,20").split(",")),
+                "background": "#" + "".join(f"{int(c):02x}" for c in surfaces.get("Colors:Window", "BackgroundNormal", fallback="20,20,20").split(",")),
                 "accent": "#" + "".join(f"{int(c):02x}" for c in parser.get("Colors:Button", "DecorationFocus", fallback="100,100,100").split(",")),
-                "foreground": "#" + "".join(f"{int(c):02x}" for c in parser.get("Colors:Window", "ForegroundNormal", fallback="230,230,230").split(",")),
-                "active": scheme_id == current,
+                "foreground": "#" + "".join(f"{int(c):02x}" for c in surfaces.get("Colors:Window", "ForegroundNormal", fallback="230,230,230").split(",")),
+                "active": look_dir.name == current,
             })
         return looks
 
@@ -846,10 +976,13 @@ class Backend(QObject):
             # ColorScheme id is shipped there too for exactly this reason.
             parser = configparser.ConfigParser(strict=False)
             parser.read(colors_file)
-            scheme_id = parser.get("General", "ColorScheme", fallback=None)
-            if not scheme_id:
+            if not parser.get("General", "ColorScheme", fallback=None):
                 return False, f"Look '{look_id}' has no ColorScheme id."
-            rc = subprocess.run(["plasma-apply-colorscheme", scheme_id]).returncode
+            # Stay in whichever Light/Dark mode is active -- applying the
+            # Look's own (always dark) scheme here is what used to flip a
+            # Light desktop back to dark panels.
+            _kwrite("kdeglobals", "ReyOS", "Look", look_id)
+            rc = subprocess.run(["plasma-apply-colorscheme", _scheme_for(look_id, _is_light_mode())]).returncode
 
             # Per-Look mouse pointer (reyos-looks ships a prebuilt XCursor
             # theme per Look, ReyOS-Copper/-Crimson/-etc -- see assets/cursor/
@@ -1257,6 +1390,7 @@ class Backend(QObject):
             # repaint panel/systray icons on its own just because kdeglobals
             # changed underneath it -- a full restart is the only thing that
             # reliably refreshed them in testing.
+            _write_panel_theme()
             _restart_plasmashell_and_wait()
             return rc == 0, (f"{look_id.capitalize()} applied." if rc == 0 else "Failed to apply color scheme.")
 
@@ -1317,6 +1451,37 @@ class Backend(QObject):
                 return False, f"File not found: {image}"
             rc = subprocess.run(["plasma-apply-wallpaperimage", image]).returncode
             return rc == 0, ("Wallpaper applied." if rc == 0 else "Failed to set wallpaper — is it a valid image?")
+        self._run_action(task)
+
+    @Slot(result=int)
+    def panelOpacity(self):
+        return _panel_opacity()
+
+    @Slot(int)
+    def applyPanelOpacity(self, percent):
+        def task(emit):
+            _kwrite("kdeglobals", "ReyOS", "PanelOpacity", max(10, min(100, int(percent))))
+            # Only the Translucent opacity mode draws widgets/panel-background
+            # (the one carrying the slider's value); Adaptive swaps to the
+            # opaque solid/ variant whenever a window is maximized. Written
+            # straight to the config file for the same reason
+            # reyos-apply-branding.sh's apply_panel_opacity() does: setting
+            # opacityMode through the scripting API never persists.
+            appletsrc = Path.home() / ".config" / "plasma-org.kde.plasma.desktop-appletsrc"
+            if appletsrc.is_file():
+                containment = None
+                for line in appletsrc.read_text().splitlines():
+                    m = re.fullmatch(r"\[Containments\]\[(\d+)\]", line.strip())
+                    if m:
+                        containment = m.group(1)
+                    elif containment and line.strip() == "plugin=org.kde.panel":
+                        subprocess.run(["kwriteconfig6", "--file", "plasma-org.kde.plasma.desktop-appletsrc",
+                                        "--group", "Containments", "--group", containment,
+                                        "--group", "General", "--key", "opacityMode", "Translucent"])
+                        containment = None
+            _write_panel_theme()
+            _restart_plasmashell_and_wait()
+            return True, f"Panel opacity set to {int(percent)}%."
         self._run_action(task)
 
     @Slot()

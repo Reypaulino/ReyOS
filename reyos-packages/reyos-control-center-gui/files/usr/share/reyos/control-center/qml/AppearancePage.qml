@@ -57,7 +57,7 @@ Kirigami.ScrollablePage {
                 Controls.Label {
                     Layout.fillWidth: true
                     color: Kirigami.Theme.positiveTextColor
-                    text: activeThemeId === "org.reyos.light.desktop" ? "Active: ReyOS Light — light surfaces with copper accents." : "Active: ReyOS Dark — Midnight Copper."
+                    text: activeThemeId === "org.reyos.light.desktop" ? "Active: ReyOS Light — light surfaces with your Look's accent." : "Active: ReyOS Dark — dark surfaces with your Look's accent."
                 }
                 RowLayout {
                     spacing: Kirigami.Units.largeSpacing
@@ -135,6 +135,29 @@ Kirigami.ScrollablePage {
                         text: "Lock panel layout"
                         enabled: !busy
                         onClicked: { busy = true; backend.lockPanelEditing() }
+                    }
+                }
+                Kirigami.Heading { text: "Panel transparency"; level: 4 }
+                RowLayout {
+                    spacing: Kirigami.Units.largeSpacing
+                    Controls.Label { text: "Clear" }
+                    Controls.Slider {
+                        id: panelOpacitySlider
+                        Layout.fillWidth: true
+                        from: 10
+                        to: 100
+                        stepSize: 5
+                        value: backend.panelOpacity()
+                    }
+                    Controls.Label { text: "Solid" }
+                    Controls.Label {
+                        Layout.preferredWidth: Kirigami.Units.gridUnit * 2.5
+                        text: Math.round(panelOpacitySlider.value) + "%"
+                    }
+                    Controls.Button {
+                        text: "Apply"
+                        enabled: !busy
+                        onClicked: { busy = true; backend.applyPanelOpacity(Math.round(panelOpacitySlider.value)) }
                     }
                 }
             }
