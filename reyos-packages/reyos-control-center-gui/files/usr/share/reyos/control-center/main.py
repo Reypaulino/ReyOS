@@ -290,6 +290,13 @@ def _write_panel_theme():
         out = dest / rel
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(text)
+    # The ReyOS Plasma theme only arrived with reyos-themes 1.0.0-55-ish
+    # (2026-09-28), and reyos-apply-branding.sh selects it only once, at
+    # first login -- so any install from an older ISO still runs stock
+    # Breeze and ignores everything written above (confirmed live on
+    # ReyOS-Test: slider at 90%, panels fully opaque). Select it here too.
+    _kwrite("kdeglobals", "Theme", "name", "ReyOS")
+    _kwrite("plasmarc", "Theme", "name", "ReyOS")
     cache = Path.home() / ".cache"
     for pattern in ("plasma_theme_*.kcache", "plasma-svgelements*", "ksvg-elements*"):
         for p in cache.glob(pattern):
