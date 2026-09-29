@@ -3224,15 +3224,19 @@ class Backend(QObject):
             if not saved:
                 return False, "Could not save the cursor size."
 
-            theme = subprocess.run(
-                ["kreadconfig6", "--file", "kcminputrc", "--group", "Mouse", "--key", "cursorTheme"],
+            # plasma-apply-cursortheme <current theme> --size N is a silent
+            # no-op: it prints "already set" and exits 0 without touching the
+            # size, and the theme is always already set (applyLook() does
+            # that). So this used to report success while nothing changed.
+            # Broadcast the same CursorChanged (5) notice the cursor KCM
+            # sends after writing kcminputrc -- confirmed live on the Dev VM
+            # to resize the pointer immediately, 24 -> 64 and back.
+            notified = subprocess.run(
+                ["dbus-send", "--session", "--type=signal", "/KGlobalSettings",
+                 "org.kde.KGlobalSettings.notifyChange", "int32:5", "int32:0"],
                 capture_output=True, text=True, timeout=5,
-            ).stdout.strip() or "ReyOS-Copper"
-            applied = subprocess.run(
-                ["plasma-apply-cursortheme", theme, "--size", str(size)],
-                capture_output=True, text=True, timeout=10,
             ).returncode == 0
-            return True, (f"Cursor size set to {size} px." if applied else f"Cursor size saved as {size} px; it will apply at next login.")
+            return True, (f"Cursor size set to {size} px." if notified else f"Cursor size saved as {size} px; it will apply at next login.")
         self._run_action(task)
 
     @staticmethod
