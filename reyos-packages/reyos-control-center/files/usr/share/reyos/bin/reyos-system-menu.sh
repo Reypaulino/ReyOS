@@ -363,7 +363,7 @@ show_network() {
 }
 
 system_updates() {
-  local updates update_rc confirm
+  local updates update_rc confirm log_before
   while true; do
     printf "\n  System Updates (pacman)\n\n  [1] Check for updates (no changes)\n  [2] Install updates (atomic sync + upgrade)\n  [3] Remove old packages\n  [0] Back\n\n  Select: "
     read -r upd_choice
@@ -372,7 +372,20 @@ system_updates() {
          if [ "$update_rc" -eq 0 ]; then printf "%s\n" "$updates"; elif [ "$update_rc" -eq 2 ]; then printf "  Your packages are up to date.\n"; else printf "  Could not check updates. Verify your network connection.\n"; fi
          read -rp "  Press Enter to return..." ;;
       2) ensure_sudo || continue
-         if pkg_full; then touch "$UPDATE_STAMP"; printf "  Updates installed.\n"; else printf "  Update failed; no completion record was written.\n"; fi
+         log_before=$(wc -l < /var/log/pacman.log 2>/dev/null || echo 0)
+         if pkg_full; then
+           touch "$UPDATE_STAMP"; printf "  Updates installed.\n"
+           # Same restart prompt as Control Center's Updates page -- only
+           # when this run actually upgraded/installed something.
+           if tail -n +"$((log_before + 1))" /var/log/pacman.log 2>/dev/null | grep -qE '\[ALPM\] (upgraded|installed|reinstalled) '; then
+             printf "\n  ${YLW}Restart to finish updating${RST} -- the desktop and your apps keep\n  using the old versions until you restart. Save any open work first.\n"
+             printf "  Restart now? (y/N): "; read -r confirm
+             if [[ "$confirm" =~ ^[Yy]$ ]]; then
+               qdbus6 org.kde.Shutdown /Shutdown org.kde.Shutdown.logoutAndReboot 2>/dev/null || systemctl reboot
+               return
+             fi
+           fi
+         else printf "  Update failed; no completion record was written.\n"; fi
          read -rp "  Press Enter to return..." ;;
       3) ensure_sudo || continue
          printf "  Remove orphaned packages and clean cache? (y/N): "; read -r confirm

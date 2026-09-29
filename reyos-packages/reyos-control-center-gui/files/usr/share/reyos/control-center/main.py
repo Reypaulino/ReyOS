@@ -419,6 +419,11 @@ class StatsWorker(QThread):
                 time.sleep(0.2)
 
 
+# pacman's per-package transaction lines, e.g. "upgrading foo..." or
+# "(2/5) installing bar" -- seeing one means the system actually changed.
+_PKG_CHANGED_RE = re.compile(r"^(?:\(\s*\d+/\d+\)\s*)?(?:upgrading|installing|reinstalling) \S")
+
+
 class PkgWorker(QThread):
     progress = Signal(str)
     finished_ok = Signal(bool, str)
@@ -426,10 +431,19 @@ class PkgWorker(QThread):
     def __init__(self, action):
         super().__init__()
         self.action = action
+        # Set once pacman reports it upgraded/installed anything, so the page
+        # can ask for a restart (running apps, plasmashell and the kernel
+        # keep using the old versions until then) only when it matters.
+        self.changed = False
+
+    def _emit(self, line):
+        if not self.changed and _PKG_CHANGED_RE.match(line):
+            self.changed = True
+        self.progress.emit(line)
 
     def run(self):
         try:
-            emit = self.progress.emit
+            emit = self._emit
             if self.action in ("upgrade", "full", "clean", "reyos") and _is_live_session():
                 self.finished_ok.emit(False, "Updates and cleanup are disabled in the live session. Install ReyOS first, then update the installed system.")
                 return
@@ -559,6 +573,7 @@ class Backend(QObject):
     statsUpdated = Signal("QVariantMap")
     pkgProgress = Signal(str)
     pkgFinished = Signal(bool, str)
+    restartRecommended = Signal()
     orphansListed = Signal("QVariantList")
     actionFinished = Signal(bool, str)
     imageSelected = Signal(str)
@@ -645,10 +660,26 @@ class Backend(QObject):
 
     @Slot(str)
     def runPkgAction(self, action):
-        self._pkg_worker = PkgWorker(action)
-        self._pkg_worker.progress.connect(self.pkgProgress.emit)
-        self._pkg_worker.finished_ok.connect(self.pkgFinished.emit)
-        self._pkg_worker.start()
+        worker = PkgWorker(action)
+        self._pkg_worker = worker
+        worker.progress.connect(self.pkgProgress.emit)
+        worker.finished_ok.connect(self.pkgFinished.emit)
+        worker.finished_ok.connect(
+            lambda ok, _msg: ok and worker.changed and action != "clean" and self.restartRecommended.emit()
+        )
+        worker.start()
+
+    @Slot()
+    def restartNow(self):
+        # Plasma's own logout-and-reboot path: apps get the normal session
+        # close (unsaved-work prompts), unlike a bare systemctl reboot, which
+        # stays as the fallback if the Plasma D-Bus service isn't there.
+        rc = subprocess.run(
+            ["qdbus6", "org.kde.Shutdown", "/Shutdown", "org.kde.Shutdown.logoutAndReboot"],
+            capture_output=True,
+        ).returncode
+        if rc != 0:
+            subprocess.Popen(["systemctl", "reboot"])
 
     @Slot(result="QVariantList")
     def defaultAppsInfo(self):

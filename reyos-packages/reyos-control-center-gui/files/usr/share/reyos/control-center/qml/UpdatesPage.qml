@@ -55,6 +55,39 @@ Kirigami.ScrollablePage {
     ListModel { id: secUpdatesModel }
 
     Controls.Dialog {
+        id: restartDialog
+        title: "Restart to finish updating"
+        modal: true
+        anchors.centerIn: Controls.Overlay.overlay
+        width: Math.min(parent ? parent.width * 0.8 : 480, 480)
+
+        footer: Controls.DialogButtonBox {
+            Controls.Button {
+                text: "Restart now"
+                highlighted: true
+                Controls.DialogButtonBox.buttonRole: Controls.DialogButtonBox.AcceptRole
+                onClicked: { restartDialog.close(); backend.restartNow() }
+            }
+            Controls.Button {
+                text: "Later"
+                Controls.DialogButtonBox.buttonRole: Controls.DialogButtonBox.RejectRole
+                onClicked: restartDialog.close()
+            }
+        }
+
+        Controls.Label {
+            width: parent.width
+            text: "Updates were installed. Restart your computer so the desktop and your apps start using the new versions. Save any open work first."
+            wrapMode: Text.Wrap
+        }
+    }
+
+    Connections {
+        target: backend
+        function onRestartRecommended() { restartDialog.open() }
+    }
+
+    Controls.Dialog {
         id: confirmRemovePkg
         title: "Remove package"
         modal: true
