@@ -2,6 +2,12 @@
 
 Real bugs found and fixed, with root cause. Newest first. See `bugs.md` for what's still open.
 
+## 2026-09-29 — Performance check of today's changes; login Look check made Qt-free
+
+User asked whether today's work affects OS performance and whether preload exists. Measured on the Dev VM and ReyOS-Test (both llvmpipe software rendering, no GPU): `reyos-preloadd` installed/enabled/active on both, ~15 MB RSS, <1 s CPU over 20 min, 0 restarts, no warnings, 112–192 KB state; zram + systemd-oomd active. Transparent panels: KWin idle 0%. Control Center open and idle: 0–2% CPU (Home page live stats 1–2%). Toasts/dialogs/restart prompt/shortcuts list only cost anything when used. **A Control Center copy burning ~160% CPU on the Dev VM turned out to be a test artifact** — copies launched over SSH during testing (setproctitle renames the process to `reyos-control-center`, so `pkill -f control-center/main.py` never matched them; use `pkill -f '^reyos-control-center'`). A normal Apply → self-relaunch was re-tested and the old process exits cleanly (0% CPU, one copy).
+
+**Improvement** (`reyos-control-center-gui` 92): the per-login Look check went through `main.py`, loading PySide6 before doing any work (~0.3–0.6 s, 66 MB). Moved the Look/Light-Dark helpers and `_recolor_look_assets()` into a new Qt-free `looks.py` (main.py imports them — one copy of the logic); the env script now runs `python3 .../looks.py --reapply-look`. Measured: 0.10 s / 20 MB per login when nothing changed; 0.2 s when it actually restores copper-reset files. Re-verified: reset border → sourced env script restored it; Control Center Apply still restores it (no errors); reset → reboot → login → border back to the Look's color, helper ran at login. Published to `reyos-pages` `bbc7941`.
+
 ## 2026-09-29 — Cursor size did nothing; Look colors lost after updates; screenshot shortcuts missing from ReyOS Shortcuts; duplicate green status lines
 
 **Cursor size** (`reyos-control-center-gui` 90): `plasma-apply-cursortheme <already-active theme> --size N` prints "already set" and exits 0 without applying the size — and the theme is always already active (applyLook sets it) — so the Mouse page reported success while nothing changed. Now writes `kcminputrc [Mouse] cursorSize` and broadcasts `org.kde.KGlobalSettings.notifyChange(5, 0)` (CursorChanged, what the cursor KCM sends). Verified on the Dev VM with pointer-included screenshots: 24 → 64 → back, and 48 chosen through the real Mouse-page dropdown. Switching Looks keeps the chosen size (checked).
