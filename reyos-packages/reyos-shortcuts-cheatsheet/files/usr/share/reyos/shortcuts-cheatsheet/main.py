@@ -70,6 +70,9 @@ def _system_shortcuts():
 
     entries = []
     for section in parser.sections():
+        # App shortcuts declared in .desktop files -- see _app_shortcuts().
+        if section.startswith("services]"):
+            continue
         group_label = parser.get(section, "_k_friendly_name", fallback=section)
         for key, value in parser.items(section):
             if key == "_k_friendly_name":
@@ -80,6 +83,67 @@ def _system_shortcuts():
             entries.append({
                 "group": group_label,
                 "action": _friendly_name(value.split(","), key),
+                "keys": combo.replace("+", " + "),
+                "source": "System",
+            })
+    return entries
+
+
+KGLOBALACCEL_DIR = Path("/usr/share/kglobalaccel")
+APP_OVERRIDE_DIRS = [Path.home() / ".local/share/applications", Path("/usr/local/share/applications")]
+
+
+def _app_shortcuts():
+    """Shortcuts apps declare themselves (X-KDE-Shortcuts in the .desktop
+    files kglobalaccel loads from /usr/share/kglobalaccel) -- e.g. ReyOS
+    Screenshot's Print / Meta+Shift+S / Meta+Shift+R. kglobalshortcutsrc only
+    stores a [services][<file>] entry once the user changes one of these
+    from its default (confirmed live: the Dev VM's spectacle section held
+    only two "=none" lines, a fresh install had none at all), so reading
+    that file alone left every default app shortcut, screenshots included,
+    out of this list. Defaults come from the .desktop file; user changes in
+    kglobalshortcutsrc win."""
+    overrides = configparser.ConfigParser(strict=False, interpolation=None)
+    overrides.optionxform = str
+    try:
+        overrides.read(KGLOBALSHORTCUTS)
+    except configparser.Error:
+        pass
+
+    entries = []
+    if not KGLOBALACCEL_DIR.is_dir():
+        return entries
+    for link in sorted(KGLOBALACCEL_DIR.glob("*.desktop")):
+        # ReyOS rebrands some apps (Spectacle -> "ReyOS Screenshot") via a
+        # same-named override in /usr/local/share/applications; prefer it
+        # for the display name.
+        source = next((d / link.name for d in APP_OVERRIDE_DIRS if (d / link.name).is_file()), link)
+        desktop = configparser.ConfigParser(strict=False, interpolation=None)
+        desktop.optionxform = str
+        try:
+            desktop.read(source)
+        except configparser.Error:
+            continue
+        if not desktop.has_section("Desktop Entry"):
+            continue
+        app_name = desktop.get("Desktop Entry", "Name", fallback=link.stem)
+        user = f"services][{link.name}"
+        actions = [("_launch", "Desktop Entry", f"Open {app_name}")]
+        actions += [
+            (s.removeprefix("Desktop Action "), s, desktop.get(s, "Name", fallback=s))
+            for s in desktop.sections() if s.startswith("Desktop Action ")
+        ]
+        for action_id, section, label in actions:
+            if overrides.has_option(user, action_id):
+                value = overrides.get(user, action_id)
+            else:
+                value = desktop.get(section, "X-KDE-Shortcuts", fallback="")
+            combo = value.replace("\\t", "\t").replace(",", "\t").split("\t")[0].strip()
+            if not combo or combo.lower() == "none":
+                continue
+            entries.append({
+                "group": app_name,
+                "action": label,
                 "keys": combo.replace("+", " + "),
                 "source": "System",
             })
@@ -106,7 +170,7 @@ def _custom_shortcuts():
 class Backend(QObject):
     @Slot(result="QVariantList")
     def shortcuts(self):
-        entries = _system_shortcuts() + _custom_shortcuts()
+        entries = _system_shortcuts() + _app_shortcuts() + _custom_shortcuts()
         entries.sort(key=lambda e: (e["group"].lower(), e["action"].lower()))
         return entries
 
