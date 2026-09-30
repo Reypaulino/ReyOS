@@ -16,21 +16,23 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+# Cartridge systems also list .zip/.7z: RetroArch opens the game inside the
+# archive itself (the system comes from the folder the archive is in).
 EMU_SYSTEMS = [
     {"id": "nes", "short": "NES", "thumbs": ["Nintendo - Nintendo Entertainment System"],
-     "name": "NES / Famicom", "core": "nestopia", "exts": [".nes", ".unf", ".fds"]},
+     "name": "NES / Famicom", "core": "nestopia", "exts": [".nes", ".unf", ".fds", ".zip", ".7z"]},
     {"id": "snes", "short": "SNES", "thumbs": ["Nintendo - Super Nintendo Entertainment System"],
-     "name": "Super Nintendo", "core": "snes9x", "exts": [".sfc", ".smc"]},
+     "name": "Super Nintendo", "core": "snes9x", "exts": [".sfc", ".smc", ".zip", ".7z"]},
     {"id": "gb", "short": "GB", "thumbs": ["Nintendo - Game Boy", "Nintendo - Game Boy Color"],
-     "name": "Game Boy / Color", "core": "gambatte", "exts": [".gb", ".gbc"]},
+     "name": "Game Boy / Color", "core": "gambatte", "exts": [".gb", ".gbc", ".zip", ".7z"]},
     {"id": "gba", "short": "GBA", "thumbs": ["Nintendo - Game Boy Advance"],
-     "name": "Game Boy Advance", "core": "mgba", "exts": [".gba"]},
+     "name": "Game Boy Advance", "core": "mgba", "exts": [".gba", ".zip", ".7z"]},
     {"id": "genesis", "short": "MD", "thumbs": ["Sega - Mega Drive - Genesis", "Sega - Master System - Mark III", "Sega - Game Gear"],
-     "name": "Genesis / Master System / Game Gear", "core": "genesis_plus_gx", "exts": [".md", ".gen", ".smd", ".sms", ".gg"]},
+     "name": "Genesis / Master System / Game Gear", "core": "genesis_plus_gx", "exts": [".md", ".gen", ".smd", ".sms", ".gg", ".zip", ".7z"]},
     {"id": "dreamcast", "short": "DC", "thumbs": ["Sega - Dreamcast"],
      "name": "Dreamcast", "core": "flycast", "exts": [".cdi", ".gdi", ".chd", ".cue", ".m3u"]},
     {"id": "n64", "short": "N64", "thumbs": ["Nintendo - Nintendo 64"],
-     "name": "Nintendo 64", "core": "mupen64plus_next", "exts": [".n64", ".z64", ".v64"]},
+     "name": "Nintendo 64", "core": "mupen64plus_next", "exts": [".n64", ".z64", ".v64", ".zip", ".7z"]},
     {"id": "psx", "short": "PS1", "thumbs": ["Sony - PlayStation"],
      "name": "PlayStation", "core": "mednafen_psx", "exts": [".cue", ".chd", ".pbp", ".m3u"]},
     # No PS2 or 3DS emulator in Arch's repos; these two are the maintained
@@ -41,7 +43,7 @@ EMU_SYSTEMS = [
     {"id": "psp", "short": "PSP", "thumbs": ["Sony - PlayStation Portable"],
      "name": "PSP", "core": "ppsspp", "exts": [".iso", ".cso", ".pbp", ".chd"]},
     {"id": "nds", "short": "DS", "thumbs": ["Nintendo - Nintendo DS"],
-     "name": "Nintendo DS", "core": "melonds", "exts": [".nds"]},
+     "name": "Nintendo DS", "core": "melonds", "exts": [".nds", ".zip", ".7z"]},
     {"id": "3ds", "short": "3DS", "thumbs": ["Nintendo - Nintendo 3DS"],
      "name": "Nintendo 3DS", "flatpak": "org.azahar_emu.Azahar", "app": "Azahar",
      "exts": [".3ds", ".cci", ".cxi", ".3dsx", ".app", ".z3ds", ".zcci", ".zcxi", ".z3dsx"]},
