@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Install ReyOS
+GenericName=Installer
+Comment=Install ReyOS on this computer (or alongside another system)
+Exec=/usr/share/reyos/bin/reyos-launch-installer
+Icon=system-software-install
+Terminal=false
+Categories=System;
+StartupNotify=false
