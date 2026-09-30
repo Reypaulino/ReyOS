@@ -57,6 +57,28 @@ def _reyos_accent_color():
 # their install time (reyos-shortcuts-cheatsheet, added 2026-09-15).
 REYOS_DEFAULT_APPS = ["reyos-reader", "reyos-shortcuts-cheatsheet"]
 
+# Emulation (Gaming page). One frontend -- RetroArch -- with one official-repo
+# libretro core per system, installed on demand by reyos-install-emulators.sh
+# (its case list must match these ids). ReyOS never ships games or BIOS files;
+# users add their own under ~/Games/ROMs/<id>/ and ~/Games/BIOS/.
+EMU_SYSTEMS = [
+    {"id": "nes", "name": "NES / Famicom", "core": "nestopia", "exts": [".nes", ".unf", ".fds"], "bios": ""},
+    {"id": "snes", "name": "Super Nintendo", "core": "snes9x", "exts": [".sfc", ".smc"], "bios": ""},
+    {"id": "gb", "name": "Game Boy / Color", "core": "gambatte", "exts": [".gb", ".gbc"], "bios": ""},
+    {"id": "gba", "name": "Game Boy Advance", "core": "mgba", "exts": [".gba"], "bios": ""},
+    {"id": "genesis", "name": "Genesis / Master System / Game Gear", "core": "genesis_plus_gx", "exts": [".md", ".gen", ".smd", ".sms", ".gg"], "bios": ""},
+    {"id": "n64", "name": "Nintendo 64", "core": "mupen64plus_next", "exts": [".n64", ".z64", ".v64"], "bios": ""},
+    {"id": "psx", "name": "PlayStation", "core": "mednafen_psx", "exts": [".cue", ".chd", ".pbp", ".m3u"],
+     "bios": "Needs a PlayStation BIOS (scph5501.bin for US games) in ~/Games/BIOS."},
+    {"id": "psp", "name": "PSP", "core": "ppsspp", "exts": [".iso", ".cso", ".pbp", ".chd"], "bios": ""},
+    {"id": "nds", "name": "Nintendo DS", "core": "melonds", "exts": [".nds"], "bios": ""},
+    {"id": "gamecube", "name": "GameCube / Wii (needs a fast PC)", "core": "dolphin", "exts": [".iso", ".gcm", ".rvz", ".wbfs", ".ciso", ".gcz"], "bios": ""},
+]
+GAMES_DIR = Path.home() / "Games"
+LIBRETRO_DIR = Path("/usr/lib/libretro")
+RETROARCH_REYOS_CFG = Path.home() / ".config" / "reyos" / "retroarch-reyos.cfg"
+
+
 PKG_ACTIONS = {
     "check":   (["sudo", "pacman", "-Sy"], None),
     "upgrade": (["sudo", "pacman", "-Syu", "--noconfirm"], None),
@@ -649,6 +671,124 @@ class Backend(QObject):
         self._gaming_worker.progress.connect(self.gamingProgress.emit)
         self._gaming_worker.finished_ok.connect(self.gamingFinished.emit)
         self._gaming_worker.start()
+
+    # ---- Emulation -------------------------------------------------------
+    @staticmethod
+    def _emu_core_path(system):
+        return LIBRETRO_DIR / f"{system['core']}_libretro.so"
+
+    @staticmethod
+    def _emu_prepare_folders():
+        """~/Games/ROMs/<id>/, ~/Games/BIOS/ and saves, a short README, and a
+        small RetroArch config ReyOS appends at launch (--appendconfig), so
+        the user's own ~/.config/retroarch/retroarch.cfg is never rewritten."""
+        for system in EMU_SYSTEMS:
+            (GAMES_DIR / "ROMs" / system["id"]).mkdir(parents=True, exist_ok=True)
+        for sub in ("BIOS", "Saves", "Saves/states"):
+            (GAMES_DIR / sub).mkdir(parents=True, exist_ok=True)
+        readme = GAMES_DIR / "README.txt"
+        if not readme.exists():
+            readme.write_text(
+                "ReyOS Emulation\n\n"
+                "Put your games in ROMs/<system>/ (for example ROMs/snes/) and open\n"
+                "Control Center > Gaming to play them.\n\n"
+                "ReyOS does not include any games or BIOS files. Only use games and\n"
+                "BIOS files you have the right to use, for example dumped from\n"
+                "cartridges, discs and consoles you own.\n\n"
+                "BIOS files go in BIOS/. PlayStation needs one (scph5501.bin for US\n"
+                "games); the other systems here work without.\n")
+        RETROARCH_REYOS_CFG.parent.mkdir(parents=True, exist_ok=True)
+        RETROARCH_REYOS_CFG.write_text(
+            f'system_directory = "{GAMES_DIR / "BIOS"}"\n'
+            f'savefile_directory = "{GAMES_DIR / "Saves"}"\n'
+            f'savestate_directory = "{GAMES_DIR / "Saves" / "states"}"\n'
+            f'rgui_browser_directory = "{GAMES_DIR / "ROMs"}"\n')
+
+    @Slot(result="QVariantList")
+    def emulationSystems(self):
+        result = []
+        for system in EMU_SYSTEMS:
+            folder = GAMES_DIR / "ROMs" / system["id"]
+            count = sum(1 for _ in self._emu_scan(system, folder))
+            result.append({
+                "id": system["id"], "name": system["name"], "bios": system["bios"],
+                "installed": self._emu_core_path(system).is_file(), "games": count,
+            })
+        return result
+
+    @staticmethod
+    def _emu_scan(system, folder):
+        if not folder.is_dir():
+            return
+        for path in sorted(folder.rglob("*")):
+            if path.is_file() and path.suffix.lower() in system["exts"]:
+                yield path
+
+    @Slot(result="QVariantList")
+    def emulationGames(self):
+        games = []
+        for system in EMU_SYSTEMS:
+            for path in self._emu_scan(system, GAMES_DIR / "ROMs" / system["id"]):
+                games.append({
+                    "title": re.sub(r"[_.]+", " ", path.stem).strip(),
+                    "system": system["name"], "systemId": system["id"], "path": str(path),
+                    "playable": self._emu_core_path(system).is_file(),
+                })
+        games.sort(key=lambda g: (g["title"].lower(), g["system"]))
+        return games
+
+    @Slot("QVariantList")
+    def installEmulation(self, system_ids):
+        valid = {s["id"] for s in EMU_SYSTEMS}
+        ids = [i for i in system_ids if i in valid]
+        if not ids:
+            self.gamingFinished.emit(False, "Choose at least one system to install.")
+            return
+        if _is_live_session():
+            self.gamingFinished.emit(False, "Installing emulators is disabled in the live session -- install ReyOS first.")
+            return
+
+        def task(emit):
+            self._emu_prepare_folders()
+            emit("Installing RetroArch and cores for: " + ", ".join(ids))
+            emit("(ReyOS will ask for your password.)")
+            rc = _run(["pkexec", str(APP_DIR / "reyos-install-emulators.sh"), *ids], emit)
+            if rc in (126, 127):
+                return False, "Install cancelled -- the password prompt was closed."
+            if rc != 0:
+                return False, "Install failed -- check your network connection and try again."
+            return True, f"Emulation ready. Put your games in {GAMES_DIR / 'ROMs'}/<system>/ and they'll show up here."
+        self._gaming_worker = ActionWorker(task)
+        self._gaming_worker.progress.connect(self.gamingProgress.emit)
+        self._gaming_worker.finished_ok.connect(self.gamingFinished.emit)
+        self._gaming_worker.start()
+
+    @Slot(str, str)
+    def launchGame(self, system_id, path):
+        system = next((s for s in EMU_SYSTEMS if s["id"] == system_id), None)
+        if system is None or not Path(path).is_file():
+            self.actionFinished.emit(False, "That game file couldn't be found.")
+            return
+        core = self._emu_core_path(system)
+        if not core.is_file():
+            self.actionFinished.emit(False, f"The {system['name']} emulator isn't installed yet.")
+            return
+        if not RETROARCH_REYOS_CFG.is_file():
+            self._emu_prepare_folders()
+        subprocess.Popen(
+            ["retroarch", f"--appendconfig={RETROARCH_REYOS_CFG}", "-L", str(core), path],
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        self.actionFinished.emit(True, f"Starting {Path(path).stem}...")
+
+    @Slot(str)
+    def openGamesFolder(self, system_id):
+        self._emu_prepare_folders()
+        folder = GAMES_DIR / "ROMs" / system_id if system_id else GAMES_DIR / "ROMs"
+        subprocess.Popen(["xdg-open", str(folder)], stdin=subprocess.DEVNULL,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+
 
     @Slot(str)
     def setGovernor(self, gov):
