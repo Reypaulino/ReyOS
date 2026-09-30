@@ -29,6 +29,8 @@ from looks import (  # Qt-free Look / Light-Dark helpers, also run at login
     _look_accent_rgb, _scheme_for, _panel_opacity, _write_panel_theme,
     _recolor_look_assets,
 )
+import emulation  # Qt-free emulation helpers (systems, settings, BIOS, controllers)
+from emulation import EMU_SYSTEMS, GAMES_DIR, RETROARCH_REYOS_CFG
 
 
 def _reyos_accent_color():
@@ -61,22 +63,6 @@ REYOS_DEFAULT_APPS = ["reyos-reader", "reyos-shortcuts-cheatsheet"]
 # libretro core per system, installed on demand by reyos-install-emulators.sh
 # (its case list must match these ids). ReyOS never ships games or BIOS files;
 # users add their own under ~/Games/ROMs/<id>/ and ~/Games/BIOS/.
-EMU_SYSTEMS = [
-    {"id": "nes", "name": "NES / Famicom", "core": "nestopia", "exts": [".nes", ".unf", ".fds"], "bios": ""},
-    {"id": "snes", "name": "Super Nintendo", "core": "snes9x", "exts": [".sfc", ".smc"], "bios": ""},
-    {"id": "gb", "name": "Game Boy / Color", "core": "gambatte", "exts": [".gb", ".gbc"], "bios": ""},
-    {"id": "gba", "name": "Game Boy Advance", "core": "mgba", "exts": [".gba"], "bios": ""},
-    {"id": "genesis", "name": "Genesis / Master System / Game Gear", "core": "genesis_plus_gx", "exts": [".md", ".gen", ".smd", ".sms", ".gg"], "bios": ""},
-    {"id": "n64", "name": "Nintendo 64", "core": "mupen64plus_next", "exts": [".n64", ".z64", ".v64"], "bios": ""},
-    {"id": "psx", "name": "PlayStation", "core": "mednafen_psx", "exts": [".cue", ".chd", ".pbp", ".m3u"],
-     "bios": "Needs a PlayStation BIOS (scph5501.bin for US games) in ~/Games/BIOS."},
-    {"id": "psp", "name": "PSP", "core": "ppsspp", "exts": [".iso", ".cso", ".pbp", ".chd"], "bios": ""},
-    {"id": "nds", "name": "Nintendo DS", "core": "melonds", "exts": [".nds"], "bios": ""},
-    {"id": "gamecube", "name": "GameCube / Wii (needs a fast PC)", "core": "dolphin", "exts": [".iso", ".gcm", ".rvz", ".wbfs", ".ciso", ".gcz"], "bios": ""},
-]
-GAMES_DIR = Path.home() / "Games"
-LIBRETRO_DIR = Path("/usr/lib/libretro")
-RETROARCH_REYOS_CFG = Path.home() / ".config" / "reyos" / "retroarch-reyos.cfg"
 
 
 PKG_ACTIONS = {
@@ -438,6 +424,47 @@ class ActionWorker(QThread):
             self.finished_ok.emit(False, str(e))
 
 
+class ControllerSetupWorker(QThread):
+    """Walks CONTROLLER_STEPS on one pad, then writes the RetroArch profile."""
+    step = Signal(int, int, str, str)
+    done = Signal(bool, str)
+
+    def __init__(self, path):
+        super().__init__()
+        self.path = path
+        self.skip = False
+        self.cancelled = False
+
+    def run(self):
+        try:
+            reader = emulation.ControllerReader(self.path)
+        except OSError as e:
+            self.done.emit(False, f"Couldn't read the controller ({e.strerror}). Unplug it, plug it back in and try again.")
+            return
+        name = reader.info["name"]
+        binds = {}
+        steps = emulation.CONTROLLER_STEPS
+        try:
+            for i, (key, title, hint) in enumerate(steps):
+                self.skip = False
+                self.step.emit(i, len(steps), title, hint)
+                bind = reader.wait_bind(lambda: self.skip or self.cancelled)
+                if self.cancelled:
+                    self.done.emit(False, "Controller setup cancelled -- nothing was changed.")
+                    return
+                if bind:
+                    binds[key] = bind
+            if not binds:
+                self.done.emit(False, "Every step was skipped, so nothing was saved.")
+                return
+            emulation.write_profile(reader.info, binds)
+            self.done.emit(True, f"{name} is set up. Start + Select opens the emulator menu in a game.")
+        except OSError:
+            self.done.emit(False, f"{name} was disconnected during setup -- nothing was saved.")
+        finally:
+            reader.close()
+
+
 class InfoWorker(QThread):
     ready = Signal("QVariantMap")
 
@@ -474,6 +501,8 @@ class Backend(QObject):
     actionStarted = Signal()
     orphansListed = Signal("QVariantList")
     actionFinished = Signal(bool, str)
+    controllerSetupStep = Signal(int, int, str, str)
+    controllerSetupDone = Signal(bool, str)
     imageSelected = Signal(str)
     pathBrowsed = Signal(str, str)
     networkInfoReady = Signal("QVariantMap")
@@ -532,6 +561,7 @@ class Backend(QObject):
         self._keyboard_worker = None
         self._mouse_worker = None
         self._gaming_worker = None
+        self._controller_worker = None
         self._stats_worker = StatsWorker()
         self._stats_worker.statsReady.connect(self.statsUpdated.emit)
         self._stats_worker.start()
@@ -675,34 +705,11 @@ class Backend(QObject):
     # ---- Emulation -------------------------------------------------------
     @staticmethod
     def _emu_core_path(system):
-        return LIBRETRO_DIR / f"{system['core']}_libretro.so"
+        return emulation.core_path(system)
 
     @staticmethod
     def _emu_prepare_folders():
-        """~/Games/ROMs/<id>/, ~/Games/BIOS/ and saves, a short README, and a
-        small RetroArch config ReyOS appends at launch (--appendconfig), so
-        the user's own ~/.config/retroarch/retroarch.cfg is never rewritten."""
-        for system in EMU_SYSTEMS:
-            (GAMES_DIR / "ROMs" / system["id"]).mkdir(parents=True, exist_ok=True)
-        for sub in ("BIOS", "Saves", "Saves/states"):
-            (GAMES_DIR / sub).mkdir(parents=True, exist_ok=True)
-        readme = GAMES_DIR / "README.txt"
-        if not readme.exists():
-            readme.write_text(
-                "ReyOS Emulation\n\n"
-                "Put your games in ROMs/<system>/ (for example ROMs/snes/) and open\n"
-                "Control Center > Gaming to play them.\n\n"
-                "ReyOS does not include any games or BIOS files. Only use games and\n"
-                "BIOS files you have the right to use, for example dumped from\n"
-                "cartridges, discs and consoles you own.\n\n"
-                "BIOS files go in BIOS/. PlayStation needs one (scph5501.bin for US\n"
-                "games); the other systems here work without.\n")
-        RETROARCH_REYOS_CFG.parent.mkdir(parents=True, exist_ok=True)
-        RETROARCH_REYOS_CFG.write_text(
-            f'system_directory = "{GAMES_DIR / "BIOS"}"\n'
-            f'savefile_directory = "{GAMES_DIR / "Saves"}"\n'
-            f'savestate_directory = "{GAMES_DIR / "Saves" / "states"}"\n'
-            f'rgui_browser_directory = "{GAMES_DIR / "ROMs"}"\n')
+        emulation.prepare_folders()
 
     @Slot(result="QVariantList")
     def emulationSystems(self):
@@ -711,8 +718,8 @@ class Backend(QObject):
             folder = GAMES_DIR / "ROMs" / system["id"]
             count = sum(1 for _ in self._emu_scan(system, folder))
             result.append({
-                "id": system["id"], "name": system["name"], "bios": system["bios"],
-                "installed": self._emu_core_path(system).is_file(), "games": count,
+                "id": system["id"], "name": system["name"],
+                "installed": emulation.system_installed(system), "games": count,
             })
         return result
 
@@ -757,6 +764,7 @@ class Backend(QObject):
                 return False, "Install cancelled -- the password prompt was closed."
             if rc != 0:
                 return False, "Install failed -- check your network connection and try again."
+            emulation.link_system_files()
             return True, f"Emulation ready. Put your games in {GAMES_DIR / 'ROMs'}/<system>/ and they'll show up here."
         self._gaming_worker = ActionWorker(task)
         self._gaming_worker.progress.connect(self.gamingProgress.emit)
@@ -785,9 +793,64 @@ class Backend(QObject):
     @Slot(str)
     def openGamesFolder(self, system_id):
         self._emu_prepare_folders()
-        folder = GAMES_DIR / "ROMs" / system_id if system_id else GAMES_DIR / "ROMs"
+        if system_id == "bios":
+            folder = emulation.BIOS_DIR
+        else:
+            folder = GAMES_DIR / "ROMs" / system_id if system_id else GAMES_DIR / "ROMs"
         subprocess.Popen(["xdg-open", str(folder)], stdin=subprocess.DEVNULL,
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+
+    @Slot(result="QVariantMap")
+    def emulationSettings(self):
+        return emulation.load_settings()
+
+    @Slot("QVariantMap")
+    def setEmulationSettings(self, settings):
+        try:
+            emulation.save_settings(dict(settings))
+        except OSError as e:
+            self.actionFinished.emit(False, f"Couldn't save game settings: {e}")
+            return
+        self.actionFinished.emit(True, "Game settings saved -- they apply the next time you start a game.")
+
+    @Slot(result="QVariantList")
+    def biosReport(self):
+        installed = {s["id"] for s in EMU_SYSTEMS if emulation.core_path(s).is_file()}  # GameCube listed even without its data files
+        return emulation.bios_report(installed)
+
+    @Slot(str, str)
+    def biosFixName(self, source, name):
+        if emulation.bios_fix_name(source, name):
+            self.actionFinished.emit(True, f"Copied {source} to {name}.")
+        else:
+            self.actionFinished.emit(False, f"Couldn't copy {source} to {name}.")
+
+    @Slot(result="QVariantList")
+    def gameControllers(self):
+        return emulation.list_controllers()
+
+    @Slot(str)
+    def startControllerSetup(self, path):
+        if self._controller_worker is not None and self._controller_worker.isRunning():
+            return
+        self._controller_worker = ControllerSetupWorker(path)
+        self._controller_worker.step.connect(self.controllerSetupStep.emit)
+        self._controller_worker.done.connect(self._controller_setup_done)
+        self._controller_worker.start()
+
+    def _controller_setup_done(self, ok, message):
+        self.controllerSetupDone.emit(ok, message)
+        self.actionFinished.emit(ok, message)
+
+    @Slot()
+    def skipControllerStep(self):
+        if self._controller_worker is not None:
+            self._controller_worker.skip = True
+
+    @Slot()
+    def cancelControllerSetup(self):
+        if self._controller_worker is not None:
+            self._controller_worker.cancelled = True
 
 
     @Slot(str)

@@ -23,7 +23,9 @@ for system in "$@"; do
         psx)      pkgs="$pkgs libretro-beetle-psx" ;;
         psp)      pkgs="$pkgs libretro-ppsspp" ;;
         nds)      pkgs="$pkgs libretro-melonds" ;;
-        gamecube) pkgs="$pkgs libretro-dolphin" ;;
+        # dolphin-emu provides the Sys data folder (fonts, game fixes) the
+        # libretro core needs but Arch's libretro-dolphin doesn't ship.
+        gamecube) pkgs="$pkgs libretro-dolphin dolphin-emu" ;;
         *) echo "unknown system: $system" >&2; exit 2 ;;
     esac
 done
