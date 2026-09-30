@@ -13,6 +13,8 @@ User asked for: a Show/Hide button for emulation, PS2 and 3DS, choosing which sy
 - GameCube/Wii scans `ROMs/gamecube` and `ROMs/wii`; RetroArch launches get `gamemoderun` when installed.
 - Emulation card collapses (starts collapsed until something is installed); BIOS files card starts hidden with a one-line "missing for …" summary; both remembered in `~/.config/reyos/emulation.json`. Install log hidden behind Show details (round 2).
 
+**Auto-refresh (1.0.0-97, user request)**: like the user's `Emulators.sh` (which rescans on every pick), ReyOS Games watches `~/Games/ROMs` + every system folder and subfolder (`QFileSystemWatcher`, 1.5 s debounce) and rescans on window focus; the grid rebuilds only when the list changed. Verified on the Dev VM: a copied game, a game in a new subfolder, and a deleted game each updated the library within ~2 s with no Refresh.
+
 **Verified on the Dev VM**: Flathub install of both apps through Control Center's install path (no password), override + ini written; library rendered with real downloaded covers, N64 filter and search working (in-app driver + window grabs), placeholder tiles for games without art; Control Center's button launched `reyos-games`; installed package runs the app cleanly. **Not tested**: actually playing PS2/3DS/Dreamcast games (no test images/BIOS), PCSX2 honoring the pre-written ini on a real first run.
 
 ## 2026-09-29 — Emulation round 2: controller setup, display settings, BIOS checker (`reyos-control-center-gui` 1.0.0-95)
