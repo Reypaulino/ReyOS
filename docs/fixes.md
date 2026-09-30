@@ -2,6 +2,18 @@
 
 Real bugs found and fixed, with root cause. Newest first. See `bugs.md` for what's still open.
 
+## 2026-09-29 — Emulation round 2: controller setup, display settings, BIOS checker (`reyos-control-center-gui` 1.0.0-95)
+
+User asked for controller setup, resolution settings, the install log hidden, and a BIOS checker. New Qt-free `emulation.py` holds the systems table, settings, BIOS checker and controller code (`main.py` keeps thin slots).
+
+- **Controllers**: Arch has no RetroArch joypad-autoconfig package, so without a profile a pad does nothing in RetroArch. Controllers card lists pads found in `/dev/input/event*` (joystick button range + stick/hat, so PlayStation motion/touchpad nodes are skipped); **Set up** opens a 21-step dialog (face buttons by position with Xbox/PlayStation/Nintendo names, D-pad, shoulders, triggers, Select/Start, stick clicks, sticks, Home), each skippable. It reads evdev directly (no new dependency) and writes `~/.config/retroarch/autoconfig/udev/ReyOS - <name>.cfg`, numbering buttons/axes/hats exactly like RetroArch 1.22.2's `udev_add_pad` (KEY_UP..KEY_DOWN, then BTN_MISC.., then the rest; hats skipped from axis numbering). Start + Select (`input_menu_toggle_gamepad_combo = 4`) opens the in-game menu.
+- **Display card**: full screen, picture (sharp exact size / sharp fill / smooth) and 3D resolution 1x/2x/4x. The resolution is written as core options for mupen64plus-next (`EnableNativeResFactor`), mednafen_psx (`beetle_psx_internal_resolution`), ppsspp, melonDS (also turns on its OpenGL renderer above 1x) and Dolphin (`dolphin_efb_scale`); option names/values checked against the Arch-built cores (`strings`) and upstream sources. They go to a ReyOS-owned `~/.config/reyos/retroarch-core-options.cfg` via `global_core_options`/`core_options_path` in the appended config; RetroArch merges its own options into that file and keeps ours (checked).
+- **BIOS checker**: per installed system, checks `~/Games/BIOS` by MD5 (PlayStation scph5500/5501/5502 required-one-of; GBA and DS optional); detects the right file under another name (**Fix name** copies it), and a right-named wrong file.
+- **GameCube data**: Arch's `libretro-dolphin` ships no `Sys` folder (fonts, game fixes); the installer now also installs `dolphin-emu` and `~/Games/BIOS/dolphin-emu/Sys` links to `/usr/share/dolphin-emu/sys`. Earlier installs without it show GameCube as not installed so it can be ticked again.
+- **Install log**: hidden behind **Show details**; a status card shows the current step / result.
+
+**Verified on the Dev VM** with a virtual Xbox 360 pad (python-evdev uinput, xpad-like): capture produced the same binds as RetroArch's own Xbox 360 profile; RetroArch logged "Microsoft X-Box 360 pad configured in port 1"; in a game, Start+Select opened the Quick Menu and D-pad down moved the selection; windowed setting applied. Whole dialog driven through the real UI (in-app driver) → toast + "Set up". BIOS rename/fix/wrong-file/path-rejection checked; Dolphin link resolves to real fonts. **Not tested**: a real physical controller, the 2x/4x resolutions actually rendering (the VM has no GPU), GameCube/PS1/N64/PSP/DS games.
+
 ## 2026-09-29 — New: Emulation on Control Center's Gaming page (`reyos-control-center-gui` 1.0.0-94)
 
 Brainstorm outcome (user asked to brainstorm and build a compatible emulation setup): one frontend — **RetroArch** — with one official-repo libretro core per system (all in Arch `[extra]`, no AUR, no multilib), rather than several standalone emulators or an AUR frontend (ES-DE/Pegasus). Lightweight for older hardware and one controller setup for everything. ReyOS ships no games or BIOS.
