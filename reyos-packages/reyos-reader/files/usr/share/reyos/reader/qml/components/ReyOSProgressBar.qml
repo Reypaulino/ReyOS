@@ -1,5 +1,6 @@
 import QtQuick
-import org.kde.kirigami as Kirigami
+import "../kirishim" as Kirigami
+import "../" as Reader
 
 // Drop-in replacement for QtQuick.Controls' ProgressBar (from/to/value/
 // indeterminate). Under the KDE desktop style, Controls.ProgressBar keeps the
@@ -8,7 +9,10 @@ import org.kde.kirigami as Kirigami
 // Appearance page idled at ~190% CPU (+ ~110% in KWin) with its one hidden
 // progress bar, 0% with it removed. Two plain Rectangles have no such cost;
 // the indeterminate slide only animates while it's actually on screen.
-// Colors follow the active color scheme, so the fill uses the Look's accent.
+// Reader's copy uses its own kirishim stand-in + ReyOSStyle instead of
+// org.kde.kirigami, which isn't installed on Ubuntu (the .deb target) --
+// importing it broke the library cards there ("module org.kde.kirigami is
+// not installed"). Fill uses the Look accent via ReyOSStyle.accent.
 Item {
     id: root
 
@@ -25,7 +29,7 @@ Item {
     Rectangle {
         anchors.fill: parent
         radius: height / 2
-        color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.15)
+        color: Qt.rgba(Reader.ReyOSStyle.text.r, Reader.ReyOSStyle.text.g, Reader.ReyOSStyle.text.b, 0.15)
     }
 
     Rectangle {
@@ -33,7 +37,7 @@ Item {
         width: parent.width * root.position
         height: parent.height
         radius: height / 2
-        color: Kirigami.Theme.highlightColor
+        color: Reader.ReyOSStyle.accent
     }
 
     Rectangle {
@@ -42,7 +46,7 @@ Item {
         width: parent.width * 0.3
         height: parent.height
         radius: height / 2
-        color: Kirigami.Theme.highlightColor
+        color: Reader.ReyOSStyle.accent
 
         NumberAnimation on x {
             running: root.indeterminate && root.visible
