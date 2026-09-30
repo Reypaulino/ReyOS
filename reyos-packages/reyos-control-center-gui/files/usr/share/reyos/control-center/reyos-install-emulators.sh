@@ -4,7 +4,8 @@
 # prompt per install), the same pattern as reyos-manage-users.sh: a fixed
 # helper that only accepts known system ids and maps them to a fixed package
 # list itself, so it can never be used to install arbitrary packages as root.
-# Every package comes from Arch's official [extra] repo.
+# Every package comes from Arch's official [extra] repo. PS2 and 3DS come
+# from Flathub instead and are installed per-user by Control Center itself.
 #
 # Usage: reyos-install-emulators.sh <system-id>...
 set -eu
@@ -19,6 +20,7 @@ for system in "$@"; do
         gb)       pkgs="$pkgs libretro-gambatte" ;;
         gba)      pkgs="$pkgs libretro-mgba" ;;
         genesis)  pkgs="$pkgs libretro-genesis-plus-gx" ;;
+        dreamcast) pkgs="$pkgs libretro-flycast" ;;
         n64)      pkgs="$pkgs libretro-mupen64plus-next" ;;
         psx)      pkgs="$pkgs libretro-beetle-psx" ;;
         psp)      pkgs="$pkgs libretro-ppsspp" ;;

@@ -20,6 +20,11 @@ Kirigami.ScrollablePage {
     property var controllers: []
     property var bios: []
     property bool anyEmulatorInstalled: false
+    property bool emuExpanded: false
+    property bool emuExpandedLoaded: false
+    property bool biosExpanded: false
+    property var biosMissing: bios.filter(function (b) { return !b.ok }).map(function (b) { return b.name })
+    property var flatpakSystems: emuSystems.filter(function (s) { return s.flatpak && s.installed })
 
     readonly property var pictureModes: ["sharp", "fill", "smooth"]
     readonly property var resolutions: [1, 2, 4]
@@ -36,6 +41,13 @@ Kirigami.ScrollablePage {
         var any = false
         for (var i = 0; i < emuSystems.length; i++) if (emuSystems[i].installed) any = true
         anyEmulatorInstalled = any
+        if (!emuExpandedLoaded) {
+            // Collapsed until the user opens it, unless emulators are already
+            // installed; after that the user's own choice is remembered.
+            emuExpanded = (emuSettings.expanded === true || emuSettings.expanded === false) ? emuSettings.expanded : any
+            emuExpandedLoaded = true
+            biosExpanded = emuSettings.bios_expanded === true
+        }
     }
 
     function selectedSystems() {
@@ -222,75 +234,89 @@ Kirigami.ScrollablePage {
             padding: Kirigami.Units.gridUnit
             contentItem: ColumnLayout {
                 spacing: Kirigami.Units.largeSpacing
-                Kirigami.Heading { text: "Emulation"; level: 3 }
-                Controls.Label {
-                    Layout.fillWidth: true
-                    wrapMode: Text.Wrap
-                    text: "Play classic console games with RetroArch. Pick the systems you want and ReyOS installs only those emulators (it will ask for your password). ReyOS doesn't include any games or BIOS files — use your own, for example dumped from cartridges and discs you own."
-                }
-                GridLayout {
-                    Layout.fillWidth: true
-                    columns: 2
-                    columnSpacing: Kirigami.Units.gridUnit
-                    Repeater {
-                        model: emuSystems
-                        delegate: Controls.CheckBox {
-                            Layout.fillWidth: true
-                            text: modelData.name + (modelData.installed ? "  ✓ installed" : "") + (modelData.games > 0 ? "  · " + modelData.games + (modelData.games === 1 ? " game" : " games") : "")
-                            checked: modelData.installed || emuSelected[modelData.id] === true
-                            enabled: !modelData.installed && !busy
-                            onToggled: {
-                                var s = Object.assign({}, emuSelected)
-                                s[modelData.id] = checked
-                                emuSelected = s
-                            }
-                        }
-                    }
-                }
                 RowLayout {
-                    spacing: Kirigami.Units.largeSpacing
+                    Layout.fillWidth: true
+                    Kirigami.Heading { text: "Emulation"; level: 3; Layout.fillWidth: true }
                     Controls.Button {
-                        text: "Install selected"
-                        highlighted: true
-                        enabled: !busy && selectedSystems().length > 0
-                        onClicked: { startJob(); backend.installEmulation(selectedSystems()) }
-                    }
-                    Controls.Button {
-                        text: "Open games folder"
-                        icon.name: "folder-open"
-                        onClicked: backend.openGamesFolder("")
-                    }
-                    Controls.Button {
-                        text: "Refresh"
-                        icon.name: "view-refresh"
-                        onClicked: refreshStatus()
+                        text: emuExpanded ? "Hide" : "Show"
+                        icon.name: emuExpanded ? "arrow-up" : "arrow-down"
+                        flat: true
+                        onClicked: { emuExpanded = !emuExpanded; backend.setEmulationExpanded(emuExpanded) }
                     }
                 }
-
-                Kirigami.Heading { text: "Your games"; level: 4 }
                 Controls.Label {
-                    visible: emuGames.length === 0
+                    visible: !emuExpanded
                     Layout.fillWidth: true
                     wrapMode: Text.Wrap
                     opacity: 0.7
-                    text: "No games yet. Put them in the folder for their system under ~/Games/ROMs (for example ~/Games/ROMs/snes/), then press Refresh."
+                    text: anyEmulatorInstalled ? "Your emulators and games are here — press Show."
+                                               : "Play classic console games, from NES to PlayStation 2 and 3DS. Nothing is installed until you choose it — press Show to pick systems."
                 }
-                Repeater {
-                    model: emuGames
-                    delegate: RowLayout {
+                ColumnLayout {
+                    visible: emuExpanded
+                    Layout.fillWidth: true
+                    spacing: Kirigami.Units.largeSpacing
+                    Controls.Label {
                         Layout.fillWidth: true
+                        wrapMode: Text.Wrap
+                        text: "Play classic console games. Pick the systems you want and ReyOS installs only those emulators — RetroArch from the ReyOS/Arch repos (asks for your password), PlayStation 2 and 3DS from Flathub (no password). ReyOS doesn't include any games or BIOS files — use your own, for example dumped from cartridges and discs you own."
+                    }
+                    GridLayout {
+                        Layout.fillWidth: true
+                        columns: 2
+                        columnSpacing: Kirigami.Units.gridUnit
+                        Repeater {
+                            model: emuSystems
+                            delegate: Controls.CheckBox {
+                                Layout.fillWidth: true
+                                text: modelData.name + (modelData.installed ? "  ✓ installed" : "") + (modelData.games > 0 ? "  · " + modelData.games + (modelData.games === 1 ? " game" : " games") : "")
+                                checked: modelData.installed || emuSelected[modelData.id] === true
+                                enabled: !modelData.installed && !busy
+                                onToggled: {
+                                    var s = Object.assign({}, emuSelected)
+                                    s[modelData.id] = checked
+                                    emuSelected = s
+                                }
+                            }
+                        }
+                    }
+                    RowLayout {
                         spacing: Kirigami.Units.largeSpacing
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            spacing: 0
-                            Controls.Label { text: modelData.title; font.bold: true; elide: Text.ElideRight; Layout.fillWidth: true }
-                            Controls.Label { text: modelData.system; opacity: 0.7; Layout.fillWidth: true }
+                        Controls.Button {
+                            text: "Install selected"
+                            highlighted: true
+                            enabled: !busy && selectedSystems().length > 0
+                            onClicked: { startJob(); backend.installEmulation(selectedSystems()) }
                         }
                         Controls.Button {
-                            text: modelData.playable ? "Play" : "Emulator not installed"
-                            icon.name: modelData.playable ? "media-playback-start" : ""
-                            enabled: modelData.playable
-                            onClicked: backend.launchGame(modelData.systemId, modelData.path)
+                            text: "Open games folder"
+                            icon.name: "folder-open"
+                            onClicked: backend.openGamesFolder("")
+                        }
+                        Controls.Button {
+                            text: "Refresh"
+                            icon.name: "view-refresh"
+                            onClicked: refreshStatus()
+                        }
+                    }
+
+                    Kirigami.Heading { text: "Your games"; level: 4 }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Kirigami.Units.largeSpacing
+                        Controls.Label {
+                            Layout.fillWidth: true
+                            wrapMode: Text.Wrap
+                            opacity: emuGames.length > 0 ? 1 : 0.7
+                            text: emuGames.length > 0
+                                  ? emuGames.length + (emuGames.length === 1 ? " game" : " games") + " in ~/Games/ROMs."
+                                  : "No games yet. Put them in the folder for their system under ~/Games/ROMs (for example ~/Games/ROMs/n64/), then press Refresh."
+                        }
+                        Controls.Button {
+                            text: "Open game library"
+                            icon.name: "view-list-icons"
+                            highlighted: emuGames.length > 0
+                            onClicked: backend.openGameLibrary()
                         }
                     }
                 }
@@ -300,7 +326,7 @@ Kirigami.ScrollablePage {
         Kirigami.AbstractCard {
             Layout.fillWidth: true
             padding: Kirigami.Units.gridUnit
-            visible: anyEmulatorInstalled
+            visible: anyEmulatorInstalled && emuExpanded
             contentItem: ColumnLayout {
                 spacing: Kirigami.Units.largeSpacing
                 Kirigami.Heading { text: "Display"; level: 3 }
@@ -332,7 +358,26 @@ Kirigami.ScrollablePage {
                     Layout.fillWidth: true
                     wrapMode: Text.Wrap
                     opacity: 0.7
-                    text: "3D resolution applies to Nintendo 64, PlayStation, PSP, Nintendo DS and GameCube / Wii. If a game stutters, go back to Original."
+                    text: "3D resolution applies to Nintendo 64, Dreamcast, PlayStation, PSP, Nintendo DS and GameCube / Wii. If a game stutters, go back to Original."
+                }
+                Controls.Label {
+                    visible: flatpakSystems.length > 0
+                    Layout.fillWidth: true
+                    wrapMode: Text.Wrap
+                    opacity: 0.7
+                    text: "PlayStation 2 and 3DS use their own emulator apps: full screen follows the switch above, everything else (resolution, controller buttons) is in the app's own settings."
+                }
+                Flow {
+                    Layout.fillWidth: true
+                    spacing: Kirigami.Units.largeSpacing
+                    Repeater {
+                        model: flatpakSystems
+                        delegate: Controls.Button {
+                            text: "Open " + modelData.app + " settings"
+                            icon.name: "configure"
+                            onClicked: backend.openEmulatorApp(modelData.id)
+                        }
+                    }
                 }
             }
         }
@@ -340,7 +385,7 @@ Kirigami.ScrollablePage {
         Kirigami.AbstractCard {
             Layout.fillWidth: true
             padding: Kirigami.Units.gridUnit
-            visible: anyEmulatorInstalled
+            visible: anyEmulatorInstalled && emuExpanded
             contentItem: ColumnLayout {
                 spacing: Kirigami.Units.largeSpacing
                 Kirigami.Heading { text: "Controllers"; level: 3 }
@@ -390,7 +435,7 @@ Kirigami.ScrollablePage {
                     Layout.fillWidth: true
                     wrapMode: Text.Wrap
                     opacity: 0.7
-                    text: "In a game, Start + Select (or the Home button) opens the emulator menu, where you can save, load or quit. Keyboard works too: arrow keys, Z X A S, Enter = Start, F1 = menu, Esc = quit."
+                    text: "In a game, Start + Select (or the Home button) opens the emulator menu, where you can save, load or quit. Keyboard works too: arrow keys, Z X A S, Enter = Start, F1 = menu, Esc = quit." + (flatpakSystems.length > 0 ? " PlayStation 2 and 3DS recognise common controllers on their own; change their buttons in the app's settings." : "")
                 }
             }
         }
@@ -398,70 +443,92 @@ Kirigami.ScrollablePage {
         Kirigami.AbstractCard {
             Layout.fillWidth: true
             padding: Kirigami.Units.gridUnit
-            visible: bios.length > 0
+            visible: bios.length > 0 && emuExpanded
             contentItem: ColumnLayout {
                 spacing: Kirigami.Units.largeSpacing
-                Kirigami.Heading { text: "BIOS files"; level: 3 }
+                RowLayout {
+                    Layout.fillWidth: true
+                    Kirigami.Heading { text: "BIOS files"; level: 3; Layout.fillWidth: true }
+                    Controls.Button {
+                        text: biosExpanded ? "Hide" : "Show"
+                        icon.name: biosExpanded ? "arrow-up" : "arrow-down"
+                        flat: true
+                        onClicked: { biosExpanded = !biosExpanded; backend.setBiosExpanded(biosExpanded) }
+                    }
+                }
                 Controls.Label {
+                    visible: !biosExpanded
                     Layout.fillWidth: true
                     wrapMode: Text.Wrap
-                    text: "Some systems need files from the real console. Put them in ~/Games/BIOS — ReyOS checks each one and recognises the right file even under a different name."
+                    color: biosMissing.length > 0 ? Kirigami.Theme.negativeTextColor : Kirigami.Theme.positiveTextColor
+                    text: biosMissing.length > 0 ? "Missing for: " + biosMissing.join(", ") + " — press Show."
+                                                 : "✓ Everything your emulators need is in place."
                 }
-                Repeater {
-                    model: bios
-                    delegate: ColumnLayout {
+                ColumnLayout {
+                    visible: biosExpanded
+                    Layout.fillWidth: true
+                    spacing: Kirigami.Units.largeSpacing
+                    Controls.Label {
                         Layout.fillWidth: true
-                        spacing: Kirigami.Units.smallSpacing
-                        Controls.Label {
+                        wrapMode: Text.Wrap
+                        text: "Some systems need files from the real console. Put them in ~/Games/BIOS — ReyOS checks each one and recognises the right file even under a different name."
+                    }
+                    Repeater {
+                        model: bios
+                        delegate: ColumnLayout {
                             Layout.fillWidth: true
-                            font.bold: true
-                            text: (modelData.ok ? "✓ " : "✗ ") + modelData.name
-                            color: modelData.ok ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.negativeTextColor
-                        }
-                        Controls.Label {
-                            Layout.fillWidth: true
-                            wrapMode: Text.Wrap
-                            opacity: 0.8
-                            text: modelData.summary
-                        }
-                        Repeater {
-                            model: modelData.files
-                            delegate: RowLayout {
+                            spacing: Kirigami.Units.smallSpacing
+                            Controls.Label {
                                 Layout.fillWidth: true
-                                Layout.leftMargin: Kirigami.Units.gridUnit
-                                Controls.Label {
+                                font.bold: true
+                                text: (modelData.ok ? "✓ " : "✗ ") + modelData.name
+                                color: modelData.ok ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.negativeTextColor
+                            }
+                            Controls.Label {
+                                Layout.fillWidth: true
+                                wrapMode: Text.Wrap
+                                opacity: 0.8
+                                text: modelData.summary
+                            }
+                            Repeater {
+                                model: modelData.files
+                                delegate: RowLayout {
                                     Layout.fillWidth: true
-                                    wrapMode: Text.Wrap
-                                    text: {
-                                        var f = modelData
-                                        if (f.status === "ok") return "✓ " + f.name + " — " + f.note
-                                        if (f.status === "rename") return "⚠ " + f.name + " — found as " + f.source
-                                        if (f.status === "wrong") return "⚠ " + f.name + " — this isn't the right file (checksum doesn't match)"
-                                        return "· " + f.name + " — missing (" + f.note + ")"
+                                    Layout.leftMargin: Kirigami.Units.gridUnit
+                                    Controls.Label {
+                                        Layout.fillWidth: true
+                                        wrapMode: Text.Wrap
+                                        text: {
+                                            var f = modelData
+                                            if (f.status === "ok") return "✓ " + f.name + " — " + f.note
+                                            if (f.status === "rename") return "⚠ " + f.name + " — found as " + f.source
+                                            if (f.status === "wrong") return "⚠ " + f.name + " — this isn't the right file (checksum doesn't match)"
+                                            return "· " + f.name + " — missing (" + f.note + ")"
+                                        }
+                                        color: modelData.status === "ok" ? Kirigami.Theme.positiveTextColor
+                                             : (modelData.status === "missing" ? Kirigami.Theme.textColor : Kirigami.Theme.neutralTextColor)
                                     }
-                                    color: modelData.status === "ok" ? Kirigami.Theme.positiveTextColor
-                                         : (modelData.status === "missing" ? Kirigami.Theme.textColor : Kirigami.Theme.neutralTextColor)
-                                }
-                                Controls.Button {
-                                    visible: modelData.status === "rename"
-                                    text: "Fix name"
-                                    onClicked: { backend.biosFixName(modelData.source, modelData.name); bios = backend.biosReport() }
+                                    Controls.Button {
+                                        visible: modelData.status === "rename"
+                                        text: "Fix name"
+                                        onClicked: { backend.biosFixName(modelData.source, modelData.name); bios = backend.biosReport() }
+                                    }
                                 }
                             }
                         }
                     }
-                }
-                RowLayout {
-                    spacing: Kirigami.Units.largeSpacing
-                    Controls.Button {
-                        text: "Open BIOS folder"
-                        icon.name: "folder-open"
-                        onClicked: backend.openGamesFolder("bios")
-                    }
-                    Controls.Button {
-                        text: "Check again"
-                        icon.name: "view-refresh"
-                        onClicked: bios = backend.biosReport()
+                    RowLayout {
+                        spacing: Kirigami.Units.largeSpacing
+                        Controls.Button {
+                            text: "Open BIOS folder"
+                            icon.name: "folder-open"
+                            onClicked: backend.openGamesFolder("bios")
+                        }
+                        Controls.Button {
+                            text: "Check again"
+                            icon.name: "view-refresh"
+                            onClicked: bios = backend.biosReport()
+                        }
                     }
                 }
             }

@@ -1,0 +1,134 @@
+#!/usr/bin/env python3
+"""ReyOS Games: the emulation game library as its own app, so games can be
+started from the app menu without opening Control Center. Setup (installing
+emulators, controllers, BIOS) stays on Control Center's Gaming page."""
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+from PySide6.QtCore import QObject, QThread, QUrl, Signal, Slot
+from PySide6.QtGui import QGuiApplication, QIcon
+from PySide6.QtQml import QQmlApplicationEngine
+
+try:
+    import setproctitle
+except ImportError:
+    setproctitle = None
+
+APP_DIR = Path(__file__).resolve().parent
+sys.path.insert(0, str(APP_DIR))
+import emulation  # noqa: E402
+from emulation import EMU_SYSTEMS  # noqa: E402
+
+
+class CoverWorker(QThread):
+    """Fetches box art for (system, rom) pairs; a network error just skips a
+    game (it's retried next time, since nothing was cached for it)."""
+    coverReady = Signal(str, str)
+
+    def __init__(self, todo):
+        super().__init__()
+        self.todo = todo
+
+    def run(self):
+        for system, rom in self.todo:
+            try:
+                cover = emulation.fetch_cover(system, rom)
+            except (OSError, ValueError):
+                continue
+            if cover:
+                self.coverReady.emit(str(rom), cover)
+
+
+class GamesBackend(QObject):
+    coverReady = Signal(str, str)
+    message = Signal(bool, str)
+
+    def __init__(self):
+        super().__init__()
+        self._cover_worker = None
+
+    @Slot(result="QVariantList")
+    def emulationSystems(self):
+        return [{"id": s["id"], "name": s["name"], "short": s["short"],
+                 "installed": emulation.system_installed(s),
+                 "games": sum(1 for _ in emulation.scan_games(s))} for s in EMU_SYSTEMS]
+
+    @Slot(result="QVariantList")
+    def emulationGames(self):
+        games = []
+        for system in EMU_SYSTEMS:
+            playable = emulation.system_installed(system)
+            for path in emulation.scan_games(system):
+                games.append({
+                    "title": emulation.game_title(path),
+                    "system": system["name"], "short": system["short"], "systemId": system["id"],
+                    "path": str(path), "playable": playable,
+                    "cover": emulation.local_cover(system, path),
+                })
+        games.sort(key=lambda g: (g["title"].lower(), g["system"]))
+        return games
+
+    @Slot(result=bool)
+    def boxartEnabled(self):
+        return bool(emulation.load_settings()["boxart"])
+
+    @Slot(bool)
+    def setBoxart(self, enabled):
+        emulation.save_settings({"boxart": bool(enabled)})
+
+    @Slot()
+    def fetchCovers(self):
+        """Downloads missing box art in the background, one coverReady per
+        game found, if box art downloads are on."""
+        if not self.boxartEnabled():
+            return
+        if self._cover_worker is not None and self._cover_worker.isRunning():
+            return
+        todo = [(s, p) for s in EMU_SYSTEMS for p in emulation.scan_games(s)
+                if not emulation.local_cover(s, p)
+                and not (emulation.BOXART_CACHE / s["id"] / (p.stem + ".png")).exists()]
+        if todo:
+            self._cover_worker = CoverWorker(todo)
+            self._cover_worker.coverReady.connect(self.coverReady.emit)
+            self._cover_worker.start()
+
+    @Slot(str, str)
+    def launchGame(self, system_id, path):
+        self.message.emit(*emulation.launch_game(system_id, path))
+
+    @Slot(str)
+    def openGamesFolder(self, system_id):
+        emulation.prepare_folders()
+        folder = emulation.GAMES_DIR / "ROMs" / system_id if system_id else emulation.GAMES_DIR / "ROMs"
+        folder.mkdir(parents=True, exist_ok=True)
+        subprocess.Popen(["xdg-open", str(folder)], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, start_new_session=True)
+
+    @Slot()
+    def openSetup(self):
+        """Control Center's Gaming page: install emulators, controllers, BIOS."""
+        env = dict(os.environ, REYOS_CC_INITIAL_PAGE="GamingPage.qml")
+        subprocess.Popen([str(APP_DIR / "main.py")], env=env, stdin=subprocess.DEVNULL,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+
+
+def main():
+    if setproctitle is not None:
+        setproctitle.setproctitle("reyos-games")
+    app = QGuiApplication(sys.argv)
+    app.setApplicationName("ReyOS Games")
+    app.setDesktopFileName("reyos-games")
+    app.setWindowIcon(QIcon.fromTheme("applications-games"))
+    engine = QQmlApplicationEngine()
+    backend = GamesBackend()
+    engine.rootContext().setContextProperty("backend", backend)
+    engine.load(QUrl.fromLocalFile(str(APP_DIR / "qml" / "GamesMain.qml")))
+    if not engine.rootObjects():
+        sys.exit(1)
+    sys.exit(app.exec())
+
+
+if __name__ == "__main__":
+    main()

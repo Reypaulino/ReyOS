@@ -8,20 +8,45 @@ import json
 import os
 import re
 import select
+import shutil
 import struct
+import subprocess
+import time
+import urllib.parse
+import urllib.request
 from pathlib import Path
 
 EMU_SYSTEMS = [
-    {"id": "nes", "name": "NES / Famicom", "core": "nestopia", "exts": [".nes", ".unf", ".fds"]},
-    {"id": "snes", "name": "Super Nintendo", "core": "snes9x", "exts": [".sfc", ".smc"]},
-    {"id": "gb", "name": "Game Boy / Color", "core": "gambatte", "exts": [".gb", ".gbc"]},
-    {"id": "gba", "name": "Game Boy Advance", "core": "mgba", "exts": [".gba"]},
-    {"id": "genesis", "name": "Genesis / Master System / Game Gear", "core": "genesis_plus_gx", "exts": [".md", ".gen", ".smd", ".sms", ".gg"]},
-    {"id": "n64", "name": "Nintendo 64", "core": "mupen64plus_next", "exts": [".n64", ".z64", ".v64"]},
-    {"id": "psx", "name": "PlayStation", "core": "mednafen_psx", "exts": [".cue", ".chd", ".pbp", ".m3u"]},
-    {"id": "psp", "name": "PSP", "core": "ppsspp", "exts": [".iso", ".cso", ".pbp", ".chd"]},
-    {"id": "nds", "name": "Nintendo DS", "core": "melonds", "exts": [".nds"]},
-    {"id": "gamecube", "name": "GameCube / Wii (needs a fast PC)", "core": "dolphin", "exts": [".iso", ".gcm", ".rvz", ".wbfs", ".ciso", ".gcz"]},
+    {"id": "nes", "short": "NES", "thumbs": ["Nintendo - Nintendo Entertainment System"],
+     "name": "NES / Famicom", "core": "nestopia", "exts": [".nes", ".unf", ".fds"]},
+    {"id": "snes", "short": "SNES", "thumbs": ["Nintendo - Super Nintendo Entertainment System"],
+     "name": "Super Nintendo", "core": "snes9x", "exts": [".sfc", ".smc"]},
+    {"id": "gb", "short": "GB", "thumbs": ["Nintendo - Game Boy", "Nintendo - Game Boy Color"],
+     "name": "Game Boy / Color", "core": "gambatte", "exts": [".gb", ".gbc"]},
+    {"id": "gba", "short": "GBA", "thumbs": ["Nintendo - Game Boy Advance"],
+     "name": "Game Boy Advance", "core": "mgba", "exts": [".gba"]},
+    {"id": "genesis", "short": "MD", "thumbs": ["Sega - Mega Drive - Genesis", "Sega - Master System - Mark III", "Sega - Game Gear"],
+     "name": "Genesis / Master System / Game Gear", "core": "genesis_plus_gx", "exts": [".md", ".gen", ".smd", ".sms", ".gg"]},
+    {"id": "dreamcast", "short": "DC", "thumbs": ["Sega - Dreamcast"],
+     "name": "Dreamcast", "core": "flycast", "exts": [".cdi", ".gdi", ".chd", ".cue", ".m3u"]},
+    {"id": "n64", "short": "N64", "thumbs": ["Nintendo - Nintendo 64"],
+     "name": "Nintendo 64", "core": "mupen64plus_next", "exts": [".n64", ".z64", ".v64"]},
+    {"id": "psx", "short": "PS1", "thumbs": ["Sony - PlayStation"],
+     "name": "PlayStation", "core": "mednafen_psx", "exts": [".cue", ".chd", ".pbp", ".m3u"]},
+    # No PS2 or 3DS emulator in Arch's repos; these two are the maintained
+    # standalone emulators from Flathub, installed per-user (no password).
+    {"id": "ps2", "short": "PS2", "thumbs": ["Sony - PlayStation 2"],
+     "name": "PlayStation 2 (needs a fast PC)", "flatpak": "net.pcsx2.PCSX2", "app": "PCSX2",
+     "exts": [".iso", ".chd", ".cso", ".zso", ".cue", ".gz"]},
+    {"id": "psp", "short": "PSP", "thumbs": ["Sony - PlayStation Portable"],
+     "name": "PSP", "core": "ppsspp", "exts": [".iso", ".cso", ".pbp", ".chd"]},
+    {"id": "nds", "short": "DS", "thumbs": ["Nintendo - Nintendo DS"],
+     "name": "Nintendo DS", "core": "melonds", "exts": [".nds"]},
+    {"id": "3ds", "short": "3DS", "thumbs": ["Nintendo - Nintendo 3DS"],
+     "name": "Nintendo 3DS", "flatpak": "org.azahar_emu.Azahar", "app": "Azahar",
+     "exts": [".3ds", ".cci", ".cxi", ".3dsx", ".app", ".z3ds", ".zcci", ".zcxi", ".z3dsx"]},
+    {"id": "gamecube", "short": "GC", "thumbs": ["Nintendo - GameCube", "Nintendo - Wii"],
+     "name": "GameCube / Wii (needs a fast PC)", "core": "dolphin", "dirs": ["gamecube", "wii"], "exts": [".iso", ".gcm", ".rvz", ".wbfs", ".ciso", ".gcz"]},
 ]
 GAMES_DIR = Path.home() / "Games"
 BIOS_DIR = GAMES_DIR / "BIOS"
@@ -32,13 +57,26 @@ CORE_OPTIONS_CFG = REYOS_CFG_DIR / "retroarch-core-options.cfg"
 SETTINGS_JSON = REYOS_CFG_DIR / "emulation.json"
 AUTOCONFIG_DIR = Path.home() / ".config" / "retroarch" / "autoconfig" / "udev"
 DOLPHIN_SYS = Path("/usr/share/dolphin-emu/sys")
+FLATHUB_URL = "https://flathub.org/repo/flathub.flatpakrepo"
+PCSX2_INI = Path.home() / ".var" / "app" / "net.pcsx2.PCSX2" / "config" / "PCSX2" / "inis" / "PCSX2.ini"
+
+
+def rom_dirs(system):
+    return [GAMES_DIR / "ROMs" / d for d in system.get("dirs", [system["id"]])]
 
 
 def core_path(system):
-    return LIBRETRO_DIR / f"{system['core']}_libretro.so"
+    return LIBRETRO_DIR / f"{system.get('core', '')}_libretro.so"
+
+
+def flatpak_installed(app_id):
+    return any((base / app_id / "current").exists() for base in (
+        Path.home() / ".local" / "share" / "flatpak" / "app", Path("/var/lib/flatpak/app")))
 
 
 def system_installed(system):
+    if "flatpak" in system:
+        return flatpak_installed(system["flatpak"])
     # GameCube also needs dolphin-emu's data files (see link_system_files);
     # installs from before that was added show as not installed so the
     # user can tick it again to get them.
@@ -48,20 +86,23 @@ def system_installed(system):
 
 
 # ---- Display settings -----------------------------------------------------
-DEFAULT_SETTINGS = {"fullscreen": True, "picture": "fill", "resolution": 1}
+DEFAULT_SETTINGS = {"fullscreen": True, "picture": "fill", "resolution": 1, "expanded": None, "bios_expanded": False, "boxart": True}
 
 # 3D internal resolution per core, keyed by ReyOS's 1x / 2x / 4x choice.
 # Option names and values checked against the cores Arch ships.
 RESOLUTION_OPTIONS = {
     1: {"mupen64plus-EnableNativeResFactor": "1", "beetle_psx_internal_resolution": "1x(native)",
         "ppsspp_internal_resolution": "480x272", "melonds_opengl_renderer": "disabled",
-        "melonds_opengl_resolution": "1x native (256x192)", "dolphin_efb_scale": "1"},
+        "melonds_opengl_resolution": "1x native (256x192)", "dolphin_efb_scale": "1",
+        "reicast_internal_resolution": "640x480"},
     2: {"mupen64plus-EnableNativeResFactor": "2", "beetle_psx_internal_resolution": "2x",
         "ppsspp_internal_resolution": "960x544", "melonds_opengl_renderer": "enabled",
-        "melonds_opengl_resolution": "2x native (512x384)", "dolphin_efb_scale": "2"},
+        "melonds_opengl_resolution": "2x native (512x384)", "dolphin_efb_scale": "2",
+        "reicast_internal_resolution": "1280x960"},
     4: {"mupen64plus-EnableNativeResFactor": "4", "beetle_psx_internal_resolution": "4x",
         "ppsspp_internal_resolution": "1920x1088", "melonds_opengl_renderer": "enabled",
-        "melonds_opengl_resolution": "4x native (1024x768)", "dolphin_efb_scale": "4"},
+        "melonds_opengl_resolution": "4x native (1024x768)", "dolphin_efb_scale": "4",
+        "reicast_internal_resolution": "2560x1920"},
 }
 
 
@@ -132,8 +173,9 @@ def prepare_folders():
     """~/Games/ROMs/<id>/, ~/Games/BIOS/ and saves, a short README, the
     RetroArch config, and links to system files some cores need."""
     for system in EMU_SYSTEMS:
-        (GAMES_DIR / "ROMs" / system["id"]).mkdir(parents=True, exist_ok=True)
-    for sub in ("BIOS", "Saves", "Saves/states"):
+        for folder in rom_dirs(system):
+            folder.mkdir(parents=True, exist_ok=True)
+    for sub in ("BIOS", "BIOS/ps2", "BIOS/dc", "Saves", "Saves/states"):
         (GAMES_DIR / sub).mkdir(parents=True, exist_ok=True)
     readme = GAMES_DIR / "README.txt"
     if not readme.exists():
@@ -144,8 +186,9 @@ def prepare_folders():
             "ReyOS does not include any games or BIOS files. Only use games and\n"
             "BIOS files you have the right to use, for example dumped from\n"
             "cartridges, discs and consoles you own.\n\n"
-            "BIOS files go in BIOS/. PlayStation needs one (scph5501.bin for US\n"
-            "games); Control Center > Gaming > Check BIOS files shows what's there.\n")
+            "BIOS files go in BIOS/ (PlayStation 2: BIOS/ps2/, Dreamcast: BIOS/dc/).\n"
+            "PlayStation and PlayStation 2 need one; Control Center > Gaming >\n"
+            "BIOS files shows what's there and what's missing.\n")
     link_system_files()
     write_retroarch_cfg()
 
@@ -160,6 +203,48 @@ def link_system_files():
         if target.is_symlink():
             target.unlink()
         target.symlink_to(DOLPHIN_SYS)
+
+
+def prepare_flatpak(system):
+    """PCSX2's Flatpak has no access to your files: give it ~/Games (the BIOS
+    folder needs write access, PCSX2 keeps its NVRAM next to the BIOS), and
+    on first use point it at ~/Games/BIOS/ps2 so the setup wizard is skipped."""
+    if system["id"] != "ps2":
+        return
+    subprocess.run(["flatpak", "override", "--user", f"--filesystem={GAMES_DIR}", system["flatpak"]],
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+    if not PCSX2_INI.exists():
+        PCSX2_INI.parent.mkdir(parents=True, exist_ok=True)
+        PCSX2_INI.write_text(f"[UI]\nSetupWizardIncomplete = false\n\n[Folders]\nBios = {BIOS_DIR / 'ps2'}\n")
+
+
+def launch_command(system, rom):
+    settings = load_settings()
+    if system["id"] == "ps2":
+        return ["flatpak", "run", system["flatpak"], "-batch",
+                "-fullscreen" if settings["fullscreen"] else "-nofullscreen", "--", rom]
+    if system["id"] == "3ds":
+        return ["flatpak", "run", system["flatpak"], "-f" if settings["fullscreen"] else "-w", rom]
+    cmd = ["retroarch", f"--appendconfig={RETROARCH_REYOS_CFG}", "-L", str(core_path(system)), rom]
+    # GameMode (installed with Steam on this page) for the RetroArch cores;
+    # the PCSX2/Azahar Flatpaks ask for it themselves through the portal.
+    return (["gamemoderun"] if shutil.which("gamemoderun") else []) + cmd
+
+
+def launch_game(system_id, path):
+    """Starts a game detached from the caller. Returns (ok, message)."""
+    system = next((s for s in EMU_SYSTEMS if s["id"] == system_id), None)
+    if system is None or not Path(path).is_file():
+        return False, "That game file couldn't be found."
+    if not system_installed(system):
+        return False, f"The {system['name']} emulator isn't installed yet -- set it up in Control Center > Gaming."
+    if not RETROARCH_REYOS_CFG.is_file():
+        prepare_folders()
+    if "flatpak" in system:
+        prepare_flatpak(system)
+    subprocess.Popen(launch_command(system, path), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                     stderr=subprocess.DEVNULL, start_new_session=True)
+    return True, f"Starting {game_title(Path(path))}..."
 
 
 # ---- BIOS checker ---------------------------------------------------------
@@ -180,6 +265,12 @@ BIOS_TABLE = {
         ("bios9.bin", "a392174eb3e572fed6447e956bde4b25", "ARM9 BIOS"),
         ("firmware.bin", None, "firmware; without these a free replacement is used"),
     ]},
+    "dreamcast": {"need": "optional", "files": [
+        ("dc/dc_boot.bin", "e10c53c2f8b90bab96ead2d368858623", "boot ROM; most games run without it"),
+    ]},
+    # PS2 BIOS dumps come in many versions per region, so any 4 MiB file in
+    # the folder counts; PCSX2 itself shows which version it found.
+    "ps2": {"need": "folder", "dir": "ps2", "size": 4 * 1024 * 1024, "files": []},
     "gamecube": {"need": "system", "files": []},
 }
 _BIOS_MAX_SIZE = 4 * 1024 * 1024
@@ -216,6 +307,14 @@ def bios_report(installed_ids):
         if sid not in BIOS_TABLE or sid not in installed_ids:
             continue
         spec = BIOS_TABLE[sid]
+        if spec["need"] == "folder":
+            folder = BIOS_DIR / spec["dir"]
+            found = [p.name for p in folder.iterdir() if p.is_file() and p.stat().st_size == spec["size"]] if folder.is_dir() else []
+            report.append({"id": sid, "name": system["name"], "need": "folder", "ok": bool(found),
+                           "files": [{"name": n, "note": "PS2 BIOS", "status": "ok", "source": ""} for n in found],
+                           "summary": (f"Found {len(found)} PS2 BIOS file(s) in ~/Games/BIOS/ps2." if found else
+                                       "Needs a PS2 BIOS dumped from your console in ~/Games/BIOS/ps2 (any file name) -- games won't start without it.")})
+            continue
         if spec["need"] == "system":
             ok = (BIOS_DIR / "dolphin-emu" / "Sys").is_dir()
             report.append({"id": sid, "name": system["name"], "need": "system", "ok": ok, "files": [],
@@ -251,6 +350,7 @@ def bios_fix_name(source, name):
     src, dst = BIOS_DIR / Path(source).name, BIOS_DIR / name
     if name not in valid or not src.is_file() or dst.exists():
         return False
+    dst.parent.mkdir(parents=True, exist_ok=True)
     dst.write_bytes(src.read_bytes())
     return True
 
@@ -478,3 +578,103 @@ def write_profile(info, binds):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines) + "\n")
     return path
+
+
+# ---- Game library and box art ------------------------------------------------
+BOXART_CACHE = Path.home() / ".cache" / "reyos" / "boxart"
+THUMBNAILS_URL = "https://thumbnails.libretro.com"
+_COVER_EXTS = (".png", ".jpg", ".jpeg", ".webp")
+
+
+def scan_games(system):
+    for folder in rom_dirs(system):
+        if not folder.is_dir():
+            continue
+        for path in sorted(folder.rglob("*")):
+            if path.is_file() and path.suffix.lower() in system["exts"]:
+                yield path
+
+
+def game_title(path):
+    # "Rayman 2_ The Great Escape (USA) (En,Fr)" -> "Rayman 2 The Great Escape";
+    # the system is shown next to the title anyway.
+    title = re.sub(r"\([^)]*\)|\[[^]]*\]", " ", path.stem)
+    title = re.sub(r"\s+", " ", re.sub(r"[_.]+", " ", title)).strip()
+    return title or path.stem
+
+
+def local_cover(system, rom):
+    """A cover the user supplied (same name as the game, next to it or in
+    ~/Games/Covers/<system>/) wins; then the downloaded box art."""
+    rom = Path(rom)
+    for base in (rom.with_suffix(""), GAMES_DIR / "Covers" / system["id"] / rom.stem):
+        for ext in _COVER_EXTS:
+            if base.with_name(base.name + ext).is_file():
+                return str(base.with_name(base.name + ext))
+    cached = BOXART_CACHE / system["id"] / (rom.stem + ".png")
+    return str(cached) if cached.is_file() and cached.stat().st_size > 0 else ""
+
+
+def _norm_title(name):
+    name = re.sub(r"\([^)]*\)|\[[^]]*\]", " ", name)
+    name = re.sub(r"^the\s+|,\s*the\b", " ", name.lower())
+    return re.sub(r"[^a-z0-9]+", "", name)
+
+
+def _thumb_index(folder):
+    """File names in one libretro-thumbnails Named_Boxarts folder, cached
+    for 30 days (one listing request per system instead of guessing)."""
+    cache = BOXART_CACHE / "_index" / (folder + ".txt")
+    if cache.is_file() and time.time() - cache.stat().st_mtime < 30 * 86400:
+        return cache.read_text().splitlines()
+    url = f"{THUMBNAILS_URL}/{urllib.parse.quote(folder)}/Named_Boxarts/"
+    with urllib.request.urlopen(url, timeout=30) as resp:
+        html = resp.read().decode("utf-8", "replace")
+    names = [urllib.parse.unquote(n) for n in re.findall(r'href="([^"/?]+\.png)"', html)]
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    cache.write_text("\n".join(names))
+    return names
+
+
+_REGION_ORDER = ("(USA)", "(USA, Europe)", "(World)", "(Europe)", "(Japan)")
+
+
+def _best_match(title, names):
+    key = _norm_title(title)
+    if not key:
+        return None
+    hits = [n for n in names if _norm_title(n[:-4]) == key]
+    if not hits:
+        return None
+    # Prefer the release sharing the file's own tags (region, revision),
+    # then a plain regional release over demos, betas and revisions.
+    own = set(re.findall(r"\([^)]*\)", title))
+    def rank(n):
+        shared = len(own & set(re.findall(r"\([^)]*\)", n)))
+        region = next((i for i, r in enumerate(_REGION_ORDER) if r in n), len(_REGION_ORDER))
+        return (-shared, region, n.count("("), len(n))
+    return min(hits, key=rank)
+
+
+def fetch_cover(system, rom):
+    """Download box art for one game into the cache. Returns the cover path,
+    or "" when none was found (remembered with an empty file, so a game
+    with no box art isn't looked up again on every visit)."""
+    rom = Path(rom)
+    target = BOXART_CACHE / system["id"] / (rom.stem + ".png")
+    if target.exists():
+        return str(target) if target.stat().st_size > 0 else ""
+    target.parent.mkdir(parents=True, exist_ok=True)
+    for folder in system.get("thumbs", []):
+        match = _best_match(rom.stem, _thumb_index(folder))
+        if match:
+            url = f"{THUMBNAILS_URL}/{urllib.parse.quote(folder)}/Named_Boxarts/{urllib.parse.quote(match)}"
+            with urllib.request.urlopen(url, timeout=30) as resp:
+                data = resp.read()
+            if data[:8] == b"\x89PNG\r\n\x1a\n":
+                tmp = target.with_suffix(".part")
+                tmp.write_bytes(data)
+                tmp.replace(target)
+                return str(target)
+    target.write_bytes(b"")
+    return ""

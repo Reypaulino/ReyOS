@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=ReyOS Games
+GenericName=Game Library
+Comment=Play your console games — NES to PlayStation 2 and 3DS
+Exec=/usr/share/reyos/control-center/games.py
+Icon=applications-games
+Terminal=false
+StartupWMClass=reyos-games
+Categories=Game;Emulator;
+Keywords=emulator;retroarch;roms;games;library;

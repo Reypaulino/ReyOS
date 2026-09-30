@@ -715,31 +715,24 @@ class Backend(QObject):
     def emulationSystems(self):
         result = []
         for system in EMU_SYSTEMS:
-            folder = GAMES_DIR / "ROMs" / system["id"]
-            count = sum(1 for _ in self._emu_scan(system, folder))
             result.append({
-                "id": system["id"], "name": system["name"],
-                "installed": emulation.system_installed(system), "games": count,
+                "id": system["id"], "name": system["name"], "short": system["short"],
+                "flatpak": "flatpak" in system, "app": system.get("app", ""),
+                "installed": emulation.system_installed(system),
+                "games": sum(1 for _ in emulation.scan_games(system)),
             })
         return result
-
-    @staticmethod
-    def _emu_scan(system, folder):
-        if not folder.is_dir():
-            return
-        for path in sorted(folder.rglob("*")):
-            if path.is_file() and path.suffix.lower() in system["exts"]:
-                yield path
 
     @Slot(result="QVariantList")
     def emulationGames(self):
         games = []
         for system in EMU_SYSTEMS:
-            for path in self._emu_scan(system, GAMES_DIR / "ROMs" / system["id"]):
+            playable = emulation.system_installed(system)
+            for path in emulation.scan_games(system):
                 games.append({
-                    "title": re.sub(r"[_.]+", " ", path.stem).strip(),
-                    "system": system["name"], "systemId": system["id"], "path": str(path),
-                    "playable": self._emu_core_path(system).is_file(),
+                    "title": emulation.game_title(path),
+                    "system": system["name"], "short": system["short"], "systemId": system["id"],
+                    "path": str(path), "playable": playable,
                 })
         games.sort(key=lambda g: (g["title"].lower(), g["system"]))
         return games
@@ -755,16 +748,32 @@ class Backend(QObject):
             self.gamingFinished.emit(False, "Installing emulators is disabled in the live session -- install ReyOS first.")
             return
 
+        by_id = {s["id"]: s for s in EMU_SYSTEMS}
+        core_ids = [i for i in ids if "flatpak" not in by_id[i]]
+        flatpaks = [by_id[i] for i in ids if "flatpak" in by_id[i]]
+
         def task(emit):
             self._emu_prepare_folders()
-            emit("Installing RetroArch and cores for: " + ", ".join(ids))
-            emit("(ReyOS will ask for your password.)")
-            rc = _run(["pkexec", str(APP_DIR / "reyos-install-emulators.sh"), *ids], emit)
-            if rc in (126, 127):
-                return False, "Install cancelled -- the password prompt was closed."
-            if rc != 0:
-                return False, "Install failed -- check your network connection and try again."
-            emulation.link_system_files()
+            if core_ids:
+                emit("Installing RetroArch and emulators for: " + ", ".join(by_id[i]["name"] for i in core_ids))
+                emit("(ReyOS will ask for your password.)")
+                rc = _run(["pkexec", str(APP_DIR / "reyos-install-emulators.sh"), *core_ids], emit)
+                if rc in (126, 127):
+                    return False, "Install cancelled -- the password prompt was closed."
+                if rc != 0:
+                    return False, "Install failed -- check your network connection and try again."
+                emulation.link_system_files()
+            if flatpaks:
+                # Per-user, like ReyOS Welcome: no password, and a fresh
+                # account has no --user flathub remote until it's added.
+                emit("Downloading " + " and ".join(s["app"] for s in flatpaks) + " from Flathub (this can take a few minutes)...")
+                _run(["flatpak", "remote-add", "--user", "--if-not-exists", "flathub", emulation.FLATHUB_URL], emit)
+                rc = _run(["flatpak", "install", "-y", "--user", "--noninteractive", "flathub",
+                           *[s["flatpak"] for s in flatpaks]], emit)
+                if rc != 0:
+                    return False, "Flathub download failed -- check your network connection and try again."
+                for s in flatpaks:
+                    emulation.prepare_flatpak(s)
             return True, f"Emulation ready. Put your games in {GAMES_DIR / 'ROMs'}/<system>/ and they'll show up here."
         self._gaming_worker = ActionWorker(task)
         self._gaming_worker.progress.connect(self.gamingProgress.emit)
@@ -773,22 +782,12 @@ class Backend(QObject):
 
     @Slot(str, str)
     def launchGame(self, system_id, path):
-        system = next((s for s in EMU_SYSTEMS if s["id"] == system_id), None)
-        if system is None or not Path(path).is_file():
-            self.actionFinished.emit(False, "That game file couldn't be found.")
-            return
-        core = self._emu_core_path(system)
-        if not core.is_file():
-            self.actionFinished.emit(False, f"The {system['name']} emulator isn't installed yet.")
-            return
-        if not RETROARCH_REYOS_CFG.is_file():
-            self._emu_prepare_folders()
-        subprocess.Popen(
-            ["retroarch", f"--appendconfig={RETROARCH_REYOS_CFG}", "-L", str(core), path],
-            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            start_new_session=True,
-        )
-        self.actionFinished.emit(True, f"Starting {Path(path).stem}...")
+        self.actionFinished.emit(*emulation.launch_game(system_id, path))
+
+    @Slot()
+    def openGameLibrary(self):
+        subprocess.Popen([str(APP_DIR / "games.py")], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, start_new_session=True)
 
     @Slot(str)
     def openGamesFolder(self, system_id):
@@ -797,8 +796,35 @@ class Backend(QObject):
             folder = emulation.BIOS_DIR
         else:
             folder = GAMES_DIR / "ROMs" / system_id if system_id else GAMES_DIR / "ROMs"
+            folder.mkdir(parents=True, exist_ok=True)
         subprocess.Popen(["xdg-open", str(folder)], stdin=subprocess.DEVNULL,
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+
+    @Slot(str)
+    def openEmulatorApp(self, system_id):
+        """Opens PCSX2 / Azahar on their own, for their own settings."""
+        system = next((s for s in EMU_SYSTEMS if s["id"] == system_id and "flatpak" in s), None)
+        if system is None or not emulation.system_installed(system):
+            self.actionFinished.emit(False, "That emulator isn't installed yet.")
+            return
+        emulation.prepare_flatpak(system)
+        subprocess.Popen(["flatpak", "run", system["flatpak"]], stdin=subprocess.DEVNULL,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        self.actionFinished.emit(True, f"Opening {system['app']}...")
+
+    @Slot(bool)
+    def setEmulationExpanded(self, expanded):
+        try:
+            emulation.save_settings({"expanded": bool(expanded)})
+        except OSError:
+            pass
+
+    @Slot(bool)
+    def setBiosExpanded(self, expanded):
+        try:
+            emulation.save_settings({"bios_expanded": bool(expanded)})
+        except OSError:
+            pass
 
     @Slot(result="QVariantMap")
     def emulationSettings(self):
