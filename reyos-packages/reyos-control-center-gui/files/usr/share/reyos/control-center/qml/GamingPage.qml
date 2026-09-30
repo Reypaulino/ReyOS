@@ -18,6 +18,10 @@ Kirigami.ScrollablePage {
     property var emuSelected: ({})
     property var emuSettings: ({ fullscreen: true, picture: "fill", resolution: 1 })
     property var controllers: []
+    readonly property string padBrand: controllers.length > 0 ? controllers[0].brand : backend.savedControllerBrand()
+    property var systemLayouts: backend.systemControls(padBrand)
+    property int layoutIndex: 0
+    property string layoutKey: ""
     property var bios: []
     property bool anyEmulatorInstalled: false
     property bool emuExpanded: false
@@ -85,9 +89,11 @@ Kirigami.ScrollablePage {
             if (ok) emuSelected = ({})
             refreshStatus()
         }
-        function onControllerSetupStep(index, total, title, hint) {
+        function onControllerSetupStep(index, total, key, brand, title, hint) {
             setupDialog.stepIndex = index
             setupDialog.stepTotal = total
+            setupDialog.stepKey = key
+            setupDialog.brand = brand
             setupDialog.prompt = title
             setupDialog.hint = hint
         }
@@ -105,9 +111,13 @@ Kirigami.ScrollablePage {
         property int stepTotal: 1
         property string prompt: ""
         property string hint: ""
+        property string stepKey: ""
+        property string brand: "generic"
         property bool running: false
         title: "Set up " + padName
         modal: true
+        // Centred in the window, not in the (scrolled) page.
+        parent: Controls.Overlay.overlay
         anchors.centerIn: parent
         width: Math.min(parent.width - Kirigami.Units.gridUnit * 2, Kirigami.Units.gridUnit * 26)
         closePolicy: Controls.Popup.NoAutoClose
@@ -118,20 +128,29 @@ Kirigami.ScrollablePage {
                 text: "Step " + (setupDialog.stepIndex + 1) + " of " + setupDialog.stepTotal
                 opacity: 0.7
             }
+            ControllerDiagram {
+                Layout.alignment: Qt.AlignHCenter
+                Layout.preferredWidth: Math.min(setupDialog.availableWidth, Kirigami.Units.gridUnit * 18)
+                Layout.preferredHeight: Layout.preferredWidth * 200 / 320
+                activeKey: setupDialog.stepKey
+                brand: setupDialog.brand
+            }
             Kirigami.Heading {
-                Layout.fillWidth: true
+                // A fixed width (not fillWidth) so wrapped text reports its real
+                // height and the dialog grows to fit instead of spilling under the buttons.
+                Layout.preferredWidth: setupDialog.availableWidth
                 level: 2
                 wrapMode: Text.Wrap
                 text: setupDialog.prompt
             }
             Controls.Label {
-                Layout.fillWidth: true
+                Layout.preferredWidth: setupDialog.availableWidth
                 wrapMode: Text.Wrap
                 visible: setupDialog.hint.length > 0
                 text: setupDialog.hint
             }
             Controls.Label {
-                Layout.fillWidth: true
+                Layout.preferredWidth: setupDialog.availableWidth
                 wrapMode: Text.Wrap
                 opacity: 0.7
                 text: "No such button on your controller? Press Skip."
@@ -418,6 +437,7 @@ Kirigami.ScrollablePage {
                                 setupDialog.padName = modelData.name
                                 setupDialog.prompt = "Getting ready..."
                                 setupDialog.hint = ""
+                                setupDialog.stepKey = ""
                                 setupDialog.stepIndex = 0
                                 setupDialog.running = true
                                 setupDialog.open()
@@ -436,6 +456,81 @@ Kirigami.ScrollablePage {
                     wrapMode: Text.Wrap
                     opacity: 0.7
                     text: "In a game, Start + Select (or the Home button) opens the emulator menu, where you can save, load or quit. Keyboard works too: arrow keys, Z X A S, Enter = Start, F1 = menu, Esc = quit." + (flatpakSystems.length > 0 ? " PlayStation 2 and 3DS recognise common controllers on their own; change their buttons in the app's settings." : "")
+                }
+            }
+        }
+
+        Kirigami.AbstractCard {
+            Layout.fillWidth: true
+            padding: Kirigami.Units.gridUnit
+            visible: anyEmulatorInstalled && emuExpanded && systemLayouts.length > 0
+            contentItem: ColumnLayout {
+                id: layoutCard
+                readonly property var current: systemLayouts[Math.min(layoutIndex, systemLayouts.length - 1)] || ({ rows: [], labels: {}, note: "", pad: "" })
+                spacing: Kirigami.Units.largeSpacing
+                Kirigami.Heading { text: "Buttons per system"; level: 3 }
+                RowLayout {
+                    Layout.fillWidth: true
+                    Controls.Label { text: "System:" }
+                    Controls.ComboBox {
+                        Layout.fillWidth: true
+                        Layout.maximumWidth: Kirigami.Units.gridUnit * 18
+                        model: systemLayouts
+                        textRole: "name"
+                        currentIndex: layoutIndex
+                        onActivated: index => { layoutIndex = index; layoutKey = "" }
+                    }
+                }
+                Controls.Label {
+                    Layout.fillWidth: true
+                    wrapMode: Text.Wrap
+                    opacity: 0.7
+                    visible: layoutCard.current.rows.length > 0
+                    text: "What each button on your controller does on the " + layoutCard.current.pad + ". Pick a row to see where the button is."
+                }
+                GridLayout {
+                    Layout.fillWidth: true
+                    visible: layoutCard.current.rows.length > 0
+                    columns: layoutCard.width > Kirigami.Units.gridUnit * 34 ? 2 : 1
+                    columnSpacing: Kirigami.Units.gridUnit
+                    rowSpacing: Kirigami.Units.largeSpacing
+                    ControllerDiagram {
+                        Layout.alignment: Qt.AlignTop | Qt.AlignHCenter
+                        Layout.preferredWidth: Kirigami.Units.gridUnit * 18
+                        Layout.preferredHeight: Layout.preferredWidth * 200 / 320
+                        brand: padBrand
+                        overrides: layoutCard.current.labels
+                        activeKey: layoutKey
+                    }
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        Layout.alignment: Qt.AlignTop
+                        spacing: 0
+                        Repeater {
+                            model: layoutCard.current.rows
+                            delegate: Controls.ItemDelegate {
+                                Layout.fillWidth: true
+                                highlighted: layoutKey === modelData.key
+                                onClicked: layoutKey = (layoutKey === modelData.key ? "" : modelData.key)
+                                contentItem: RowLayout {
+                                    Controls.Label {
+                                        text: modelData.console
+                                        font.bold: true
+                                        Layout.preferredWidth: Kirigami.Units.gridUnit * 9
+                                        elide: Text.ElideRight
+                                    }
+                                    Controls.Label { text: "→"; opacity: 0.6 }
+                                    Controls.Label { text: modelData.yours; Layout.fillWidth: true; elide: Text.ElideRight }
+                                }
+                            }
+                        }
+                    }
+                }
+                Controls.Label {
+                    Layout.fillWidth: true
+                    wrapMode: Text.Wrap
+                    visible: layoutCard.current.note.length > 0
+                    text: layoutCard.current.note
                 }
             }
         }

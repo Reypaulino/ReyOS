@@ -426,7 +426,7 @@ class ActionWorker(QThread):
 
 class ControllerSetupWorker(QThread):
     """Walks CONTROLLER_STEPS on one pad, then writes the RetroArch profile."""
-    step = Signal(int, int, str, str)
+    step = Signal(int, int, str, str, str, str)
     done = Signal(bool, str)
 
     def __init__(self, path):
@@ -442,12 +442,14 @@ class ControllerSetupWorker(QThread):
             self.done.emit(False, f"Couldn't read the controller ({e.strerror}). Unplug it, plug it back in and try again.")
             return
         name = reader.info["name"]
+        brand = emulation.controller_brand(reader.info["vendor"])
         binds = {}
         steps = emulation.CONTROLLER_STEPS
         try:
             for i, (key, title, hint) in enumerate(steps):
                 self.skip = False
-                self.step.emit(i, len(steps), title, hint)
+                title, hint = emulation.step_text(key, title, hint, brand)
+                self.step.emit(i, len(steps), key, brand, title, hint)
                 bind = reader.wait_bind(lambda: self.skip or self.cancelled)
                 if self.cancelled:
                     self.done.emit(False, "Controller setup cancelled -- nothing was changed.")
@@ -501,7 +503,7 @@ class Backend(QObject):
     actionStarted = Signal()
     orphansListed = Signal("QVariantList")
     actionFinished = Signal(bool, str)
-    controllerSetupStep = Signal(int, int, str, str)
+    controllerSetupStep = Signal(int, int, str, str, str, str)
     controllerSetupDone = Signal(bool, str)
     imageSelected = Signal(str)
     pathBrowsed = Signal(str, str)
@@ -854,6 +856,14 @@ class Backend(QObject):
     @Slot(result="QVariantList")
     def gameControllers(self):
         return emulation.list_controllers()
+
+    @Slot(result=str)
+    def savedControllerBrand(self):
+        return emulation.saved_brand()
+
+    @Slot(str, result="QVariantList")
+    def systemControls(self, brand):
+        return emulation.system_controls(brand)
 
     @Slot(str)
     def startControllerSetup(self, path):

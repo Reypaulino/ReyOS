@@ -446,6 +446,7 @@ def list_controllers():
         if _is_gamepad(info):
             pads.append({"path": str(path), "name": info["name"],
                          "vendor": info["vendor"], "product": info["product"],
+                         "brand": controller_brand(info["vendor"]),
                          "configured": profile_path(info["name"]).is_file()})
     return pads
 
@@ -462,24 +463,169 @@ CONTROLLER_STEPS = [
     ("a", "Press the right face button", "B on Xbox, ○ on PlayStation, A on Nintendo"),
     ("y", "Press the left face button", "X on Xbox, □ on PlayStation, Y on Nintendo"),
     ("x", "Press the top face button", "Y on Xbox, △ on PlayStation, X on Nintendo"),
-    ("up", "Press D-pad up", ""),
-    ("down", "Press D-pad down", ""),
-    ("left", "Press D-pad left", ""),
-    ("right", "Press D-pad right", ""),
-    ("l", "Press the left shoulder button", "LB / L1 / L"),
-    ("r", "Press the right shoulder button", "RB / R1 / R"),
-    ("l2", "Pull the left trigger", "LT / L2 / ZL"),
-    ("r2", "Pull the right trigger", "RT / R2 / ZR"),
-    ("select", "Press Select", "View / Back on Xbox, Share / Create on PlayStation, − on Nintendo"),
-    ("start", "Press Start", "Menu on Xbox, Options on PlayStation, + on Nintendo"),
-    ("l3", "Click the left stick in", ""),
-    ("r3", "Click the right stick in", ""),
+    ("up", "Press up on the D-pad", "The D-pad is the cross-shaped arrow pad, lower left."),
+    ("down", "Press down on the D-pad", "The D-pad is the cross-shaped arrow pad, lower left."),
+    ("left", "Press left on the D-pad", "The D-pad is the cross-shaped arrow pad, lower left."),
+    ("right", "Press right on the D-pad", "The D-pad is the cross-shaped arrow pad, lower left."),
+    ("l", "Press the left shoulder button", "LB / L1 / L -- the top edge, above the left trigger"),
+    ("r", "Press the right shoulder button", "RB / R1 / R -- the top edge, above the right trigger"),
+    ("l2", "Pull the left trigger", "LT / L2 / ZL -- under your left index finger"),
+    ("r2", "Pull the right trigger", "RT / R2 / ZR -- under your right index finger"),
+    ("select", "Press Select", "The small button left of centre: View on Xbox, Share / Create on PlayStation, − on Nintendo"),
+    ("start", "Press Start", "The small button right of centre: Menu on Xbox, Options on PlayStation, + on Nintendo"),
+    ("l3", "Click the left stick in", "Press straight down on the left stick until it clicks"),
+    ("r3", "Click the right stick in", "Press straight down on the right stick until it clicks"),
     ("l_x", "Push the left stick all the way right", ""),
     ("l_y", "Push the left stick all the way down", ""),
     ("r_x", "Push the right stick all the way right", ""),
     ("r_y", "Push the right stick all the way down", ""),
     ("menu_toggle", "Press the Home button", "Xbox / PS / Home button -- opens the emulator menu in a game"),
 ]
+
+# USB vendor ids of the pads whose buttons have well-known names.
+PAD_BRANDS = {0x045E: "xbox", 0x054C: "playstation", 0x057E: "nintendo"}
+
+# (title, hint) per brand, replacing the generic text above.
+BRAND_STEP_TEXT = {
+    "xbox": {
+        "b": ("Press A", "The green A button, bottom of the four on the right"),
+        "a": ("Press B", "The red B button, right of the four"),
+        "y": ("Press X", "The blue X button, left of the four"),
+        "x": ("Press Y", "The yellow Y button, top of the four"),
+        "l": ("Press LB", "The left bumper, the top edge above the left trigger"),
+        "r": ("Press RB", "The right bumper, the top edge above the right trigger"),
+        "l2": ("Pull LT", "The left trigger, under your left index finger"),
+        "r2": ("Pull RT", "The right trigger, under your right index finger"),
+        "select": ("Press View", "The small button with two squares, left of centre -- works as Select"),
+        "start": ("Press Menu", "The small button with three lines, right of centre -- works as Start"),
+        "menu_toggle": ("Press the Xbox button", "The glowing Xbox logo at the top -- opens the emulator menu in a game"),
+    },
+    "playstation": {
+        "b": ("Press ✕", "Cross, bottom of the four on the right"),
+        "a": ("Press ○", "Circle, right of the four"),
+        "y": ("Press □", "Square, left of the four"),
+        "x": ("Press △", "Triangle, top of the four"),
+        "l": ("Press L1", "The top edge, above the left trigger"),
+        "r": ("Press R1", "The top edge, above the right trigger"),
+        "l2": ("Pull L2", "The left trigger, under your left index finger"),
+        "r2": ("Pull R2", "The right trigger, under your right index finger"),
+        "select": ("Press Share / Create", "The small button left of the touchpad -- works as Select"),
+        "start": ("Press Options", "The small button right of the touchpad -- works as Start"),
+        "menu_toggle": ("Press the PS button", "The PS logo between the sticks -- opens the emulator menu in a game"),
+    },
+    "nintendo": {
+        "b": ("Press B", "Bottom of the four on the right"),
+        "a": ("Press A", "Right of the four"),
+        "y": ("Press Y", "Left of the four"),
+        "x": ("Press X", "Top of the four"),
+        "l": ("Press L", "The top edge, above ZL"),
+        "r": ("Press R", "The top edge, above ZR"),
+        "l2": ("Press ZL", "The left trigger, under your left index finger"),
+        "r2": ("Press ZR", "The right trigger, under your right index finger"),
+        "select": ("Press −", "The minus button, left of centre -- works as Select"),
+        "start": ("Press +", "The plus button, right of centre -- works as Start"),
+        "menu_toggle": ("Press Home", "The round house button -- opens the emulator menu in a game"),
+    },
+}
+
+
+def controller_brand(vendor):
+    return PAD_BRANDS.get(vendor, "generic")
+
+
+def step_text(key, title, hint, brand):
+    return BRAND_STEP_TEXT.get(brand, {}).get(key, (title, hint))
+
+
+# What each button on the player's pad does per system, as RetroPad keys
+# (the CONTROLLER_STEPS keys, plus "dpad", "lstick" and "rstick"). Taken from
+# each core's own input descriptors (the table RetroArch shows under Quick
+# Menu > Controls), with the core's default options.
+_PS_PAD = [("b", "✕"), ("a", "○"), ("y", "□"), ("x", "△"), ("dpad", "D-pad"),
+           ("l", "L1"), ("r", "R1"), ("l2", "L2"), ("r2", "R2"), ("l3", "L3"), ("r3", "R3"),
+           ("lstick", "Left stick"), ("rstick", "Right stick"), ("select", "Select"), ("start", "Start")]
+SYSTEM_CONTROLS = {
+    "nes": {"pad": "NES controller", "map": [
+        ("b", "B"), ("a", "A"), ("y", "Turbo B"), ("x", "Turbo A"), ("dpad", "D-pad"),
+        ("select", "Select"), ("start", "Start")]},
+    "snes": {"pad": "Super Nintendo controller", "map": [
+        ("b", "B"), ("a", "A"), ("y", "Y"), ("x", "X"), ("dpad", "D-pad"),
+        ("l", "L"), ("r", "R"), ("select", "Select"), ("start", "Start")]},
+    "gb": {"pad": "Game Boy", "map": [
+        ("b", "B"), ("a", "A"), ("y", "Turbo B"), ("x", "Turbo A"), ("dpad", "D-pad"),
+        ("select", "Select"), ("start", "Start")]},
+    "gba": {"pad": "Game Boy Advance", "map": [
+        ("b", "B"), ("a", "A"), ("y", "Turbo B"), ("x", "Turbo A"), ("dpad", "D-pad"),
+        ("l", "L"), ("r", "R"), ("l2", "Turbo L"), ("r2", "Turbo R"),
+        ("select", "Select"), ("start", "Start")]},
+    "genesis": {"pad": "Genesis / Mega Drive 6-button pad", "map": [
+        ("y", "A"), ("b", "B"), ("a", "C"), ("l", "X"), ("x", "Y"), ("r", "Z"), ("dpad", "D-pad"),
+        ("select", "Mode"), ("start", "Start")],
+     "note": "Master System and Game Gear use B as button 1 and C as button 2."},
+    "dreamcast": {"pad": "Dreamcast controller", "map": [
+        ("b", "A"), ("a", "B"), ("y", "X"), ("x", "Y"), ("dpad", "D-pad"), ("lstick", "Analog stick"),
+        ("l2", "L trigger"), ("r2", "R trigger"), ("start", "Start")]},
+    "n64": {"pad": "Nintendo 64 controller", "map": [
+        ("b", "A"), ("y", "B"), ("l2", "Z"), ("l", "L"), ("r", "R"), ("dpad", "D-pad"),
+        ("lstick", "Analog stick"), ("rstick", "C buttons"), ("r2", "Hold for C buttons"), ("start", "Start")],
+     "note": "The C buttons are on the right stick. Holding the right trigger also turns the face buttons into C buttons."},
+    "psx": {"pad": "PlayStation DualShock", "map": _PS_PAD},
+    "ps2": {"pad": "PlayStation 2 DualShock 2", "map": _PS_PAD,
+     "note": "PlayStation 2 runs in PCSX2, which sets these up on its own. Change them in Open PCSX2 settings."},
+    "psp": {"pad": "PSP", "map": [
+        ("b", "✕"), ("a", "○"), ("y", "□"), ("x", "△"), ("dpad", "D-pad"), ("lstick", "Analog stick"),
+        ("l", "L"), ("r", "R"), ("select", "Select"), ("start", "Start")]},
+    "nds": {"pad": "Nintendo DS", "map": [
+        ("b", "B"), ("a", "A"), ("y", "Y"), ("x", "X"), ("dpad", "D-pad"), ("l", "L"), ("r", "R"),
+        ("rstick", "Touch pointer"), ("r3", "Touch the screen"), ("r2", "Swap screens"),
+        ("l2", "Blow into the microphone"), ("l3", "Close the lid"), ("select", "Select"), ("start", "Start")],
+     "note": "You can also touch the screen with the mouse."},
+    "gamecube": {"pad": "GameCube controller", "map": [
+        ("b", "B"), ("a", "A"), ("y", "Y"), ("x", "X"), ("dpad", "D-pad"), ("lstick", "Control stick"),
+        ("rstick", "C-stick"), ("l2", "L"), ("r2", "R"), ("r", "Z"), ("start", "Start")]},
+    "3ds": {"pad": "Nintendo 3DS", "map": [],
+     "note": "3DS runs in Azahar, which has its own button setup. Change it in Open Azahar settings."},
+}
+
+# The player's own button names, per brand.
+PAD_BUTTON_NAMES = {
+    "xbox": {"b": "A", "a": "B", "y": "X", "x": "Y", "l": "LB", "r": "RB", "l2": "LT", "r2": "RT",
+             "select": "View", "start": "Menu", "menu_toggle": "Xbox button"},
+    "playstation": {"b": "✕", "a": "○", "y": "□", "x": "△", "l": "L1", "r": "R1", "l2": "L2", "r2": "R2",
+                    "select": "Share / Create", "start": "Options", "menu_toggle": "PS button"},
+    "nintendo": {"b": "B", "a": "A", "y": "Y", "x": "X", "l": "L", "r": "R", "l2": "ZL", "r2": "ZR",
+                 "select": "−", "start": "+", "menu_toggle": "Home"},
+    "generic": {"b": "Bottom button", "a": "Right button", "y": "Left button", "x": "Top button",
+                "l": "Left shoulder", "r": "Right shoulder", "l2": "Left trigger", "r2": "Right trigger",
+                "select": "Select", "start": "Start", "menu_toggle": "Home"},
+}
+_COMMON_NAMES = {"dpad": "D-pad", "lstick": "Left stick", "rstick": "Right stick",
+                 "l3": "Left stick click", "r3": "Right stick click"}
+
+
+def saved_brand():
+    """Brand of a controller set up earlier, for when none is connected."""
+    for cfg in sorted(AUTOCONFIG_DIR.glob("ReyOS - *.cfg")):
+        m = re.search(r'^input_vendor_id = "(\d+)"', cfg.read_text(errors="replace"), re.M)
+        if m and controller_brand(int(m.group(1))) != "generic":
+            return controller_brand(int(m.group(1)))
+    return "generic"
+
+
+def system_controls(brand):
+    """Per-system button layout for the Gaming page: which button on the
+    player's pad does what on each console."""
+    names = {**_COMMON_NAMES, **PAD_BUTTON_NAMES.get(brand, PAD_BUTTON_NAMES["generic"])}
+    out = []
+    for system in EMU_SYSTEMS:
+        spec = SYSTEM_CONTROLS.get(system["id"])
+        if not spec:
+            continue
+        rows = [{"key": key, "console": label, "yours": names[key]} for key, label in spec["map"]]
+        out.append({"id": system["id"], "name": system["name"], "pad": spec["pad"],
+                    "note": spec.get("note", ""), "rows": rows,
+                    "labels": {key: label for key, label in spec["map"]}})
+    return out
 
 
 class ControllerReader:
