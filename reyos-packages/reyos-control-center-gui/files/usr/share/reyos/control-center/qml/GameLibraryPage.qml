@@ -37,16 +37,25 @@ Kirigami.Page {
         Kirigami.Action {
             text: "Refresh"
             icon.name: "view-refresh"
-            onTriggered: reload()
+            onTriggered: { gamesSignature = ""; reload() }
         }
     ]
 
+    property string gamesSignature: ""
+
     function reload() {
+        var games = backend.emulationGames()
+        // Only rebuild the grid when something changed, so a focus-change
+        // rescan doesn't lose the scroll position.
+        var sig = JSON.stringify(games.map(function (g) { return [g.path, g.playable, g.cover] }))
         systems = backend.emulationSystems()
-        allGames = backend.emulationGames()
         boxart = backend.boxartEnabled()
-        if (!gameSystems.some(function (s) { return s.id === gameFilter })) gameFilter = ""
-        applyFilter()
+        if (sig !== gamesSignature) {
+            gamesSignature = sig
+            allGames = games
+            if (!gameSystems.some(function (s) { return s.id === gameFilter })) gameFilter = ""
+            applyFilter()
+        }
         backend.fetchCovers()
     }
 
@@ -65,10 +74,18 @@ Kirigami.Page {
     onGameSearchChanged: applyFilter()
     Component.onCompleted: reload()
 
+    // Also rescan when the window comes back to the front (a game added
+    // while it was open in the background, or an emulator just installed).
+    Connections {
+        target: libraryPage.Window.window
+        function onActiveChanged() { if (libraryPage.Window.window.active) reload() }
+    }
+
     ListModel { id: gameModel }
 
     Connections {
         target: backend
+        function onGamesChanged() { reload() }
         function onCoverReady(path, cover) {
             for (var i = 0; i < allGames.length; i++)
                 if (allGames[i].path === path) allGames[i].cover = cover

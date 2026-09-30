@@ -7,7 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QThread, QUrl, Signal, Slot
+from PySide6.QtCore import QFileSystemWatcher, QObject, QThread, QTimer, QUrl, Signal, Slot
 from PySide6.QtGui import QGuiApplication, QIcon
 from PySide6.QtQml import QQmlApplicationEngine
 
@@ -44,10 +44,34 @@ class CoverWorker(QThread):
 class GamesBackend(QObject):
     coverReady = Signal(str, str)
     message = Signal(bool, str)
+    gamesChanged = Signal()
 
     def __init__(self):
         super().__init__()
         self._cover_worker = None
+        # Games copied into ~/Games/ROMs show up by themselves: watch every
+        # ROM folder (and their subfolders), and reload shortly after a
+        # change, since a big copy fires many change events.
+        self._watcher = QFileSystemWatcher(self)
+        self._debounce = QTimer(self, singleShot=True, interval=1500)
+        self._debounce.timeout.connect(self._folders_changed)
+        self._watcher.directoryChanged.connect(lambda _path: self._debounce.start())
+        self._watch_folders()
+
+    def _watch_folders(self):
+        emulation.prepare_folders()
+        dirs = {str(emulation.GAMES_DIR / "ROMs")}
+        for system in EMU_SYSTEMS:
+            for folder in emulation.rom_dirs(system):
+                dirs.add(str(folder))
+                dirs.update(str(p) for p in folder.rglob("*") if p.is_dir())
+        new = sorted(dirs - set(self._watcher.directories()))
+        if new:
+            self._watcher.addPaths(new)
+
+    def _folders_changed(self):
+        self._watch_folders()
+        self.gamesChanged.emit()
 
     @Slot(result="QVariantList")
     def emulationSystems(self):
