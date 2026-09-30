@@ -839,7 +839,7 @@
         </div>
         <div class="status-card">
           <div class="status-card-title">Public ISO Download</div>
-          <div class="status-row"><span class="status-dot live"></span> Published (2026.09.12)</div>
+          <div class="status-row"><span class="status-dot live"></span> Published (2026.09.30)</div>
         </div>
         <div class="status-card">
           <div class="status-card-title">ReyOS WSL</div>
@@ -850,7 +850,7 @@
       <div class="known-issues">
         <h3>KNOWN LIMITATIONS RIGHT NOW</h3>
         <ul>
-          <li>The public ISO is out (2026.09.12) — download and checksums are in the Download section below. New since the last release: a "Looks" page in Control Center bundling a color palette, wallpaper set, and keyboard scheme into one switchable option (Copper and Slate to start), and ReyOS Reader now installs itself automatically instead of requiring a manual step. It also ships ReyOS Connect (KDE Connect + VPN remote access + Bluetooth + Remote Desktop); Remote Desktop's video/input hasn't been verified end-to-end on real hardware yet, only against a VM with a known display-acceleration limitation.</li>
+          <li>The public ISO is out (2026.09.30) — download and checksums are in the Download section below. New since the last release: "Install alongside" now works on computers with a typical 1 GiB boot partition, and the live desktop has a taskbar with an Install ReyOS button, so you can try ReyOS before installing. Installing next to an existing, nearly full system has only been tested in a virtual machine so far — back up your data first. Remote Desktop's video/input hasn't been verified end-to-end on real hardware yet.</li>
           <li>ReyOS Browser doesn't have a Windows build yet; only the built-in Linux browser exists today.</li>
           <li>Not recommended as a daily-driver machine yet — best tried on spare hardware or a virtual machine.</li>
           <li><a href="#wsl" style="color:var(--copper-light);">ReyOS WSL</a> — a separate, terminal-only build for Windows Subsystem for Linux — is downloadable now, but was only built and verified on Linux (a real Dev VM build run). It hasn't been installed on a real Windows 11 + WSL2 machine yet.</li>
@@ -871,17 +871,17 @@
       <div class="cards-grid">
         <div class="platform-card">
           <div class="platform-icon">💿</div>
-          <div class="platform-name">ReyOS ISO (2026.09.12)</div>
-          <p class="platform-desc">x86_64, KDE Plasma, Calamares installer, Midnight Copper theme. Includes ReyOS Connect for the first time.</p>
-          <a href="https://github.com/Reypaulino/ReyOS/releases/download/reyos-2026.09.12/reyos-2026.09.12-x86_64.iso.part1" class="btn btn-ghost" target="_blank" rel="noopener">Download Part 1 (1.7GB)</a>
-          <a href="https://github.com/Reypaulino/ReyOS/releases/download/reyos-2026.09.12/reyos-2026.09.12-x86_64.iso.part2" class="btn btn-ghost" target="_blank" rel="noopener">Download Part 2 (1.3GB)</a>
-          <p class="platform-subnote"><a href="https://github.com/Reypaulino/ReyOS/releases/tag/reyos-2026.09.12" target="_blank" rel="noopener">Release notes on GitHub</a> · <a href="#install-guide">See how installing works ↓</a></p>
+          <div class="platform-name">ReyOS ISO (2026.09.30)</div>
+          <p class="platform-desc">x86_64, KDE Plasma, Calamares installer, Midnight Copper theme. Try it from the live desktop, or install it next to another system.</p>
+          <a href="https://github.com/Reypaulino/ReyOS/releases/download/reyos-2026.09.30/reyos-2026.09.30-x86_64.iso.part1" class="btn btn-ghost" target="_blank" rel="noopener">Download Part 1 (2.0GB)</a>
+          <a href="https://github.com/Reypaulino/ReyOS/releases/download/reyos-2026.09.30/reyos-2026.09.30-x86_64.iso.part2" class="btn btn-ghost" target="_blank" rel="noopener">Download Part 2 (1.0GB)</a>
+          <p class="platform-subnote"><a href="https://github.com/Reypaulino/ReyOS/releases/tag/reyos-2026.09.30" target="_blank" rel="noopener">Release notes on GitHub</a> · <a href="#install-guide">See how installing works ↓</a></p>
           <div class="install-note" style="margin-top:16px; text-align:left;">
             <p style="margin-top:0;"><strong>After downloading both parts, join them into one file:</strong></p>
             <p style="margin-bottom:4px;">Linux / macOS:</p>
-            <pre><code>cat reyos-2026.09.12-x86_64.iso.part1 reyos-2026.09.12-x86_64.iso.part2 > reyos-2026.09.12-x86_64.iso</code></pre>
+            <pre><code>cat reyos-2026.09.30-x86_64.iso.part1 reyos-2026.09.30-x86_64.iso.part2 > reyos-2026.09.30-x86_64.iso</code></pre>
             <p style="margin-bottom:4px;">Windows (Command Prompt):</p>
-            <pre><code>copy /b reyos-2026.09.12-x86_64.iso.part1+reyos-2026.09.12-x86_64.iso.part2 reyos-2026.09.12-x86_64.iso</code></pre>
+            <pre><code>copy /b reyos-2026.09.30-x86_64.iso.part1+reyos-2026.09.30-x86_64.iso.part2 reyos-2026.09.30-x86_64.iso</code></pre>
           </div>
         </div>
         <div class="platform-card">
@@ -907,27 +907,27 @@
         <li>
           <div class="install-step-body">
             <h4>Download both parts, join them, and verify the checksum</h4>
-            <p>Download <code>reyos-2026.09.12-x86_64.iso.part1</code> and <code>.part2</code> from the <a href="https://github.com/Reypaulino/ReyOS/releases/tag/reyos-2026.09.12" target="_blank" rel="noopener">GitHub Release</a>, then join them (Linux/macOS):</p>
-            <pre><code>cat reyos-2026.09.12-x86_64.iso.part1 reyos-2026.09.12-x86_64.iso.part2 > reyos-2026.09.12-x86_64.iso</code></pre>
+            <p>Download <code>reyos-2026.09.30-x86_64.iso.part1</code> and <code>.part2</code> from the <a href="https://github.com/Reypaulino/ReyOS/releases/tag/reyos-2026.09.30" target="_blank" rel="noopener">GitHub Release</a>, then join them (Linux/macOS):</p>
+            <pre><code>cat reyos-2026.09.30-x86_64.iso.part1 reyos-2026.09.30-x86_64.iso.part2 > reyos-2026.09.30-x86_64.iso</code></pre>
             <p>On Windows (Command Prompt):</p>
-            <pre><code>copy /b reyos-2026.09.12-x86_64.iso.part1+reyos-2026.09.12-x86_64.iso.part2 reyos-2026.09.12-x86_64.iso</code></pre>
+            <pre><code>copy /b reyos-2026.09.30-x86_64.iso.part1+reyos-2026.09.30-x86_64.iso.part2 reyos-2026.09.30-x86_64.iso</code></pre>
             <p>Then confirm the joined file wasn't corrupted:</p>
-            <pre><code>sha256sum reyos-2026.09.12-x86_64.iso</code></pre>
-            <p>Compare the result against <code>15badb74ee11a8093b838fd642f5673aac88180f05856a8a32716c0465d81cee</code> (also published with the release).</p>
+            <pre><code>sha256sum reyos-2026.09.30-x86_64.iso</code></pre>
+            <p>Compare the result against <code>5b33fa27b8d858179bcad5ed391bfb3dd2c12169c7ec0f2f079ec71d1e041919</code> (also published with the release).</p>
           </div>
         </li>
         <li>
           <div class="install-step-body">
             <h4>Write it to a USB drive (8GB or larger)</h4>
             <p>On Linux, find your USB device first with <code>lsblk</code> — getting the device wrong will erase the wrong disk — then write the ISO directly to it:</p>
-            <pre><code>sudo dd if=reyos-2026.09.12-x86_64.iso of=/dev/sdX bs=4M status=progress oflag=sync</code></pre>
+            <pre><code>sudo dd if=reyos-2026.09.30-x86_64.iso of=/dev/sdX bs=4M status=progress oflag=sync</code></pre>
             <p>Replace <code>/dev/sdX</code> with your actual USB device, not a partition like <code>/dev/sdX1</code>. Prefer a GUI? <a href="https://etcher.balena.io/" target="_blank" rel="noopener" style="color:var(--copper-light);">balenaEtcher</a> or <a href="https://www.ventoy.net/" target="_blank" rel="noopener" style="color:var(--copper-light);">Ventoy</a> work the same way on Linux, Windows, or macOS.</p>
           </div>
         </li>
         <li>
           <div class="install-step-body">
             <h4>Boot from the USB drive</h4>
-            <p>Restart the target machine and open its boot menu — commonly <code>F12</code>, <code>F10</code>, <code>Esc</code>, or <code>Del</code> depending on the motherboard — and select the USB drive. ReyOS boots straight to a live desktop; nothing on the machine's disk is touched yet, so it's safe to just look around first.</p>
+            <p>Restart the target machine and open its boot menu — commonly <code>F12</code>, <code>F10</code>, <code>Esc</code>, or <code>Del</code> depending on the motherboard — and select the USB drive. ReyOS boots straight to a live desktop; nothing on the machine's disk is touched yet, so it's safe to just look around first. Plug the USB drive directly into the computer, not into a USB hub: a slow hub can leave the screen black for minutes while the boot files load.</p>
           </div>
         </li>
         <li>
