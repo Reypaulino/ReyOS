@@ -1290,7 +1290,26 @@ class ShieldsUpdateWorker(QThread):
         self.finished_ok.emit(True, f"Filter list updated: {len(domains)} domains{note}.", len(domains))
 
 
+def _enable_page_gc_flag():
+    # Exposes V8's gc() to pages so fingerprint-protection.js's memory-cleanup
+    # hook can run a full collection after each load (it removes gc() from
+    # the page before any site script runs) -- see that file for the measured
+    # renderer growth this fixes. Merged into an existing --js-flags value if
+    # the launcher/user already set one, since Chromium keeps only the last.
+    flags = os.environ.get("QTWEBENGINE_CHROMIUM_FLAGS", "")
+    if "--expose-gc" in flags:
+        return
+    match = re.search(r'--js-flags=(?:"([^"]*)"|(\S*))', flags)
+    if match:
+        merged = f'--js-flags="{match.group(1) or match.group(2)} --expose-gc"'
+        flags = flags[:match.start()] + merged + flags[match.end():]
+    else:
+        flags = f"{flags} --js-flags=--expose-gc".strip()
+    os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = flags
+
+
 def main():
+    _enable_page_gc_flag()
     QtWebEngineQuick.initialize()
     app = QApplication(sys.argv)
     app.setOrganizationName("ReyOS")

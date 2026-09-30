@@ -1,3 +1,36 @@
+// Memory cleanup -- unrelated to fingerprinting, it just shares this script
+// because it's the one injected into every page at DocumentCreation, before
+// any site script runs. QtWebEngine never runs V8's idle-time full GC, so each
+// page's garbage (mostly the previous pages' DOM) piled up in the renderer
+// until the tab left the site: measured on a real Ubuntu host, 60 Wikipedia
+// article visits grew one renderer 161 MB -> 3.7 GB; a forced full GC dropped
+// it to ~300 MB; heap-size flags only capped it near 1.3 GB. main.py adds
+// --js-flags=--expose-gc; this takes gc() away from the page (so sites can't
+// see or call it) and runs a full collection shortly after each load and
+// whenever the tab goes to the background, where the pause is invisible.
+(function () {
+    var collect = typeof globalThis.gc === "function" ? globalThis.gc : null;
+    if (!collect) {
+        return;
+    }
+    try { delete globalThis.gc; } catch (e) {}
+    if (typeof globalThis.gc === "function") {
+        try { globalThis.gc = undefined; } catch (e) {}
+    }
+    if (window.top !== window) {
+        return;
+    }
+    function run() {
+        try { collect(); } catch (e) {}
+    }
+    window.addEventListener("load", function () { setTimeout(run, 1000); }, { once: true });
+    document.addEventListener("visibilitychange", function () {
+        if (document.visibilityState === "hidden") {
+            setTimeout(run, 1000);
+        }
+    });
+})();
+
 (function () {
     if (window.__reyosFingerprintProtected) {
         return;
