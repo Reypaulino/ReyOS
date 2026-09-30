@@ -2,7 +2,7 @@
 
 Real bugs found and fixed, with root cause. Newest first. See `bugs.md` for what's still open.
 
-## 2026-09-30 — Controller wizard drawing + "Buttons per system" (`reyos-control-center-gui`, not yet published)
+## 2026-09-30 — Controller wizard drawing + "Buttons per system" (`reyos-control-center-gui` 1.0.0-99)
 
 Tested with the user's real Xbox Wireless Controller (Bluetooth, on the host). Passing the host's Intel BT adapter (8087:0a2b) to the Dev VM failed: QEMU opened the device but never claimed its interfaces, so the guest's btusb timed out on every HCI command (`Reading Intel version command failed (-110)`), even after unbinding the host driver and power-cycling the adapter. Instead, the controller was mirrored into the VM as a uinput device with the same name/ids/capabilities (host scripts in `~/pad-mirror/`, not in the repo, run as the `pad-mirror` user service). ReyOS detected it, and the user ran the wizard end to end and played Mario Kart 64.
 
