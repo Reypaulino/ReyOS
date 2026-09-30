@@ -2,6 +2,19 @@
 
 Real bugs found and fixed, with root cause. Newest first. See `bugs.md` for what's still open.
 
+## 2026-09-29 — Emulation round 3: ReyOS Games app, PS2/3DS via Flathub, Dreamcast (`reyos-control-center-gui` 1.0.0-96)
+
+User asked for: a Show/Hide button for emulation, PS2 and 3DS, choosing which system's games to play, a library with thumbnails instead of the cramped list, that library as its own app, and the BIOS card hidden until opened. Also reviewed the user's own host launcher (`~/bash/Emulators.sh`, zenity + Flatpak emulators) for ideas — took `gamemoderun` and a separate Wii folder from it.
+
+- **ReyOS Games** (`games.py`, `qml/GamesMain.qml` + `qml/GameLibraryPage.qml`, `/usr/share/applications/reyos-games.desktop`, icon `applications-games`): own small backend (no Control Center startup cost), cover grid with system picker + search, click to play, "Set up emulators" opens Control Center on the Gaming page. Launching is shared via `emulation.launch_game()`.
+- **Box art**: `thumbnails.libretro.com/<system>/Named_Boxarts/` — one directory listing per system cached 30 days in `~/.cache/reyos/boxart/_index/`, name matched after stripping tags/punctuation, preferring the cover sharing the file's own tags (region/revision) then USA/World/Europe. Misses are remembered as empty files. User covers (`<rom>.png/jpg` next to the game or `~/Games/Covers/<system>/`) win. "Download box art" switch (on by default) — it sends game names to that server. Tested against the user's real host ROM names: 19/19 matched.
+- **PS2 / 3DS**: no emulator in Arch repos, so PCSX2 (`net.pcsx2.PCSX2`) and Azahar (`org.azahar_emu.Azahar`) install `--user` from Flathub (same approach as Welcome, no password). PCSX2's Flatpak has no filesystem access → `flatpak override --user --filesystem=~/Games` (rw: PCSX2 writes NVRAM next to the BIOS) and a first-use `PCSX2.ini` (`SetupWizardIncomplete = false`, `Bios = ~/Games/BIOS/ps2`). Launch: `pcsx2 -batch -fullscreen|-nofullscreen -- file`, `azahar -f|-w file`. BIOS checker: any 4 MiB file in `BIOS/ps2`. "Open PCSX2/Azahar settings" buttons for their own settings.
+- **Dreamcast**: `libretro-flycast`; 3D resolution via `reicast_internal_resolution`; optional `BIOS/dc/dc_boot.bin`.
+- GameCube/Wii scans `ROMs/gamecube` and `ROMs/wii`; RetroArch launches get `gamemoderun` when installed.
+- Emulation card collapses (starts collapsed until something is installed); BIOS files card starts hidden with a one-line "missing for …" summary; both remembered in `~/.config/reyos/emulation.json`. Install log hidden behind Show details (round 2).
+
+**Verified on the Dev VM**: Flathub install of both apps through Control Center's install path (no password), override + ini written; library rendered with real downloaded covers, N64 filter and search working (in-app driver + window grabs), placeholder tiles for games without art; Control Center's button launched `reyos-games`; installed package runs the app cleanly. **Not tested**: actually playing PS2/3DS/Dreamcast games (no test images/BIOS), PCSX2 honoring the pre-written ini on a real first run.
+
 ## 2026-09-29 — Emulation round 2: controller setup, display settings, BIOS checker (`reyos-control-center-gui` 1.0.0-95)
 
 User asked for controller setup, resolution settings, the install log hidden, and a BIOS checker. New Qt-free `emulation.py` holds the systems table, settings, BIOS checker and controller code (`main.py` keeps thin slots).
