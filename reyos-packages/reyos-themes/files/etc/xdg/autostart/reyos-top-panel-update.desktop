@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=ReyOS top bar update
+Exec=/usr/share/reyos/bin/reyos-top-panel-autoupdate.sh
+OnlyShowIn=KDE;
+NoDisplay=true
+X-KDE-autostart-phase=2

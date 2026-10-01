@@ -12,7 +12,7 @@ PlasmoidItem {
     id: root
 
     preferredRepresentation: fullRepresentation
-    Plasmoid.icon: "reyos-launcher"
+    Plasmoid.icon: "reyos-systemmenu"
     Plasmoid.title: "ReyOS"
 
     Sessions.SessionManagement { id: session }
@@ -49,7 +49,7 @@ PlasmoidItem {
             anchors.centerIn: parent
             width: Math.min(parent.height - 6, Kirigami.Units.iconSizes.smallMedium)
             height: width
-            source: "reyos-launcher"
+            source: "reyos-systemmenu"
         }
 
         PlasmaExtras.Menu {

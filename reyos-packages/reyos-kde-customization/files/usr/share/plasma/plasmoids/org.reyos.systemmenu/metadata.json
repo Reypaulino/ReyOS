@@ -11,7 +11,7 @@
     "Description": "ReyOS logo for the top bar that opens the system menu: Control Center, settings, lock, sleep, restart, shut down.",
     "EnabledByDefault": true,
     "FormFactors": ["horizontal", "vertical"],
-    "Icon": "reyos-launcher",
+    "Icon": "reyos-systemmenu",
     "Id": "org.reyos.systemmenu",
     "License": "GPL-3.0-or-later",
     "Name": "ReyOS System Menu",

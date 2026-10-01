@@ -259,4 +259,6 @@ apply_panel_opacity
 apply_window_decoration
 [ -f "$PANEL_EDIT_MARKER" ] && unlock_panel_layout
 restart_plasmashell_for_icons
+# The top bar is now current; reyos-top-panel-autoupdate.sh only acts on later layout versions
+cat /usr/share/reyos/panels/top-panel.version > "$HOME/.config/reyos-top-panel-version" 2>/dev/null
 printf '%s\n' "$BRANDING_VERSION" > "$MARKER"
