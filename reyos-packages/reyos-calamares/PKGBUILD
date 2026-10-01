@@ -1,7 +1,7 @@
 # Maintainer: Rey Paulino
 pkgname=reyos-calamares
 pkgver=1.3.6
-pkgrel=44
+pkgrel=45
 pkgdesc="ReyOS Calamares installer config + branding — real exec phase, ext4 default, unpackfs-based install"
 arch=('any')
 license=('MIT')
@@ -18,4 +18,5 @@ package() {
     find "$pkgdir/usr/share/reyos/calamares-overrides" -type f -exec chmod 644 {} \;
     chmod 644 "$pkgdir/usr/share/libalpm/hooks/reyos-calamares-overrides.hook"
     chmod 755 "$pkgdir/usr/share/reyos/bin/reyos-apply-calamares-overrides.sh"
+    chmod 755 "$pkgdir/usr/share/reyos/bin/reyos-hw-drivers"
 }

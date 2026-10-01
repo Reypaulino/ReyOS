@@ -1,0 +1,10 @@
+#!/bin/sh
+# Installs the extra GPU packages reyos-gpu-detect asks for. Never fails the install.
+PK=$(python3 /usr/share/reyos/bin/reyos-gpu-detect --packages)
+if [ -n "$PK" ]; then
+  echo "Installing GPU drivers: $PK"
+  pacman -Sy --noconfirm && pacman -S --needed --noconfirm $PK || echo "GPU driver install failed; use Control Center > Drivers later"
+else
+  echo "No extra GPU drivers needed"
+fi
+exit 0
