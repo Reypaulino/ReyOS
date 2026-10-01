@@ -1,0 +1,34 @@
+#!/bin/sh
+# Registers the freshly installed ReyOS (Limine on the target's EFI system
+# partition) in the firmware boot list so it shows up in the boot menu next to
+# Ubuntu/Windows. Usage: reyos-efi-entry <target-root>. Never fails the install.
+ROOT=$1
+[ -d /sys/firmware/efi ] || { echo "Not booted in UEFI mode, skipping"; exit 0; }
+command -v efibootmgr >/dev/null 2>&1 || { echo "efibootmgr missing, skipping"; exit 0; }
+DEV=$(findmnt -n -o SOURCE "$ROOT/boot" 2>/dev/null)
+[ -b "$DEV" ] || { echo "No ESP mounted at $ROOT/boot, skipping"; exit 0; }
+NAME=$(basename "$DEV")
+PART=$(cat "/sys/class/block/$NAME/partition" 2>/dev/null)
+DISK=/dev/$(lsblk -no PKNAME "$DEV" 2>/dev/null | head -1)
+[ -n "$PART" ] && [ -b "$DISK" ] || { echo "Cannot work out disk/partition for $DEV, skipping"; exit 0; }
+
+# Replace any earlier ReyOS entry (reinstall onto the same disk)
+for N in $(efibootmgr | sed -n 's/^Boot\([0-9A-Fa-f]\{4\}\)\*\? ReyOS\([[:space:]].*\)\?$/\1/p'); do
+  efibootmgr -q -B -b "$N"
+done
+
+OLD=$(efibootmgr | sed -n 's/^BootOrder: //p')
+# Other operating systems already in the list?
+OTHERS=$(efibootmgr | grep -ci 'windows\|ubuntu\|debian\|fedora\|grub\|opensuse\|arch')
+
+efibootmgr -q -c -d "$DISK" -p "$PART" -L ReyOS -l '\EFI\BOOT\BOOTX64.EFI' || { echo "efibootmgr failed, skipping"; exit 0; }
+
+if [ "$OTHERS" -gt 0 ] && [ -n "$OLD" ]; then
+  # Dual boot: keep the existing default, put ReyOS after it in the list
+  NEW=$(efibootmgr | sed -n 's/^Boot\([0-9A-Fa-f]\{4\}\)\*\? ReyOS\([[:space:]].*\)\?$/\1/p' | head -1)
+  efibootmgr -q -o "$OLD,$NEW"
+  echo "ReyOS added to the boot menu (existing default kept)"
+else
+  echo "ReyOS set as the default boot entry"
+fi
+exit 0
