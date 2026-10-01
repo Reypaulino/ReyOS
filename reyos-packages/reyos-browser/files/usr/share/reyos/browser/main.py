@@ -1310,6 +1310,13 @@ def _enable_page_gc_flag():
 
 def main():
     _enable_page_gc_flag()
+    # Under Plasma, Qt picks KDE's org.kde.desktop controls style, which looks
+    # icons up by theme name: the toolbar's own SVG icons came out blank and
+    # the tab strip collapsed (real install, Forest look, 2026-10-01). Fusion
+    # draws icon.source files as-is and is what Ubuntu/Windows already use, so
+    # the browser looks the same everywhere. Set through the environment because
+    # Plasma's platform theme overrides QQuickStyle.setStyle() but honours this.
+    os.environ["QT_QUICK_CONTROLS_STYLE"] = "Fusion"
     QtWebEngineQuick.initialize()
     app = QApplication(sys.argv)
     app.setOrganizationName("ReyOS")
