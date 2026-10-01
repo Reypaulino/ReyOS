@@ -59,7 +59,7 @@ Kirigami.ScrollablePage {
         title: "Restart to finish updating"
         modal: true
         anchors.centerIn: Controls.Overlay.overlay
-        width: Math.min(parent ? parent.width * 0.8 : 480, 480)
+        width: 480
 
         footer: Controls.DialogButtonBox {
             Controls.Button {
@@ -76,7 +76,7 @@ Kirigami.ScrollablePage {
         }
 
         Controls.Label {
-            width: parent.width
+            width: restartDialog.availableWidth
             text: "Updates were installed. Restart your computer so the desktop and your apps start using the new versions. Save any open work first."
             wrapMode: Text.Wrap
         }

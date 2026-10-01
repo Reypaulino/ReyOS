@@ -64,7 +64,7 @@ Kirigami.ScrollablePage {
 
         GridLayout {
             Layout.fillWidth: true
-            columns: width > Kirigami.Units.gridUnit * 40 ? 3 : (width > Kirigami.Units.gridUnit * 24 ? 2 : 1)
+            columns: parent.width > Kirigami.Units.gridUnit * 40 ? 3 : (parent.width > Kirigami.Units.gridUnit * 24 ? 2 : 1)
             columnSpacing: Kirigami.Units.gridUnit
             rowSpacing: Kirigami.Units.gridUnit
 

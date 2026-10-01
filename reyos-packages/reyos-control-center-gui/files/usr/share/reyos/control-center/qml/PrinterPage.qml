@@ -48,7 +48,7 @@ Kirigami.ScrollablePage {
         property string uri: ""
 
         ColumnLayout {
-            width: Kirigami.Units.gridUnit * 22
+            implicitWidth: Kirigami.Units.gridUnit * 22
             spacing: Kirigami.Units.largeSpacing
 
             Controls.Label { text: addSheet.uri; color: Kirigami.Theme.disabledTextColor; wrapMode: Text.Wrap; Layout.fillWidth: true }

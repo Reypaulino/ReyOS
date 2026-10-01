@@ -37,10 +37,10 @@ Kirigami.ScrollablePage {
         id: highPerformanceConfirm
         title: "Enable high performance?"
         modal: true
+        width: 420
         standardButtons: Controls.Dialog.Yes | Controls.Dialog.No
         onAccepted: { busy = true; backend.performanceMode() }
         contentItem: Controls.Label {
-            width: 360
             wrapMode: Text.Wrap
             text: "This favors responsiveness for games and demanding work. It can use more power, produce more heat, and reduce battery life. You can change the governor and swappiness below at any time."
         }
