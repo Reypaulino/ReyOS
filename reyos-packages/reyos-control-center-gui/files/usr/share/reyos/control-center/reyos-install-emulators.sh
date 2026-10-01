@@ -12,7 +12,7 @@ set -eu
 
 [ "$#" -gt 0 ] || { echo "usage: $0 <system-id>..." >&2; exit 2; }
 
-pkgs="retroarch retroarch-assets-ozone libretro-core-info"
+pkgs="retroarch retroarch-assets-ozone libretro-core-info libretro-shaders-slang"
 for system in "$@"; do
     case "$system" in
         nes)      pkgs="$pkgs libretro-nestopia" ;;

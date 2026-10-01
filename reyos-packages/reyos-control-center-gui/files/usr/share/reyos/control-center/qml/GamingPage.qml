@@ -30,7 +30,7 @@ Kirigami.ScrollablePage {
     property var biosMissing: bios.filter(function (b) { return !b.ok }).map(function (b) { return b.name })
     property var flatpakSystems: emuSystems.filter(function (s) { return s.flatpak && s.installed })
 
-    readonly property var pictureModes: ["sharp", "fill", "smooth"]
+    readonly property var pictureModes: ["clean", "sharp", "fill", "smooth", "lcd"]
     readonly property var resolutions: [1, 2, 4]
 
     function refreshStatus() {
@@ -361,7 +361,7 @@ Kirigami.ScrollablePage {
                     Controls.Label { text: "Picture" }
                     Controls.ComboBox {
                         Layout.fillWidth: true
-                        model: ["Sharp pixels, exact size (may leave borders)", "Sharp pixels, fill the screen", "Smooth, fill the screen"]
+                        model: ["Clean pixels, fill the screen (recommended)", "Sharp pixels, exact size (may leave borders)", "Blocky pixels, fill the screen", "Smooth (blurry), fill the screen", "LCD screen look (Game Boy / GBA)"]
                         currentIndex: Math.max(0, pictureModes.indexOf(emuSettings.picture))
                         onActivated: saveSettings({ picture: pictureModes[currentIndex] })
                     }
@@ -377,7 +377,7 @@ Kirigami.ScrollablePage {
                     Layout.fillWidth: true
                     wrapMode: Text.Wrap
                     opacity: 0.7
-                    text: "3D resolution applies to Nintendo 64, Dreamcast, PlayStation, PSP, Nintendo DS and GameCube / Wii. It does not change NES, SNES, Game Boy, GBA or Genesis games, which are drawn at their original size (use Picture for those). If a game stutters, go back to Original."
+                    text: "3D resolution applies to Nintendo 64, Dreamcast, PlayStation, PSP, Nintendo DS and GameCube / Wii. It does not change NES, SNES, Game Boy, GBA or Genesis games, which are drawn at their original size (use Picture for those; Clean and LCD need the shader pack, installed with the emulators). On computers without a dedicated graphics card, 4× runs as 2×. If a game stutters, go back to Original."
                 }
                 Controls.Label {
                     visible: flatpakSystems.length > 0

@@ -58,6 +58,12 @@ REYOS_CFG_DIR = Path.home() / ".config" / "reyos"
 RETROARCH_REYOS_CFG = REYOS_CFG_DIR / "retroarch-reyos.cfg"
 CORE_OPTIONS_CFG = REYOS_CFG_DIR / "retroarch-core-options.cfg"
 SETTINGS_JSON = REYOS_CFG_DIR / "emulation.json"
+# RetroArch's slang shaders (Arch: libretro-shaders-slang). Slang shaders run on
+# the glcore video driver, so shader looks switch the driver to glcore; plain
+# looks and all 3D systems stay on gl, the driver known to work everywhere.
+SHADER_DIR = Path("/usr/share/libretro/shaders/shaders_slang")
+PICTURE_SHADERS = {"clean": "pixel-art-scaling/sharp-bilinear.slangp", "lcd": "handheld/lcd3x.slangp"}
+TWO_D_SYSTEMS = {"nes", "snes", "gb", "gba", "genesis"}
 LAUNCH_LOG = Path.home() / ".cache" / "reyos" / "retroarch-last.log"
 AUTOCONFIG_DIR = Path.home() / ".config" / "retroarch" / "autoconfig" / "udev"
 DOLPHIN_SYS = Path("/usr/share/dolphin-emu/sys")
@@ -90,7 +96,7 @@ def system_installed(system):
 
 
 # ---- Display settings -----------------------------------------------------
-DEFAULT_SETTINGS = {"fullscreen": True, "picture": "fill", "resolution": 1, "expanded": None, "bios_expanded": False, "boxart": True}
+DEFAULT_SETTINGS = {"fullscreen": True, "picture": "clean", "resolution": 1, "expanded": None, "bios_expanded": False, "boxart": True}
 
 # 3D internal resolution per core, keyed by ReyOS's 1x / 2x / 4x choice.
 # Option names and values checked against the cores Arch ships.
@@ -116,7 +122,7 @@ def load_settings():
         settings.update(json.loads(SETTINGS_JSON.read_text()))
     except (OSError, ValueError):
         pass
-    if settings["picture"] not in ("sharp", "fill", "smooth"):
+    if settings["picture"] not in ("clean", "sharp", "fill", "smooth", "lcd"):
         settings["picture"] = "fill"
     if settings["resolution"] not in RESOLUTION_OPTIONS:
         settings["resolution"] = 1
@@ -146,25 +152,49 @@ def _set_cfg_values(path, values):
     path.write_text("\n".join(lines) + "\n")
 
 
-def write_retroarch_cfg(settings=None):
+def shader_for(system_id, settings=None):
+    """Absolute shader preset for this system, or None (plain picture)."""
+    settings = settings or load_settings()
+    rel = PICTURE_SHADERS.get(settings["picture"])
+    if rel and system_id in TWO_D_SYSTEMS and (SHADER_DIR / rel).is_file():
+        return SHADER_DIR / rel
+    return None
+
+
+def gpu_is_weak():
+    """True without a dedicated GPU the 3D cores can lean on: only integrated
+    Intel graphics, a VM, or an NVIDIA card too old for the current driver
+    (it runs on nouveau). 4x internal resolution is capped to 2x there."""
+    try:
+        out = subprocess.run(["/usr/share/reyos/bin/reyos-gpu-detect", "--json"],
+                             capture_output=True, text=True, timeout=10).stdout
+        gpus = json.loads(out)
+    except Exception:
+        return False
+    return not any(g["vendor"] == "amd" or (g["vendor"] == "nvidia" and g.get("nvidiaOpenSupported")) for g in gpus)
+
+
+def write_retroarch_cfg(settings=None, system_id=None):
     """The small config ReyOS appends at launch (--appendconfig), so the
     user's own ~/.config/retroarch/retroarch.cfg is never rewritten. Core
     options go to a ReyOS-owned file for the same reason."""
     settings = settings or load_settings()
     REYOS_CFG_DIR.mkdir(parents=True, exist_ok=True)
     picture = settings["picture"]
+    use_shader = system_id is not None and shader_for(system_id, settings) is not None
     values = {
         "system_directory": BIOS_DIR,
         "savefile_directory": GAMES_DIR / "Saves",
         "savestate_directory": GAMES_DIR / "Saves" / "states",
         "rgui_browser_directory": GAMES_DIR / "ROMs",
         "video_fullscreen": "true" if settings["fullscreen"] else "false",
-        "video_scale_integer": "true" if picture == "sharp" else "false",
+        "video_scale_integer": "true" if picture in ("sharp", "lcd") else "false",
         "video_smooth": "true" if picture == "smooth" else "false",
         # Always set: a Vulkan driver picked once in RetroArch's own menu is
         # saved on exit, and on a machine without a Vulkan device every game
         # then dies on launch (found on the first real-hardware install).
-        "video_driver": "gl",
+        "video_driver": "glcore" if use_shader else "gl",
+        "video_shader_enable": "true" if use_shader else "false",
         "input_joypad_driver": "udev",
         # Start + Select opens RetroArch's menu (Quit is in there) so a
         # controller alone can leave a game; the Home button does too once
@@ -174,7 +204,10 @@ def write_retroarch_cfg(settings=None):
         "core_options_path": CORE_OPTIONS_CFG,
     }
     RETROARCH_REYOS_CFG.write_text("".join(f'{k} = "{v}"\n' for k, v in values.items()))
-    _set_cfg_values(CORE_OPTIONS_CFG, RESOLUTION_OPTIONS[settings["resolution"]])
+    resolution = settings["resolution"]
+    if resolution > 2 and gpu_is_weak():
+        resolution = 2
+    _set_cfg_values(CORE_OPTIONS_CFG, RESOLUTION_OPTIONS[resolution])
 
 
 def prepare_folders():
@@ -234,6 +267,11 @@ def launch_command(system, rom):
     if system["id"] == "3ds":
         return ["flatpak", "run", system["flatpak"], "-f" if settings["fullscreen"] else "-w", rom]
     cmd = ["retroarch", f"--appendconfig={RETROARCH_REYOS_CFG}", "-L", str(core_path(system)), rom]
+    shader = shader_for(system["id"], settings)
+    if shader:
+        # Only the command line loads a preset at start-up; a video_shader
+        # line in the config is ignored.
+        cmd.insert(1, f"--set-shader={shader}")
     # GameMode (installed with Steam on this page) for the RetroArch cores;
     # the PCSX2/Azahar Flatpaks ask for it themselves through the portal.
     return (["gamemoderun"] if shutil.which("gamemoderun") else []) + cmd
@@ -258,6 +296,7 @@ def launch_game(system_id, path):
         return False, f"The {system['name']} emulator isn't installed yet -- set it up in Control Center > Gaming."
     if not RETROARCH_REYOS_CFG.is_file():
         prepare_folders()
+    write_retroarch_cfg(system_id=system["id"])
     if "flatpak" in system:
         prepare_flatpak(system)
     LAUNCH_LOG.parent.mkdir(parents=True, exist_ok=True)
