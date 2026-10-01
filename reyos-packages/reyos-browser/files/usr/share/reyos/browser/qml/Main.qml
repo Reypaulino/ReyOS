@@ -1767,6 +1767,7 @@ ApplicationWindow {
                 }
                 delegate: ItemDelegate {
                     required property var modelData
+                    required property int index
                     width: searchEnginePicker.width - 8
                     height: 34
                     highlighted: searchEnginePicker.highlightedIndex === index

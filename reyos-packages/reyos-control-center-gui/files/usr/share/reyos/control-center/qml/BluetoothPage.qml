@@ -9,12 +9,21 @@ Kirigami.ScrollablePage {
     property bool busy: false
     property bool hasAdapter: false
     property bool powered: false
+    property bool scanning: false
+    // Separate from `busy`: the live scan refresh clears `busy` every 2 s,
+    // and re-enabling the buttons mid-pair let a second click start another
+    // action on top of the running one (QThread abort, app crash).
+    property bool acting: false
+    // Start looking for devices as soon as the page is open with Bluetooth
+    // on (or once it is turned on here) -- nobody should have to find the
+    // Scan button just to see their device.
+    property bool autoScanned: false
 
     actions: [
         Kirigami.Action {
-            text: "Scan"
+            text: scanning ? "Scanning..." : "Scan"
             icon.name: "view-refresh"
-            enabled: hasAdapter && powered && !busy
+            enabled: hasAdapter && powered && !busy && !scanning && !acting
             onTriggered: { busy = true; backend.scanBluetoothDevices() }
         }
     ]
@@ -30,10 +39,17 @@ Kirigami.ScrollablePage {
             busy = false
             hasAdapter = info.hasAdapter
             powered = info.powered
+            scanning = info.scanning
+            if (powered && !autoScanned && !scanning) {
+                autoScanned = true
+                backend.scanBluetoothDevices()
+            }
+            if (!powered) autoScanned = false
             deviceModel.clear()
             for (var i = 0; i < info.devices.length; i++) deviceModel.append(info.devices[i])
         }
         function onActionFinished(ok, message) {
+            acting = false
             statusLabel.text = ok ? "" : message  // success is shown by Main.qml's toast
             statusLabel.color = Kirigami.Theme.negativeTextColor
             refresh()
@@ -41,6 +57,17 @@ Kirigami.ScrollablePage {
     }
 
     Component.onCompleted: refresh()
+
+    // Keeps "Paired" / "Connected" current without clicking anything, e.g.
+    // a controller that connects itself a few seconds after pairing or is
+    // switched on later. Skipped while scanning (that refreshes every 2 s).
+    Timer {
+        interval: 5000
+        repeat: true
+        running: hasAdapter && powered && !scanning && !acting
+        onTriggered: backend.refreshBluetoothStatus()
+    }
+    Component.onDestruction: backend.stopBluetoothScan()
 
     ListModel { id: deviceModel }
 
@@ -78,8 +105,8 @@ Kirigami.ScrollablePage {
                 }
                 Controls.Button {
                     text: powered ? "Turn off" : "Turn on"
-                    enabled: !busy
-                    onClicked: { busy = true; backend.setBluetoothPowered(!powered) }
+                    enabled: !busy && !acting
+                    onClicked: { acting = true; backend.setBluetoothPowered(!powered) }
                 }
             }
         }
@@ -91,6 +118,12 @@ Kirigami.ScrollablePage {
             contentItem: ColumnLayout {
                 spacing: Kirigami.Units.smallSpacing
                 Kirigami.Heading { text: "Devices"; level: 3 }
+                Controls.Label {
+                    visible: scanning
+                    Layout.fillWidth: true
+                    text: "Searching... Put your device in pairing mode now (on an Xbox controller, hold the small pair button on top until the logo flashes fast), then click Pair as soon as it appears."
+                    wrapMode: Text.Wrap
+                }
                 Repeater {
                     model: deviceModel
                     delegate: RowLayout {
@@ -109,15 +142,15 @@ Kirigami.ScrollablePage {
                         Controls.Button {
                             text: "Pair"
                             visible: !paired
-                            enabled: !busy
-                            onClicked: { busy = true; backend.pairBluetoothDevice(mac) }
+                            enabled: !busy && !acting
+                            onClicked: { acting = true; statusLabel.text = ""; backend.pairBluetoothDevice(mac) }
                         }
                         Controls.Button {
                             text: connected ? "Disconnect" : "Connect"
                             visible: paired
-                            enabled: !busy
+                            enabled: !busy && !acting
                             onClicked: {
-                                busy = true
+                                acting = true
                                 if (connected) backend.disconnectBluetoothDevice(mac)
                                 else backend.connectBluetoothDevice(mac)
                             }
@@ -125,14 +158,14 @@ Kirigami.ScrollablePage {
                         Controls.Button {
                             text: "Remove"
                             visible: paired
-                            enabled: !busy
-                            onClicked: { busy = true; backend.removeBluetoothDevice(mac) }
+                            enabled: !busy && !acting
+                            onClicked: { acting = true; backend.removeBluetoothDevice(mac) }
                         }
                     }
                 }
                 Controls.Label {
-                    visible: deviceModel.count === 0 && !busy
-                    text: "No devices yet -- click Scan (top right) to look for nearby devices."
+                    visible: deviceModel.count === 0 && !busy && !scanning
+                    text: "No devices found -- put your device in pairing mode, then click Scan (top right) to search again."
                     wrapMode: Text.Wrap
                     opacity: 0.7
                 }
@@ -142,7 +175,7 @@ Kirigami.ScrollablePage {
         ReyOSProgressBar {
             Layout.fillWidth: true
             indeterminate: true
-            visible: busy
+            visible: busy || scanning || acting
         }
 
         Controls.Label {

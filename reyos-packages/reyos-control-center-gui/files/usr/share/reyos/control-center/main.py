@@ -408,6 +408,15 @@ class PkgWorker(QThread):
             self.finished_ok.emit(False, str(e))
 
 
+def _die_with_parent():
+    # PR_SET_PDEATHSIG: the kernel sends SIGTERM to the child when the
+    # Control Center exits for any reason (closed, killed, crashed), so a
+    # Bluetooth scan it started never outlives it.
+    import ctypes
+    import signal
+    ctypes.CDLL("libc.so.6", use_errno=True).prctl(1, signal.SIGTERM)
+
+
 class ActionWorker(QThread):
     progress = Signal(str)
     finished_ok = Signal(bool, str)
@@ -651,6 +660,11 @@ class Backend(QObject):
         self.orphansListed.emit(orphans)
 
     def _run_action(self, fn):
+        # Replacing a still-running QThread aborts the whole app.
+        running = getattr(self, "_action_worker", None)
+        if running is not None and running.isRunning():
+            self.actionFinished.emit(False, "Still working on the previous action -- please wait for it to finish.")
+            return
         self._action_worker = ActionWorker(fn)
         self._action_worker.finished_ok.connect(self.actionFinished.emit)
         self.actionStarted.emit()
@@ -2384,11 +2398,36 @@ class Backend(QObject):
         except Exception:
             return None
 
+    # Discovery only lasts as long as the bluetoothctl client that started
+    # it: a plain non-interactive `bluetoothctl scan on` exits in ~10 ms
+    # (BlueZ 5.87), which stops discovery again before anything is found.
+    # `--timeout N` keeps the client -- and so the scan -- alive for N
+    # seconds; it runs as a background process so the device list can
+    # refresh live while it scans.
+    _bt_scan_proc = None
+    BT_SCAN_SECONDS = 30
+
+    @staticmethod
+    def _bt_scanning():
+        proc = Backend._bt_scan_proc
+        return proc is not None and proc.poll() is None
+
+    @staticmethod
+    def _bt_stop_scan():
+        proc = Backend._bt_scan_proc
+        if proc is not None and proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+        Backend._bt_scan_proc = None
+
     @staticmethod
     def _compute_bluetooth_status():
         show = Backend._bt(["show"])
         if show is None or show.returncode != 0 or not show.stdout.strip():
-            return {"hasAdapter": False, "powered": False, "devices": []}
+            return {"hasAdapter": False, "powered": False, "scanning": False, "devices": []}
 
         powered = "Powered: yes" in show.stdout
 
@@ -2403,15 +2442,42 @@ class Backend(QObject):
                 info = Backend._bt(["info", mac])
                 connected = bool(info and "Connected: yes" in info.stdout)
                 paired = bool(info and "Paired: yes" in info.stdout)
+                # A scan in a busy room turns up dozens of nameless BLE
+                # beacons (BlueZ names them after their address) that
+                # nobody can pair with anyway -- hide those unless paired.
+                if name == mac.replace(":", "-") and not paired:
+                    continue
                 devices.append({"mac": mac, "name": name, "connected": connected, "paired": paired})
 
-        return {"hasAdapter": True, "powered": powered, "devices": devices}
+        return {"hasAdapter": True, "powered": powered, "scanning": Backend._bt_scanning(), "devices": devices}
 
     @Slot()
     def refreshBluetoothStatus(self):
+        # Overwriting a still-running QThread aborts the process, and the
+        # live scan refresh makes overlapping calls possible -- but dropping
+        # the call instead left the page showing the pre-pair state, so
+        # remember it and run once more when the current refresh is done.
+        worker = getattr(self, "_bluetooth_worker", None)
+        if worker is not None and worker.isRunning():
+            self._bt_refresh_again = True
+            return
+        self._bt_refresh_again = False
         self._bluetooth_worker = InfoWorker(self._compute_bluetooth_status)
-        self._bluetooth_worker.ready.connect(self.bluetoothStatusReady.emit)
+        self._bluetooth_worker.ready.connect(self._bt_status_ready)
         self._bluetooth_worker.start()
+
+    def _bt_status_ready(self, info):
+        self.bluetoothStatusReady.emit(info)
+        if getattr(self, "_bt_refresh_again", False):
+            QTimer.singleShot(0, self.refreshBluetoothStatus)
+
+    def _bt_scan_tick(self):
+        self.refreshBluetoothStatus()
+        if not Backend._bt_scanning():
+            self._bt_scan_timer.stop()
+            # One last refresh after the worker above finishes, so the page
+            # sees scanning=false even if that refresh was skipped.
+            QTimer.singleShot(1500, self.refreshBluetoothStatus)
 
     @Slot(bool)
     def setBluetoothPowered(self, on):
@@ -2423,24 +2489,72 @@ class Backend(QObject):
 
     @Slot()
     def scanBluetoothDevices(self):
-        def task(emit):
-            # `scan on` streams forever on its own -- the timeout wrapper
-            # (longer here than other calls) is what actually bounds it, not
-            # bluetoothctl itself.
-            Backend._bt(["scan", "on"], timeout_s=8)
-            return True, "Scan complete."
-        self._run_action(task)
+        Backend._bt_stop_scan()
+        try:
+            Backend._bt_scan_proc = subprocess.Popen(
+                ["bluetoothctl", "--timeout", str(Backend.BT_SCAN_SECONDS), "scan", "on"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                preexec_fn=_die_with_parent,
+            )
+        except Exception as e:
+            self.actionFinished.emit(False, f"Couldn't start scanning: {e}")
+            return
+        if not hasattr(self, "_bt_scan_timer"):
+            self._bt_scan_timer = QTimer(self)
+            self._bt_scan_timer.setInterval(2000)
+            self._bt_scan_timer.timeout.connect(self._bt_scan_tick)
+        self._bt_scan_timer.start()
+        self.refreshBluetoothStatus()
+
+    @Slot()
+    def stopBluetoothScan(self):
+        # Called when the user leaves the Bluetooth page: discovery slows
+        # down already-connected Bluetooth audio/input, so don't leave it on.
+        Backend._bt_stop_scan()
 
     @Slot(str)
     def pairBluetoothDevice(self, mac):
         def task(emit):
-            pair = Backend._bt(["pair", mac], timeout_s=15)
-            if not pair or pair.returncode != 0:
-                return False, f"Failed to pair with {mac}."
+            # Pairing while discovery is running failed every time on real
+            # hardware (Intel adapter + Xbox pad: ConnectionAttemptFailed in
+            # ~0.1 s), so stop the scan first. A pad only stays in pairing
+            # mode for ~20 s, so retry quickly -- rediscovering it briefly
+            # if BlueZ already dropped it -- rather than failing once.
+            Backend._bt_stop_scan()
+            # Another app still searching (KDE's "Add Bluetooth Device"
+            # wizard, a second Control Center window) makes the pair fail
+            # in ~0.1 s; stopping our own scan can't stop theirs.
+            time.sleep(0.5)
+            show = Backend._bt(["show"])
+            other_scan = bool(show and "Discovering: yes" in show.stdout)
+            pair = None
+            for attempt in range(3):
+                info = Backend._bt(["info", mac])
+                if not info or info.returncode != 0 or not info.stdout.strip():
+                    Backend._bt(["--timeout", "4", "scan", "on"], timeout_s=6)
+                pair = Backend._bt(["pair", mac], timeout_s=30)
+                done = Backend._bt(["info", mac])
+                if done and "Paired: yes" in done.stdout:
+                    break
+                time.sleep(1)
+            else:
+                detail = (pair.stdout.strip().splitlines() or [""])[-1] if pair else ""
+                if other_scan:
+                    return False, ("Couldn't pair: another app is searching for Bluetooth devices at the same time "
+                                   "(close KDE's \"Add Bluetooth Device\" window or other Control Center windows), then try again."
+                                   + (f" ({detail})" if detail else ""))
+                return False, (f"Couldn't pair with {mac}. Make sure it is in pairing mode, then try again."
+                               + (f" ({detail})" if detail else ""))
             Backend._bt(["trust", mac])
-            connect = Backend._bt(["connect", mac], timeout_s=10)
-            ok = bool(connect and connect.returncode == 0)
-            return True, (f"Paired and connected: {mac}" if ok else f"Paired but couldn't connect: {mac}")
+            # Input devices (pads, keyboards, mice) connect themselves right
+            # after pairing; only ask for a connection if that didn't happen.
+            time.sleep(2)
+            info = Backend._bt(["info", mac])
+            if not (info and "Connected: yes" in info.stdout):
+                Backend._bt(["connect", mac], timeout_s=15)
+                info = Backend._bt(["info", mac])
+            ok = bool(info and "Connected: yes" in info.stdout)
+            return True, (f"Paired and connected: {mac}" if ok else f"Paired: {mac} -- turn the device on to connect.")
         self._run_action(task)
 
     @Slot(str)
@@ -3347,6 +3461,7 @@ def main():
 
     backend = Backend()
     app.aboutToQuit.connect(backend.stopStatsWorker)
+    app.aboutToQuit.connect(Backend._bt_stop_scan)
     engine.rootContext().setContextProperty("backend", backend)
     engine.rootContext().setContextProperty("reyosAccentColor", _reyos_accent_color())
     # Lets launchers (e.g. ReyOS Welcome's "Check for Updates" button) open
