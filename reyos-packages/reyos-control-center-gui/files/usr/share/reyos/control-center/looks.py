@@ -23,8 +23,11 @@ LOOKS_DIR = Path("/usr/share/reyos/looks")
 # in kdeglobals' [ReyOS] group so the other side can read it back.
 LIGHT_LOOKANDFEEL = "org.reyos.light.desktop"
 _COPPER_RGB = "201,121,50"
+_COPPER_RGB_HEX = "#C97932"
 _LIGHT_BASE_SCHEME = Path("/usr/share/color-schemes/ReyOSLight.colors")
 _PANEL_THEME_SRC = Path("/usr/share/plasma/desktoptheme/ReyOS")
+_SDDM_CONFIG = Path("/usr/share/sddm/themes/reyos-silent/configs/reyos.conf")
+_SDDM_TEMPLATE = _SDDM_CONFIG.with_name("reyos.conf.in")
 _PANEL_FILL_DARK = "#14100d"
 _PANEL_FILL_LIGHT = "#eff0f1"
 PANEL_OPACITY_DEFAULT = 82
@@ -204,6 +207,23 @@ def _recolor_look_assets(look_id):
         # fixed-path helper script can get an exact-match NOPASSWD
         # rule instead, same precedent as enable-multilib.sh.
         any_staged = False
+        if _SDDM_TEMPLATE.is_file():
+            # Login screen: rendered whole from the untouched template, so it
+            # works for every switch (patching the last rendering would lose
+            # the copper sentinel after the first one). Accent spots are the
+            # template's "#C97932"; the background is this Look's wallpaper,
+            # reached from the theme's backgrounds/ dir (SilentSDDM prefixes
+            # that) so nothing has to be copied.
+            text = _SDDM_TEMPLATE.read_text().replace(_COPPER_RGB_HEX, accent_hex)
+            walls = sorted((LOOKS_DIR / look_id / "wallpaper").glob("*.jpg"))
+            if walls:
+                wall = next((w for w in walls if w.name == "reyos-wallpaper.jpg"), walls[0])
+                text = re.sub(r'(?m)^background = ".*"$',
+                              f'background = "../../../../reyos/looks/{look_id}/wallpaper/{wall.name}"', text)
+            current = _SDDM_CONFIG.read_text() if _SDDM_CONFIG.is_file() else ""
+            if text != current:
+                Path("/tmp/reyos-look-sddm.conf").write_text(text)
+                any_staged = True
         masked_icons = [
             ("gear-mask", "/usr/share/icons/ReyOS/apps/16/preferences-system.svg", "gear-16"),
             ("gear-mask", "/usr/share/icons/ReyOS/apps/32/preferences-system.svg", "gear-32"),

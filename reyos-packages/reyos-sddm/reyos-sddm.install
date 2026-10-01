@@ -1,6 +1,7 @@
 post_install() {
     chmod 755 /usr/share/sddm/themes/reyos
     /usr/share/reyos/bin/reyos-brand-sddm-sessions
+    /usr/share/reyos/bin/reyos-render-sddm-look
 }
 
 post_upgrade() {

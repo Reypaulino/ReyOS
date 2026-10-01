@@ -1,11 +1,14 @@
 # Maintainer: Rey Paulino
 pkgname=reyos-sddm
 pkgver=1.0.3
-pkgrel=15
-pkgdesc="ReyOS login screen — dedicated branded theme (dark navy + copper accent, dedicated background)"
+pkgrel=16
+pkgdesc="ReyOS login screen — SilentSDDM restyled with ReyOS colors, ReyOS wallpaper, Look-tracking accent"
 arch=('any')
 license=('MIT')
 install=reyos-sddm.install
+# Control Center renders this for the active Look (looks.py); keep that
+# rendering across package updates instead of resetting it to Copper.
+backup=('usr/share/sddm/themes/reyos-silent/configs/reyos.conf')
 # qt5-declarative isn't in sddm's hard Depends (only listed as an optional
 # "for using Qt5 themes" dep) but the actual sddm-greeter binary shipped by
 # this sddm build is linked against Qt5 (libQt5Quick/Qml/Network/Gui/Core),
@@ -13,7 +16,7 @@ install=reyos-sddm.install
 # greeter fails to exec at all (dynamic linker can't resolve those libs)
 # and sddm crash-loops with "exited with 127". Confirmed live on the dev
 # VM 2026-08-11.
-depends=('sddm' 'qt5-declarative' 'plasma-workspace' 'plasma-x11-session')
+depends=('sddm' 'qt5-declarative' 'qt6-declarative' 'plasma-workspace' 'plasma-x11-session')
 source=()
 sha256sums=()
 
@@ -24,4 +27,9 @@ package() {
     find "$pkgdir/etc" "$pkgdir/usr" -type d -exec chmod 755 {} \;
     find "$pkgdir/usr" -type f -exec chmod 644 {} \;
     chmod 755 "$pkgdir/usr/share/reyos/bin/reyos-brand-sddm-sessions"
+    chmod 755 "$pkgdir/usr/share/reyos/bin/reyos-render-sddm-look"
 }
+
+# Two GPL-3.0-or-later licenses (the kept, older bundled theme and the new
+# SilentSDDM-based one) alongside this package's own MIT license() array --
+# makepkg only declares the package's own license, so note both here.

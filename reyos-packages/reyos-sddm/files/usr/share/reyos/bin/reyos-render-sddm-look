@@ -1,0 +1,21 @@
+#!/bin/bash
+# Renders the login screen config (reyos-silent/configs/reyos.conf) from its
+# template for the Look of the first regular user, so the login screen matches
+# right after the package is installed. Control Center (looks.py) does the
+# same on every Look switch and at login; this only covers the first boot.
+T=/usr/share/sddm/themes/reyos-silent/configs/reyos.conf.in
+OUT=/usr/share/sddm/themes/reyos-silent/configs/reyos.conf
+LOOKS=/usr/share/reyos/looks
+[ -f "$T" ] || exit 0
+home=$(getent passwd | awk -F: '$3 >= 1000 && $3 < 60000 && $7 !~ /nologin|false/ {print $6; exit}')
+look=$(sed -n 's/^Look=//p' "$home/.config/kdeglobals" 2>/dev/null | head -1)
+[ -n "$look" ] && [ -f "$LOOKS/$look/colors.colors" ] || exit 0
+rgb=$(awk -F= '/^\[Colors:Button\]/{s=1;next} /^\[/{s=0} s && $1=="DecorationFocus"{print $2; exit}' "$LOOKS/$look/colors.colors")
+[ -n "$rgb" ] || exit 0
+hex=$(printf '#%02x%02x%02x' $(echo "$rgb" | tr ',' ' '))
+wall=reyos-wallpaper.jpg
+[ -f "$LOOKS/$look/wallpaper/$wall" ] || wall=$(ls "$LOOKS/$look/wallpaper/" 2>/dev/null | grep '\.jpg$' | sort | head -1)
+sed "s/#C97932/$hex/g" "$T" > "$OUT.tmp"
+[ -n "$wall" ] && sed -i "s#^background = \".*\"\$#background = \"../../../../reyos/looks/$look/wallpaper/$wall\"#" "$OUT.tmp"
+chmod 644 "$OUT.tmp" && mv "$OUT.tmp" "$OUT"
+exit 0

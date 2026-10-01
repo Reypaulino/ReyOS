@@ -1,0 +1,14 @@
+[SddmGreeterTheme]
+Name=ReyOS
+Type=sddm-theme
+Description=ReyOS login screen (SilentSDDM, restyled)
+License=GPL-3.0-or-later
+Version=1.5.0
+Theme-Id=reyos-silent
+Theme-API=2.0
+MainScript=Main.qml
+Screenshot=
+TranslationsDirectory=translations
+QtVersion=6
+
+ConfigFile=configs/reyos.conf
