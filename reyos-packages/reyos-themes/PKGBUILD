@@ -1,7 +1,7 @@
 # Maintainer: Rey Paulino
 pkgname=reyos-themes
 pkgver=1.0.0
-pkgrel=60
+pkgrel=61
 pkgdesc="ReyOS Global Theme, color scheme, editable panel/taskbar layout, virtual desktops, and shortcuts"
 arch=('any')
 license=('MIT' 'GPL-2.0-or-later')
@@ -20,5 +20,6 @@ package() {
     find "$pkgdir/etc" -type f -exec chmod 644 {} \;
     find "$pkgdir/usr" -type f -exec chmod 644 {} \;
     chmod 755 "$pkgdir/usr/share/reyos/bin/reyos-apply-branding.sh"
+    chmod 755 "$pkgdir/usr/share/reyos/bin/reyos-apply-top-panel.sh"
     chmod 755 "$pkgdir/usr/share/reyos/bin/reyos-edit-mode-guard.sh"
 }

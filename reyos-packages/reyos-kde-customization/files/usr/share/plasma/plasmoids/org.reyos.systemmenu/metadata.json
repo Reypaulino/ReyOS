@@ -1,0 +1,22 @@
+{
+  "KPackageStructure": "Plasma/Applet",
+  "KPlugin": {
+    "Authors": [
+      {
+        "Name": "ReyOS Contributors",
+        "Email": "maintainers@reyos.local"
+      }
+    ],
+    "Category": "System Information",
+    "Description": "ReyOS logo for the top bar that opens the system menu: Control Center, settings, lock, sleep, restart, shut down.",
+    "EnabledByDefault": true,
+    "FormFactors": ["horizontal", "vertical"],
+    "Icon": "reyos-launcher",
+    "Id": "org.reyos.systemmenu",
+    "License": "GPL-3.0-or-later",
+    "Name": "ReyOS System Menu",
+    "Version": "1.0.0",
+    "Website": "https://reyos.local"
+  },
+  "X-Plasma-API-Minimum-Version": "6.6"
+}
