@@ -222,6 +222,11 @@ def _recolor_look_assets(look_id):
                 r'(?<=\.reyos-deco-rim \{ fill:none; stroke:)#[0-9A-Fa-f]{6}',
                 accent_hex, text,
             )
+            # Straight edges draw the rim as a filled rect (see decoration.svg)
+            new_text = re.sub(
+                r'(?<=\.reyos-deco-rim-edge \{ stroke:none; fill:)#[0-9A-Fa-f]{6}',
+                accent_hex, new_text,
+            )
             if new_text != text:
                 Path("/tmp/reyos-look-decoration.svg").write_text(new_text)
                 any_staged = True
