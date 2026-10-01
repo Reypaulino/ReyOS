@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=ReyOS Control Center
+Comment=Updates, performance, network, disk and permissions in one place
+Exec=/usr/share/reyos/control-center/main.py
+Icon=/usr/share/icons/hicolor/scalable/apps/reyos-control-center.svg
+Terminal=false
+StartupWMClass=reyos-control-center
+Categories=System;Settings;

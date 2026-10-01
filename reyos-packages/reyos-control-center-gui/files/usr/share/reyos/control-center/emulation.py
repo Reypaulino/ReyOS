@@ -11,6 +11,7 @@ import select
 import shutil
 import struct
 import subprocess
+import threading
 import time
 import urllib.parse
 import urllib.request
@@ -57,6 +58,7 @@ REYOS_CFG_DIR = Path.home() / ".config" / "reyos"
 RETROARCH_REYOS_CFG = REYOS_CFG_DIR / "retroarch-reyos.cfg"
 CORE_OPTIONS_CFG = REYOS_CFG_DIR / "retroarch-core-options.cfg"
 SETTINGS_JSON = REYOS_CFG_DIR / "emulation.json"
+LAUNCH_LOG = Path.home() / ".cache" / "reyos" / "retroarch-last.log"
 AUTOCONFIG_DIR = Path.home() / ".config" / "retroarch" / "autoconfig" / "udev"
 DOLPHIN_SYS = Path("/usr/share/dolphin-emu/sys")
 FLATHUB_URL = "https://flathub.org/repo/flathub.flatpakrepo"
@@ -159,6 +161,10 @@ def write_retroarch_cfg(settings=None):
         "video_fullscreen": "true" if settings["fullscreen"] else "false",
         "video_scale_integer": "true" if picture == "sharp" else "false",
         "video_smooth": "true" if picture == "smooth" else "false",
+        # Always set: a Vulkan driver picked once in RetroArch's own menu is
+        # saved on exit, and on a machine without a Vulkan device every game
+        # then dies on launch (found on the first real-hardware install).
+        "video_driver": "gl",
         "input_joypad_driver": "udev",
         # Start + Select opens RetroArch's menu (Quit is in there) so a
         # controller alone can leave a game; the Home button does too once
@@ -233,6 +239,16 @@ def launch_command(system, rom):
     return (["gamemoderun"] if shutil.which("gamemoderun") else []) + cmd
 
 
+def _launch_failure_reason():
+    try:
+        lines = [l.strip() for l in LAUNCH_LOG.read_text(errors="replace").splitlines() if l.strip()]
+    except OSError:
+        lines = []
+    errors = [l for l in lines if "[ERROR]" in l or "Cannot" in l or "Failed" in l]
+    reason = (errors or lines or ["it exited with an error."])[-1]
+    return f"{reason} (full log: {LAUNCH_LOG})"
+
+
 def launch_game(system_id, path):
     """Starts a game detached from the caller. Returns (ok, message)."""
     system = next((s for s in EMU_SYSTEMS if s["id"] == system_id), None)
@@ -244,8 +260,20 @@ def launch_game(system_id, path):
         prepare_folders()
     if "flatpak" in system:
         prepare_flatpak(system)
-    subprocess.Popen(launch_command(system, path), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                     stderr=subprocess.DEVNULL, start_new_session=True)
+    LAUNCH_LOG.parent.mkdir(parents=True, exist_ok=True)
+    with LAUNCH_LOG.open("w") as log:
+        proc = subprocess.Popen(launch_command(system, path), stdin=subprocess.DEVNULL, stdout=log,
+                                stderr=subprocess.STDOUT, start_new_session=True)
+    # Reap it when it exits so a finished game doesn't linger as a zombie.
+    threading.Thread(target=proc.wait, daemon=True).start()
+    # A launch that dies straight away (no usable video driver, missing core
+    # file...) used to be invisible. Wait briefly and say why it failed.
+    for _ in range(15):
+        if proc.poll() is not None:
+            break
+        time.sleep(0.1)
+    if proc.poll() not in (None, 0):
+        return False, "The game couldn't start: " + _launch_failure_reason()
     return True, f"Starting {game_title(Path(path))}..."
 
 

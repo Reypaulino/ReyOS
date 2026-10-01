@@ -162,6 +162,8 @@ vulkan-radeon
 vulkan-nouveau
 intel-media-driver
 libva-intel-driver
+# Realtime scheduling for PipeWire (audio stutter under load, emulation).
+rtkit
 sddm
 # sddm's Depends are Qt6-only, but the breeze greeter theme needs Qt5
 # QML (libQt5Quick/Qml/Network/Gui/Core) -- qt5-declarative is only an

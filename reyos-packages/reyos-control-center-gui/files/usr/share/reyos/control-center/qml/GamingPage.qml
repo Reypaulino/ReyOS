@@ -350,7 +350,7 @@ Kirigami.ScrollablePage {
                 spacing: Kirigami.Units.largeSpacing
                 Kirigami.Heading { text: "Display"; level: 3 }
                 Controls.Switch {
-                    text: "Play in full screen"
+                    text: "Start games in full screen (set it here; RetroArch applies this at every launch)"
                     checked: emuSettings.fullscreen
                     onToggled: saveSettings({ fullscreen: checked })
                 }
@@ -377,7 +377,7 @@ Kirigami.ScrollablePage {
                     Layout.fillWidth: true
                     wrapMode: Text.Wrap
                     opacity: 0.7
-                    text: "3D resolution applies to Nintendo 64, Dreamcast, PlayStation, PSP, Nintendo DS and GameCube / Wii. If a game stutters, go back to Original."
+                    text: "3D resolution applies to Nintendo 64, Dreamcast, PlayStation, PSP, Nintendo DS and GameCube / Wii. It does not change NES, SNES, Game Boy, GBA or Genesis games, which are drawn at their original size (use Picture for those). If a game stutters, go back to Original."
                 }
                 Controls.Label {
                     visible: flatpakSystems.length > 0
