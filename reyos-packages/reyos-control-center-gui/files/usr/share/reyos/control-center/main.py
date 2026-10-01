@@ -520,6 +520,7 @@ class Backend(QObject):
     diskInfoReady = Signal("QVariantMap")
     aboutInfoReady = Signal("QVariantMap")
     driverStatusReady = Signal("QVariantMap")
+    screenSleepReady = Signal("QVariantMap")
     firewallStatusReady = Signal("QVariantMap")
     vpnStatusReady = Signal("QVariantMap")
     vpnConfigSelected = Signal(str)
@@ -910,6 +911,97 @@ class Backend(QObject):
         if self._controller_worker is not None:
             self._controller_worker.cancelled = True
 
+
+    # --- Screen & Sleep -----------------------------------------------------
+    # Screen lock lives in kscreenlockerrc, screen-off / sleep / lid in
+    # powerdevilrc (Plasma 6.3+ layout: [AC|Battery][Display] and
+    # [AC|Battery][SuspendAndShutdown]). Read and written with
+    # kreadconfig6/kwriteconfig6, the same way the rest of ReyOS edits KDE config.
+    # Minutes everywhere in the UI; 0 means "never".
+    _POWER_PROFILES = {"ac": "AC", "battery": "Battery"}
+    _LID_NOTHING, _LID_SLEEP, _LID_LOCK = 0, 1, 32
+
+    @staticmethod
+    def _kread(file, groups, key, default=""):
+        cmd = ["kreadconfig6", "--file", file]
+        for g in groups:
+            cmd += ["--group", g]
+        cmd += ["--key", key, "--default", default]
+        try:
+            return subprocess.check_output(cmd, text=True, timeout=5).strip()
+        except Exception:
+            return default
+
+    @staticmethod
+    def _kwrite(file, groups, key, value):
+        cmd = ["kwriteconfig6", "--file", file]
+        for g in groups:
+            cmd += ["--group", g]
+        cmd += ["--key", key, str(value)]
+        subprocess.run(cmd, check=True, timeout=5)
+
+    @staticmethod
+    def _compute_screen_sleep():
+        read = Backend._kread
+        lock_on = read("kscreenlockerrc", ["Daemon"], "Autolock", "true") != "false"
+        info = {
+            "lockMinutes": int(read("kscreenlockerrc", ["Daemon"], "Timeout", "5") or 5) if lock_on else 0,
+            "lockOnResume": read("kscreenlockerrc", ["Daemon"], "LockOnResume", "true") != "false",
+        }
+        for name, group in Backend._POWER_PROFILES.items():
+            off_on = read("powerdevilrc", [group, "Display"], "TurnOffDisplayWhenIdle", "true") != "false"
+            off_s = int(read("powerdevilrc", [group, "Display"], "TurnOffDisplayIdleTimeoutSec", "600") or 600)
+            dim_on = read("powerdevilrc", [group, "Display"], "DimDisplayWhenIdle", "true") != "false"
+            dim_s = int(read("powerdevilrc", [group, "Display"], "DimDisplayIdleTimeoutSec", "300") or 300)
+            sleep_act = int(read("powerdevilrc", [group, "SuspendAndShutdown"], "AutoSuspendAction", "1") or 0)
+            sleep_s = int(read("powerdevilrc", [group, "SuspendAndShutdown"], "AutoSuspendIdleTimeoutSec", "900") or 900)
+            lid = int(read("powerdevilrc", [group, "SuspendAndShutdown"], "LidAction", "1") or 1)
+            info[name + "ScreenOff"] = round(off_s / 60) if off_on else 0
+            info[name + "Dim"] = round(dim_s / 60) if dim_on else 0
+            info[name + "Sleep"] = round(sleep_s / 60) if sleep_act == 1 else 0
+            info[name + "Lid"] = lid
+        info["hasBattery"] = bool(glob.glob("/sys/class/power_supply/BAT*"))
+        return info
+
+    @Slot()
+    def refreshScreenSleep(self):
+        self._screen_sleep_worker = InfoWorker(self._compute_screen_sleep)
+        self._screen_sleep_worker.ready.connect(self.screenSleepReady.emit)
+        self._screen_sleep_worker.start()
+
+    @Slot("QVariantMap")
+    def applyScreenSleep(self, v):
+        def task(emit):
+            kwrite = Backend._kwrite
+            lock = int(v["lockMinutes"])
+            kwrite("kscreenlockerrc", ["Daemon"], "Autolock", "true" if lock > 0 else "false")
+            if lock > 0:
+                kwrite("kscreenlockerrc", ["Daemon"], "Timeout", lock)
+            kwrite("kscreenlockerrc", ["Daemon"], "LockOnResume", "true" if v["lockOnResume"] else "false")
+            for name, group in Backend._POWER_PROFILES.items():
+                off, sleep = int(v[name + "ScreenOff"]), int(v[name + "Sleep"])
+                dim = int(v[name + "Dim"])
+                kwrite("powerdevilrc", [group, "Display"], "DimDisplayWhenIdle", "true" if dim > 0 else "false")
+                if dim > 0:
+                    kwrite("powerdevilrc", [group, "Display"], "DimDisplayIdleTimeoutSec", dim * 60)
+                kwrite("powerdevilrc", [group, "Display"], "TurnOffDisplayWhenIdle", "true" if off > 0 else "false")
+                if off > 0:
+                    kwrite("powerdevilrc", [group, "Display"], "TurnOffDisplayIdleTimeoutSec", off * 60)
+                kwrite("powerdevilrc", [group, "SuspendAndShutdown"], "AutoSuspendAction", 1 if sleep > 0 else 0)
+                if sleep > 0:
+                    kwrite("powerdevilrc", [group, "SuspendAndShutdown"], "AutoSuspendIdleTimeoutSec", sleep * 60)
+                kwrite("powerdevilrc", [group, "SuspendAndShutdown"], "LidAction", int(v[name + "Lid"]))
+            # Ask the running power daemon to re-read powerdevilrc so the change
+            # applies now, not at the next login. Best effort: the screen locker
+            # watches its own file, and an older Plasma just applies it later.
+            for tool in ("qdbus6", "qdbus"):
+                if shutil.which(tool):
+                    subprocess.run([tool, "org.kde.Solid.PowerManagement", "/org/kde/Solid/PowerManagement",
+                                    "org.kde.Solid.PowerManagement.reparseConfiguration"],
+                                   capture_output=True, timeout=5)
+                    break
+            return True, "Screen and sleep settings saved."
+        self._run_action(task)
 
     @Slot(str)
     def setGovernor(self, gov):

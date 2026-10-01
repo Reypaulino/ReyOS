@@ -14,9 +14,40 @@ Kirigami.ScrollablePage {
     property string memoryUsage: "—"
     property string swapUsage: "—"
     property string systemUptime: "—"
+    property var screenSleep: ({})
+
+    readonly property var lockChoices: [
+        { t: "Never", v: 0 }, { t: "After 5 minutes", v: 5 }, { t: "After 10 minutes", v: 10 },
+        { t: "After 15 minutes", v: 15 }, { t: "After 30 minutes", v: 30 }, { t: "After 60 minutes", v: 60 } ]
+    readonly property var dimChoices: [
+        { t: "Never", v: 0 }, { t: "After 2 minutes", v: 2 }, { t: "After 5 minutes", v: 5 },
+        { t: "After 10 minutes", v: 10 }, { t: "After 15 minutes", v: 15 } ]
+    readonly property var offChoices: [
+        { t: "Never", v: 0 }, { t: "After 2 minutes", v: 2 }, { t: "After 5 minutes", v: 5 },
+        { t: "After 10 minutes", v: 10 }, { t: "After 15 minutes", v: 15 }, { t: "After 30 minutes", v: 30 } ]
+    readonly property var sleepChoices: [
+        { t: "Never", v: 0 }, { t: "After 10 minutes", v: 10 }, { t: "After 15 minutes", v: 15 },
+        { t: "After 30 minutes", v: 30 }, { t: "After 60 minutes", v: 60 }, { t: "After 2 hours", v: 120 } ]
+    readonly property var lidChoices: [
+        { t: "Sleep", v: 1 }, { t: "Lock the screen", v: 32 }, { t: "Do nothing", v: 0 } ]
+
+    // Index of the choice closest to the saved value (a value set elsewhere,
+    // e.g. 7 minutes, still lands on a sensible entry instead of "Never").
+    function choiceIndex(choices, value) {
+        if (value === undefined) return 0
+        var best = 0, bestDiff = 1e9
+        for (var i = 0; i < choices.length; i++) {
+            var d = Math.abs(choices[i].v - value)
+            if (value === 0 ? choices[i].v === 0 : (choices[i].v !== 0 && d < bestDiff)) { best = i; bestDiff = d }
+        }
+        return best
+    }
+
+    Component.onCompleted: backend.refreshScreenSleep()
 
     Connections {
         target: backend
+        function onScreenSleepReady(s) { screenSleep = s }
         function onStatsUpdated(s) {
             if (!swapSlider.pressed) swapSlider.value = s.swappiness
             governor = s.governor
@@ -122,6 +153,100 @@ Kirigami.ScrollablePage {
                         text: swapStatus === "ON" ? "Disable swap" : "Enable swap"
                         enabled: !busy
                         onClicked: { busy = true; backend.toggleSwap() }
+                    }
+                }
+            }
+        }
+
+        Kirigami.AbstractCard {
+            Layout.fillWidth: true
+            padding: Kirigami.Units.gridUnit
+            contentItem: Kirigami.FormLayout {
+                Kirigami.Heading { Kirigami.FormData.isSection: true; text: "Screen & Sleep"; level: 3 }
+
+                Controls.ComboBox {
+                    id: lockBox
+                    Kirigami.FormData.label: "Lock the screen:"
+                    model: lockChoices; textRole: "t"; valueRole: "v"
+                    currentIndex: choiceIndex(lockChoices, screenSleep.lockMinutes)
+                }
+                Controls.CheckBox {
+                    id: lockResumeBox
+                    text: "Ask for my password when the computer wakes up"
+                    checked: screenSleep.lockOnResume !== false
+                }
+
+                Kirigami.Separator { Kirigami.FormData.isSection: true; Kirigami.FormData.label: "When plugged in" }
+                Controls.ComboBox {
+                    id: acDimBox
+                    Kirigami.FormData.label: "Dim the screen:"
+                    model: dimChoices; textRole: "t"; valueRole: "v"
+                    currentIndex: choiceIndex(dimChoices, screenSleep.acDim)
+                }
+                Controls.ComboBox {
+                    id: acOffBox
+                    Kirigami.FormData.label: "Turn off the screen:"
+                    model: offChoices; textRole: "t"; valueRole: "v"
+                    currentIndex: choiceIndex(offChoices, screenSleep.acScreenOff)
+                }
+                Controls.ComboBox {
+                    id: acSleepBox
+                    Kirigami.FormData.label: "Go to sleep:"
+                    model: sleepChoices; textRole: "t"; valueRole: "v"
+                    currentIndex: choiceIndex(sleepChoices, screenSleep.acSleep)
+                }
+                Controls.ComboBox {
+                    id: acLidBox
+                    visible: screenSleep.hasBattery === true
+                    Kirigami.FormData.label: "When the lid closes:"
+                    model: lidChoices; textRole: "t"; valueRole: "v"
+                    currentIndex: choiceIndex(lidChoices, screenSleep.acLid)
+                }
+
+                Kirigami.Separator { visible: screenSleep.hasBattery === true; Kirigami.FormData.isSection: true; Kirigami.FormData.label: "On battery" }
+                Controls.ComboBox {
+                    id: batDimBox
+                    visible: screenSleep.hasBattery === true
+                    Kirigami.FormData.label: "Dim the screen:"
+                    model: dimChoices; textRole: "t"; valueRole: "v"
+                    currentIndex: choiceIndex(dimChoices, screenSleep.batteryDim)
+                }
+                Controls.ComboBox {
+                    id: batOffBox
+                    visible: screenSleep.hasBattery === true
+                    Kirigami.FormData.label: "Turn off the screen:"
+                    model: offChoices; textRole: "t"; valueRole: "v"
+                    currentIndex: choiceIndex(offChoices, screenSleep.batteryScreenOff)
+                }
+                Controls.ComboBox {
+                    id: batSleepBox
+                    visible: screenSleep.hasBattery === true
+                    Kirigami.FormData.label: "Go to sleep:"
+                    model: sleepChoices; textRole: "t"; valueRole: "v"
+                    currentIndex: choiceIndex(sleepChoices, screenSleep.batterySleep)
+                }
+                Controls.ComboBox {
+                    id: batLidBox
+                    visible: screenSleep.hasBattery === true
+                    Kirigami.FormData.label: "When the lid closes:"
+                    model: lidChoices; textRole: "t"; valueRole: "v"
+                    currentIndex: choiceIndex(lidChoices, screenSleep.batteryLid)
+                }
+
+                Controls.Button {
+                    text: "Apply"
+                    enabled: !busy
+                    onClicked: {
+                        busy = true
+                        backend.applyScreenSleep({
+                            lockMinutes: lockBox.currentValue, lockOnResume: lockResumeBox.checked,
+                            acDim: acDimBox.currentValue, acScreenOff: acOffBox.currentValue, acSleep: acSleepBox.currentValue,
+                            acLid: acLidBox.visible ? acLidBox.currentValue : (screenSleep.acLid === undefined ? 1 : screenSleep.acLid),
+                            batteryDim: batDimBox.visible ? batDimBox.currentValue : (screenSleep.batteryDim === undefined ? 5 : screenSleep.batteryDim),
+                            batteryScreenOff: batOffBox.visible ? batOffBox.currentValue : (screenSleep.batteryScreenOff || 0),
+                            batterySleep: batSleepBox.visible ? batSleepBox.currentValue : (screenSleep.batterySleep || 0),
+                            batteryLid: batLidBox.visible ? batLidBox.currentValue : (screenSleep.batteryLid === undefined ? 1 : screenSleep.batteryLid)
+                        })
                     }
                 }
             }
