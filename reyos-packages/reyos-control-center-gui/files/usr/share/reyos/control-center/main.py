@@ -692,7 +692,15 @@ class Backend(QObject):
             # lib32-gamemode" argv matches neither fixed line and silently
             # fails with "a password is required" (no controlling terminal
             # to prompt on from a GUI subprocess).
-            for group in (["steam"], ["gamemode", "lib32-gamemode", "mangohud", "lib32-mangohud"]):
+            # Steam needs a 32-bit Vulkan driver. With none installed, pacman picks
+            # a provider on its own and has pulled in nvidia-utils on non-NVIDIA
+            # machines, so install the one matching this GPU first.
+            groups = [["steam"], ["gamemode", "lib32-gamemode", "mangohud", "lib32-mangohud"]]
+            vk = subprocess.run(["/usr/share/reyos/bin/reyos-gpu-detect", "--lib32-vulkan"],
+                                capture_output=True, text=True).stdout.strip()
+            if vk:
+                groups.insert(0, [vk])
+            for group in groups:
                 emit("$ sudo pacman -S --needed --noconfirm " + " ".join(group))
                 rc = _run(["sudo", "pacman", "-S", "--needed", "--noconfirm"] + group, emit)
                 if rc != 0:
@@ -1444,9 +1452,15 @@ class Backend(QObject):
 
     @staticmethod
     def _compute_driver_status():
+        # Vendor comes from the PCI vendor ID, never from the marketing name
+        # ("Intel Corporation" contains "ati" and used to be labelled AMD).
+        # Same rule as /usr/share/reyos/bin/reyos-gpu-detect, which the
+        # installer uses: NVIDIA's open kernel module needs a GPU System
+        # Processor, present from Turing (device ID 0x1e00) onwards.
+        vendors = {"8086": "intel", "1002": "amd", "10de": "nvidia"}
         gpus = []
         try:
-            out = subprocess.check_output(["lspci", "-k"], text=True)
+            out = subprocess.check_output(["lspci", "-nnk"], text=True)
         except Exception:
             out = ""
 
@@ -1458,16 +1472,15 @@ class Backend(QObject):
                     current = None
                 if "VGA compatible controller" in line or "3D controller" in line:
                     desc = line.split(": ", 1)[1].strip() if ": " in line else line.strip()
-                    low = desc.lower()
-                    if "nvidia" in low:
-                        vendor = "nvidia"
-                    elif "amd" in low or "ati" in low or "radeon" in low:
-                        vendor = "amd"
-                    elif "intel" in low:
-                        vendor = "intel"
-                    else:
-                        vendor = "other"
-                    current = {"model": desc, "vendor": vendor, "driver": ""}
+                    ids = re.search(r"\[([0-9a-f]{4}):([0-9a-f]{4})\]", desc)
+                    vendor_id, device_id = (ids.group(1), ids.group(2)) if ids else ("", "")
+                    model = re.sub(r"\s*\[[0-9a-f]{4}:[0-9a-f]{4}\]", "", desc)
+                    current = {
+                        "model": model,
+                        "vendor": vendors.get(vendor_id, "other"),
+                        "driver": "",
+                        "nvidiaOpenSupported": bool(ids) and vendor_id == "10de" and int(device_id, 16) >= 0x1E00,
+                    }
             elif current is not None:
                 stripped = line.strip()
                 if stripped.startswith("Kernel driver in use:"):
@@ -1475,13 +1488,11 @@ class Backend(QObject):
         if current:
             gpus.append(current)
 
-        # Open-source nouveau (or no driver bound at all) on real NVIDIA
-        # hardware means 3D acceleration is either crippled or entirely
-        # missing -- the single biggest "not actually ready to play" gap
-        # on a fresh install, since ReyOS ships the open mesa/libglvnd
-        # stack by default and never bundles NVIDIA's proprietary driver.
+        # Offer NVIDIA's driver only to a card that can run it and that is
+        # still on nouveau (or nothing). Maxwell/Pascal/older cards are best
+        # served by nouveau, so they get no button at all.
         needs_nvidia = any(
-            g["vendor"] == "nvidia" and g["driver"] in ("nouveau", "")
+            g["vendor"] == "nvidia" and g["nvidiaOpenSupported"] and g["driver"] in ("nouveau", "")
             for g in gpus
         )
         return {"gpus": gpus, "needsNvidiaDriver": needs_nvidia}
@@ -1495,13 +1506,15 @@ class Backend(QObject):
     @Slot()
     def installNvidiaDrivers(self):
         def task(emit):
-            # nvidia-dkms rebuilds the module against whatever kernel is
+            # nvidia-open-dkms rebuilds the module against whatever kernel is
             # currently installed automatically on every kernel update --
             # more maintenance-free than the plain `nvidia` package
             # (which is tied to one specific kernel package/version), and
             # ReyOS runs the standard `linux` kernel this ships against.
+            if not any(g["nvidiaOpenSupported"] for g in self._compute_driver_status()["gpus"]):
+                return False, "This NVIDIA card is not supported by the current proprietary driver. Keep the open-source nouveau driver."
             result = subprocess.run(
-                ["sudo", "pacman", "-S", "--noconfirm", "--needed", "nvidia-dkms", "nvidia-utils"],
+                ["sudo", "pacman", "-S", "--noconfirm", "--needed", "nvidia-open-dkms", "nvidia-utils"],
                 capture_output=True, text=True,
             )
             ok = result.returncode == 0

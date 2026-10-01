@@ -1,0 +1,99 @@
+#!/usr/bin/env python3
+"""Detect the machine's GPUs from PCI IDs and say which graphics packages fit.
+
+One source of truth for the installer (Calamares), the Control Center Drivers
+page and the Steam install paths, so they cannot disagree. Matching is by PCI
+vendor/device ID, never by substring of the marketing name ("Intel Corporation"
+contains "ati").
+
+  reyos-gpu-detect --json           GPUs found, as JSON
+  reyos-gpu-detect --packages       packages the installer should add (may be empty)
+  reyos-gpu-detect --lib32-vulkan   the 32-bit Vulkan driver Steam needs (may be empty)
+
+NVIDIA: the open kernel module (nvidia-open) needs the GPU System Processor,
+which exists on Turing and newer (PCI device IDs from 0x1e00). Maxwell, Pascal,
+Volta and older cannot use it and are best served by nouveau (mesa).
+"""
+import json
+import os
+import sys
+from pathlib import Path
+
+SYSFS = Path(os.environ.get("REYOS_GPU_SYSFS", "/sys/bus/pci/devices"))
+VENDORS = {0x8086: "intel", 0x1002: "amd", 0x10DE: "nvidia"}
+NVIDIA_OPEN_MIN_DEVICE = 0x1E00
+
+
+def _hex(path):
+    try:
+        return int(path.read_text().strip(), 16)
+    except (OSError, ValueError):
+        return None
+
+
+def detect():
+    gpus = []
+    for dev in sorted(SYSFS.glob("*")):
+        cls = _hex(dev / "class")
+        if cls is None or (cls >> 16) != 0x03:  # display controllers only
+            continue
+        vendor_id, device_id = _hex(dev / "vendor"), _hex(dev / "device")
+        if vendor_id is None or device_id is None:
+            continue
+        vendor = VENDORS.get(vendor_id, "other")
+        gpu = {
+            "vendor": vendor,
+            "vendorId": f"{vendor_id:04x}",
+            "deviceId": f"{device_id:04x}",
+            "slot": dev.name,
+        }
+        if vendor == "nvidia":
+            gpu["nvidiaOpenSupported"] = device_id >= NVIDIA_OPEN_MIN_DEVICE
+        gpus.append(gpu)
+    return gpus
+
+
+def vendors(gpus):
+    return {g["vendor"] for g in gpus}
+
+
+def install_packages(gpus):
+    # Proprietary driver only on an NVIDIA-only machine with a Turing+ card.
+    # Laptops with an Intel/AMD GPU as well stay on mesa (no NVIDIA EGL/Vulkan
+    # ICD taking over); the Control Center Drivers page can add it by choice.
+    nv = [g for g in gpus if g["vendor"] == "nvidia"]
+    others = [g for g in gpus if g["vendor"] in ("intel", "amd")]
+    if nv and not others and all(g["nvidiaOpenSupported"] for g in nv):
+        return ["nvidia-open-dkms", "nvidia-utils"]
+    return []
+
+
+def lib32_vulkan(gpus):
+    v = vendors(gpus)
+    if "intel" in v:
+        return "lib32-vulkan-intel"
+    if "amd" in v:
+        return "lib32-vulkan-radeon"
+    nv = [g for g in gpus if g["vendor"] == "nvidia"]
+    if nv:
+        return "lib32-nvidia-utils" if all(g["nvidiaOpenSupported"] for g in nv) else "lib32-vulkan-nouveau"
+    return ""
+
+
+def main(argv):
+    gpus = detect()
+    mode = argv[1] if len(argv) > 1 else "--json"
+    if mode == "--json":
+        print(json.dumps(gpus))
+    elif mode == "--packages":
+        print(" ".join(install_packages(gpus)))
+    elif mode == "--lib32-vulkan":
+        print(lib32_vulkan(gpus))
+    else:
+        print(__doc__, file=sys.stderr)
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

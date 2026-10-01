@@ -130,6 +130,15 @@ class InstallWorker(QThread):
                 # shellprocess_sudoers_reyos_menu.conf) instead of an
                 # unpredictable combined argv sudoers could never match.
                 for group in self.pacman_groups:
+                    if group.split()[0] == "steam":
+                        # Steam needs a 32-bit Vulkan driver. Without one pacman
+                        # picks a provider itself and has pulled in nvidia-utils
+                        # on non-NVIDIA machines, so install the matching one first.
+                        vk = subprocess.run(["/usr/share/reyos/bin/reyos-gpu-detect", "--lib32-vulkan"],
+                                            capture_output=True, text=True).stdout.strip()
+                        if vk:
+                            self.progress.emit(f"Installing: {vk}")
+                            self._run(["sudo", "pacman", "-S", "--needed", "--noconfirm", vk])
                     self.progress.emit(f"Installing: {group}")
                     rc = self._run(["sudo", "pacman", "-S", "--needed", "--noconfirm"] + group.split())
                     if rc != 0:

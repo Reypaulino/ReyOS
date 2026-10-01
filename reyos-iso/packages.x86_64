@@ -154,6 +154,14 @@ plasma-x11-session
 # video, no GPU passthrough). Confirmed blocking mkarchiso 2026-08-11.
 mesa
 libglvnd
+# Open-source Vulkan + video decode for every vendor (see reyos-gpu-detect). Shipping
+# these also means a later `pacman -S steam` finds vulkan-driver already satisfied
+# instead of pulling nvidia-utils as the default provider.
+vulkan-intel
+vulkan-radeon
+vulkan-nouveau
+intel-media-driver
+libva-intel-driver
 sddm
 # sddm's Depends are Qt6-only, but the breeze greeter theme needs Qt5
 # QML (libQt5Quick/Qml/Network/Gui/Core) -- qt5-declarative is only an
