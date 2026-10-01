@@ -28,6 +28,7 @@ _PANEL_THEME_SRC = Path("/usr/share/plasma/desktoptheme/ReyOS")
 _PANEL_FILL_DARK = "#14100d"
 _PANEL_FILL_LIGHT = "#eff0f1"
 PANEL_OPACITY_DEFAULT = 82
+_PANEL_SEE_THROUGH = 0.6
 
 
 def _kread(file, group, key, default=""):
@@ -116,9 +117,16 @@ def _write_panel_theme():
     would otherwise keep serving the previously rendered panel."""
     if not (_PANEL_THEME_SRC / "metadata.json").is_file():
         return
-    fill = _PANEL_FILL_LIGHT if _is_light_mode() else _PANEL_FILL_DARK
-    rim = "#" + "".join(f"{int(c):02x}" for c in _look_accent_rgb(_current_look_id()).split(","))
+    light = _is_light_mode()
     opacity = _panel_opacity() / 100
+    # A see-through bar shows the (dark) wallpaper, so a light Look's dark text
+    # vanished on it (real report, slider at 15%). Below this opacity the bar
+    # is tinted dark and the Plasma shell gets the Look's dark palette (the
+    # theme's colors file below), so bar text is white.
+    dark_bar = not light or opacity < _PANEL_SEE_THROUGH
+    fill = _PANEL_FILL_DARK if dark_bar else _PANEL_FILL_LIGHT
+    look_id = _current_look_id()
+    rim = "#" + "".join(f"{int(c):02x}" for c in _look_accent_rgb(look_id).split(","))
     dest = Path.home() / ".local" / "share" / "plasma" / "desktoptheme" / "ReyOS"
     dest.mkdir(parents=True, exist_ok=True)
     shutil.copy2(_PANEL_THEME_SRC / "metadata.json", dest / "metadata.json")
@@ -133,6 +141,12 @@ def _write_panel_theme():
         out = dest / rel
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(text)
+    colors = dest / "colors"
+    dark_scheme = Path("/usr/share/color-schemes") / f"{_scheme_for(look_id, False)}.colors"
+    if light and dark_bar and dark_scheme.is_file():
+        shutil.copy2(dark_scheme, colors)
+    else:
+        colors.unlink(missing_ok=True)
     # The ReyOS Plasma theme only arrived with reyos-themes 1.0.0-55-ish
     # (2026-09-28), and reyos-apply-branding.sh selects it only once, at
     # first login -- so any install from an older ISO still runs stock
@@ -531,6 +545,13 @@ def main():
             _recolor_look_assets(_current_look_id())
         except Exception as exc:
             print(f"reyos: could not reapply Look colors: {exc}", file=sys.stderr)
+        # Refresh the per-user bar theme (if Control Center made one) so an
+        # update to its rules reaches existing accounts; runs before plasmashell.
+        if (Path.home() / ".local/share/plasma/desktoptheme/ReyOS/metadata.json").is_file():
+            try:
+                _write_panel_theme()
+            except Exception as exc:
+                print(f"reyos: could not refresh the bar theme: {exc}", file=sys.stderr)
 
 
 if __name__ == "__main__":
