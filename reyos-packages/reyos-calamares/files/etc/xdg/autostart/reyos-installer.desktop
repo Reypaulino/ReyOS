@@ -2,7 +2,7 @@
 Type=Application
 Name=Install ReyOS
 Comment=Start the ReyOS installer in the live session
-Exec=/usr/share/reyos/bin/reyos-launch-installer
+Exec=/usr/share/reyos/bin/reyos-launch-installer --autostart
 Icon=drive-harddisk-install
 Terminal=false
 OnlyShowIn=KDE;

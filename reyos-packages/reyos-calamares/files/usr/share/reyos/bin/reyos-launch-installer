@@ -9,8 +9,11 @@ set -euo pipefail
 # installed system's cmdline the same session. Same fix applied to
 # reyos-control-center-gui's and reyos-welcome's equivalent checks.
 if ! grep -qE "archisobasedir=|archisolabel=" /proc/cmdline; then
+    # Autostart also exists on the installed system: stay silent there.
+    [ "${1:-}" = "--autostart" ] && exit 0
     kdialog --error "ReyOS Installer is available only from the live session."
     exit 1
 fi
 
+[ "${1:-}" = "--autostart" ] && shift
 exec sudo -n /usr/bin/calamares "$@"
