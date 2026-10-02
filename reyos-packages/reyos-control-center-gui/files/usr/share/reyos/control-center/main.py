@@ -222,6 +222,39 @@ def _purge_stale_download_sandboxes():
     )
 
 
+class _ThreadKeeper(QObject):
+    # Dropping the last reference to a running QThread aborts the whole app
+    # (qFatal), and every page replaces its worker attribute when reopened.
+    # Hold each started worker here until its thread has really finished.
+    def __init__(self):
+        super().__init__()
+        self._live = set()
+
+    def keep(self, thread):
+        self._live.add(thread)
+        thread.finished.connect(self._release)
+
+    @Slot()
+    def _release(self):
+        thread = self.sender()
+        if thread in self._live:
+            thread.wait()
+            self._live.discard(thread)
+
+    def wait_all(self):
+        for thread in list(self._live):
+            thread.wait()
+
+
+_THREADS = _ThreadKeeper()
+
+
+class _Worker(QThread):
+    def start(self, *args):
+        _THREADS.keep(self)
+        super().start(*args)
+
+
 class StatsWorker(QThread):
     statsReady = Signal("QVariantMap")
 
@@ -305,7 +338,7 @@ class StatsWorker(QThread):
 _PKG_CHANGED_RE = re.compile(r"^(?:\(\s*\d+/\d+\)\s*)?(?:upgrading|installing|reinstalling) \S")
 
 
-class PkgWorker(QThread):
+class PkgWorker(_Worker):
     progress = Signal(str)
     finished_ok = Signal(bool, str)
 
@@ -417,7 +450,7 @@ def _die_with_parent():
     ctypes.CDLL("libc.so.6", use_errno=True).prctl(1, signal.SIGTERM)
 
 
-class ActionWorker(QThread):
+class ActionWorker(_Worker):
     progress = Signal(str)
     finished_ok = Signal(bool, str)
 
@@ -433,7 +466,7 @@ class ActionWorker(QThread):
             self.finished_ok.emit(False, str(e))
 
 
-class ControllerSetupWorker(QThread):
+class ControllerSetupWorker(_Worker):
     """Walks CONTROLLER_STEPS on one pad, then writes the RetroArch profile."""
     step = Signal(int, int, str, str, str, str)
     done = Signal(bool, str)
@@ -476,7 +509,7 @@ class ControllerSetupWorker(QThread):
             reader.close()
 
 
-class InfoWorker(QThread):
+class InfoWorker(_Worker):
     ready = Signal("QVariantMap")
 
     def __init__(self, fn):
@@ -487,7 +520,7 @@ class InfoWorker(QThread):
         self.ready.emit(self.fn())
 
 
-class ListWorker(QThread):
+class ListWorker(_Worker):
     ready = Signal("QVariantList")
 
     def __init__(self, fn):
@@ -3554,6 +3587,9 @@ def main():
     backend = Backend()
     app.aboutToQuit.connect(backend.stopStatsWorker)
     app.aboutToQuit.connect(Backend._bt_stop_scan)
+    app.aboutToQuit.connect(backend.cancelControllerSetup)
+    # A package update still running when the window closes finishes first.
+    app.aboutToQuit.connect(_THREADS.wait_all)
     engine.rootContext().setContextProperty("backend", backend)
     engine.rootContext().setContextProperty("reyosAccentColor", _reyos_accent_color())
     # Lets launchers (e.g. ReyOS Welcome's "Check for Updates" button) open
