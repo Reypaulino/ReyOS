@@ -384,20 +384,30 @@ class PkgWorker(_Worker):
                 if rc != 0:
                     self.finished_ok.emit(False, "Full update failed.")
                     return
+                _record_successful_update(emit)
+                # The system itself is updated now; the clean-up steps below
+                # can fail without undoing that, so name them instead of
+                # reporting a plain success.
+                failed = []
                 emit("[2/3] Removing orphaned packages...")
                 orphans = subprocess.run(
                     ["pacman", "-Qtdq"], capture_output=True, text=True
                 ).stdout.split()
                 if orphans:
                     _wait_for_pacman_lock(emit)
-                    _run(["sudo", "pacman", "-Rns", "--noconfirm"] + orphans, emit)
+                    if _run(["sudo", "pacman", "-Rns", "--noconfirm"] + orphans, emit) != 0:
+                        failed.append("removing orphaned packages")
                 _purge_stale_download_sandboxes()
                 _wait_for_pacman_lock(emit)
-                _run(["sudo", "pacman", "-Sc", "--noconfirm"], emit)
+                if _run(["sudo", "pacman", "-Sc", "--noconfirm"], emit) != 0:
+                    failed.append("cleaning the package cache")
                 emit("[3/3] Flatpak update...")
-                _run(["flatpak", "update", "-y"], emit)
-                _record_successful_update(emit)
-                self.finished_ok.emit(True, "Full update complete.")
+                if _run(["flatpak", "update", "-y"], emit) != 0:
+                    failed.append("updating Flatpak apps")
+                if failed:
+                    self.finished_ok.emit(True, "System updated, but " + " and ".join(failed) + " failed -- see the log.")
+                else:
+                    self.finished_ok.emit(True, "Full update complete.")
             elif self.action == "reyos":
                 _wait_for_pacman_lock(emit)
                 emit("$ sudo pacman -Sy")
