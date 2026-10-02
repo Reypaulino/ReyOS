@@ -43,7 +43,8 @@ Kirigami.ScrollablePage {
         return best
     }
 
-    Component.onCompleted: backend.refreshScreenSleep()
+    Component.onCompleted: { backend.setStatsActive(true); backend.refreshScreenSleep() }
+    Component.onDestruction: backend.setStatsActive(false)
 
     Connections {
         target: backend

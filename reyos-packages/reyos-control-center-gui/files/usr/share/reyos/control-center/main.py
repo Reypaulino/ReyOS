@@ -10,6 +10,7 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -255,15 +256,44 @@ class _Worker(QThread):
         super().start(*args)
 
 
+def _meminfo():
+    info = {}
+    with open("/proc/meminfo") as f:
+        for line in f:
+            key, _, rest = line.partition(":")
+            info[key] = int(rest.split()[0])
+    return info
+
+
+def _pretty_uptime(seconds):
+    # Same wording as procps' `uptime -p`, e.g. "2 days, 1 hour, 5 minutes".
+    minutes = int(seconds) // 60
+    parts = []
+    for name, size in (("week", 7 * 24 * 60), ("day", 24 * 60), ("hour", 60), ("minute", 1)):
+        n, minutes = divmod(minutes, size)
+        if n or (name == "minute" and not parts):
+            parts.append(f"{n} {name}{'' if n == 1 else 's'}")
+    return ", ".join(parts)
+
+
 class StatsWorker(QThread):
     statsReady = Signal("QVariantMap")
 
     def __init__(self):
         super().__init__()
         self._stop = False
+        # Only sample while a page that shows these numbers is open.
+        self._wanted = threading.Event()
 
     def stop(self):
         self._stop = True
+        self._wanted.set()
+
+    def set_active(self, active):
+        if active:
+            self._wanted.set()
+        else:
+            self._wanted.clear()
 
     def _cpu_times(self):
         with open("/proc/stat") as f:
@@ -272,6 +302,9 @@ class StatsWorker(QThread):
 
     def run(self):
         while not self._stop:
+            self._wanted.wait()
+            if self._stop:
+                break
             t1 = self._cpu_times()
             time.sleep(0.2)
             if self._stop:
@@ -282,17 +315,17 @@ class StatsWorker(QThread):
             denom = (total2 - total1) or 1
             cpu_pct = round((1 - (idle2 - idle1) / denom) * 100, 1)
 
+            # Read straight from procfs: the same numbers `free -m` prints
+            # (procps-ng 4: used = total - available), without starting three
+            # helper processes every two seconds.
             mem_total = mem_used = swap_total = swap_used = 0
             try:
-                out = subprocess.check_output(["free", "-m"], text=True)
-                for line in out.splitlines():
-                    if line.startswith("Mem:"):
-                        parts = line.split()
-                        mem_total, mem_used = int(parts[1]), int(parts[2])
-                    elif line.startswith("Swap:"):
-                        parts = line.split()
-                        swap_total, swap_used = int(parts[1]), int(parts[2])
-            except Exception:
+                mem = _meminfo()
+                mem_total = mem["MemTotal"] // 1024
+                mem_used = (mem["MemTotal"] - mem.get("MemAvailable", mem["MemFree"])) // 1024
+                swap_total = mem.get("SwapTotal", 0) // 1024
+                swap_used = (mem.get("SwapTotal", 0) - mem.get("SwapFree", 0)) // 1024
+            except (OSError, KeyError, ValueError):
                 pass
             mem_pct = round((mem_used / mem_total) * 100) if mem_total else 0
 
@@ -307,17 +340,13 @@ class StatsWorker(QThread):
                 swappiness = 0
 
             try:
-                swap_on = subprocess.run(
-                    ["swapon", "--show"], capture_output=True, text=True
-                ).stdout.strip()
-                swap_status = "ON" if swap_on else "OFF"
-            except Exception:
+                swap_status = "ON" if len(Path("/proc/swaps").read_text().splitlines()) > 1 else "OFF"
+            except OSError:
                 swap_status = "OFF"
 
             try:
-                uptime = subprocess.check_output(["uptime", "-p"], text=True).strip()
-                uptime = uptime.removeprefix("up ")
-            except Exception:
+                uptime = _pretty_uptime(float(Path("/proc/uptime").read_text().split()[0]))
+            except (OSError, ValueError, IndexError):
                 uptime = "N/A"
 
             self.statsReady.emit({
@@ -328,7 +357,7 @@ class StatsWorker(QThread):
             })
 
             for _ in range(9):
-                if self._stop:
+                if self._stop or not self._wanted.is_set():
                     break
                 time.sleep(0.2)
 
@@ -640,6 +669,13 @@ class Backend(QObject):
             self.actionFinished.emit(True, "Opening Timeshift -- it will ask for your password.")
         except FileNotFoundError:
             self.actionFinished.emit(False, "Timeshift is not installed yet. Reboot into the next ReyOS ISO build.")
+
+    @Slot(bool)
+    def setStatsActive(self, active):
+        # Counted, not a flag: when one stats page replaces another, the new
+        # page's onCompleted runs before the old page's onDestruction.
+        self._stats_users = max(0, getattr(self, "_stats_users", 0) + (1 if active else -1))
+        self._stats_worker.set_active(self._stats_users > 0)
 
     def stopStatsWorker(self):
         self._stats_worker.stop()

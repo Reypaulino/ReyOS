@@ -24,7 +24,8 @@ Kirigami.ScrollablePage {
     property string cpuModel: "…"
     property string gpuModel: "…"
 
-    Component.onCompleted: backend.refreshAboutInfo()
+    Component.onCompleted: { backend.setStatsActive(true); backend.refreshAboutInfo() }
+    Component.onDestruction: backend.setStatsActive(false)
 
     Connections {
         target: backend
