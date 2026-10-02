@@ -30,9 +30,12 @@ class CoverWorker(QThread):
     def __init__(self, todo):
         super().__init__()
         self.todo = todo
+        self.cancelled = False
 
     def run(self):
         for system, rom in self.todo:
+            if self.cancelled:
+                return
             try:
                 cover = emulation.fetch_cover(system, rom)
             except (OSError, ValueError):
@@ -111,12 +114,22 @@ class GamesBackend(QObject):
         if self._cover_worker is not None and self._cover_worker.isRunning():
             return
         todo = [(s, p) for s in EMU_SYSTEMS for p in emulation.scan_games(s)
-                if not emulation.local_cover(s, p)
-                and not (emulation.BOXART_CACHE / s["id"] / (p.stem + ".png")).exists()]
+                if not emulation.local_cover(s, p) and not emulation.cover_cached(s, p)]
         if todo:
             self._cover_worker = CoverWorker(todo)
             self._cover_worker.coverReady.connect(self.coverReady.emit)
             self._cover_worker.start()
+
+    def stop(self):
+        # A download can take up to its 30 s timeout. Every cache write is
+        # atomic (.part + rename), so if it hasn't stopped after a moment,
+        # leave without waiting -- destroying the still-running QThread
+        # during normal shutdown would abort the process instead.
+        worker = self._cover_worker
+        if worker is not None and worker.isRunning():
+            worker.cancelled = True
+            if not worker.wait(2000):
+                os._exit(0)
 
     @Slot(str, str)
     def launchGame(self, system_id, path):
@@ -147,6 +160,7 @@ def main():
     app.setWindowIcon(QIcon.fromTheme("applications-games"))
     engine = QQmlApplicationEngine()
     backend = GamesBackend()
+    app.aboutToQuit.connect(backend.stop)
     engine.rootContext().setContextProperty("backend", backend)
     engine.load(QUrl.fromLocalFile(str(APP_DIR / "qml" / "GamesMain.qml")))
     if not engine.rootObjects():

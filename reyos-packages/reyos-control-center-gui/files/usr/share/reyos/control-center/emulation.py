@@ -847,7 +847,9 @@ def _thumb_index(folder):
         html = resp.read().decode("utf-8", "replace")
     names = [urllib.parse.unquote(n) for n in re.findall(r'href="([^"/?]+\.png)"', html)]
     cache.parent.mkdir(parents=True, exist_ok=True)
-    cache.write_text("\n".join(names))
+    tmp = cache.with_suffix(".part")
+    tmp.write_text("\n".join(names))
+    tmp.replace(cache)
     return names
 
 
@@ -871,13 +873,27 @@ def _best_match(title, names):
     return min(hits, key=rank)
 
 
+_MISSING_COVER_TTL = 30 * 86400
+
+
+def cover_cached(system, rom):
+    """Box art is cached, or was looked up within the last 30 days and not
+    found (an empty file); after that the lookup runs again, in case the
+    libretro-thumbnails project has added it since."""
+    try:
+        st = (BOXART_CACHE / system["id"] / (Path(rom).stem + ".png")).stat()
+    except OSError:
+        return False
+    return st.st_size > 0 or time.time() - st.st_mtime < _MISSING_COVER_TTL
+
+
 def fetch_cover(system, rom):
     """Download box art for one game into the cache. Returns the cover path,
     or "" when none was found (remembered with an empty file, so a game
     with no box art isn't looked up again on every visit)."""
     rom = Path(rom)
     target = BOXART_CACHE / system["id"] / (rom.stem + ".png")
-    if target.exists():
+    if cover_cached(system, rom):
         return str(target) if target.stat().st_size > 0 else ""
     target.parent.mkdir(parents=True, exist_ok=True)
     for folder in system.get("thumbs", []):
