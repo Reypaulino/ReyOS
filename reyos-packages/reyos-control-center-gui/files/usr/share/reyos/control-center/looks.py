@@ -486,7 +486,7 @@ def _recolor_look_assets(look_id):
                 any_staged = True
 
         if any_staged:
-            subprocess.run(["sudo", "/usr/share/reyos/bin/reyos-apply-look-icons.sh"])
+            subprocess.run(["sudo", "-n", "/usr/share/reyos/bin/reyos-apply-look-icons.sh"])
             # Only when something changed -- this also runs at every login
             # (--reapply-look), where a full rebuild each time would just
             # slow the session start down for nothing.

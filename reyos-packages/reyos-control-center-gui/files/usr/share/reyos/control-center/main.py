@@ -67,8 +67,8 @@ REYOS_DEFAULT_APPS = ["reyos-reader", "reyos-shortcuts-cheatsheet"]
 
 
 PKG_ACTIONS = {
-    "check":   (["sudo", "pacman", "-Sy"], None),
-    "upgrade": (["sudo", "pacman", "-Syu", "--noconfirm"], None),
+    "check":   (["sudo", "-n", "pacman", "-Sy"], None),
+    "upgrade": (["sudo", "-n", "pacman", "-Syu", "--noconfirm"], None),
     # "full" and "clean" are handled specially in PkgWorker (multiple commands).
     "full":    (None, None),
     "clean":   (None, None),
@@ -217,7 +217,7 @@ def _purge_stale_download_sandboxes():
     # which reads as a real error even though it's just cache noise. These
     # accumulate silently over time, so sweep them before every cache clean.
     subprocess.run(
-        ["sudo", "find", "/var/cache/pacman/pkg", "-mindepth", "1", "-maxdepth", "1",
+        ["sudo", "-n", "find", "/var/cache/pacman/pkg", "-mindepth", "1", "-maxdepth", "1",
          "-type", "d", "-name", "download-*", "-exec", "rm", "-rf", "{}", "+"],
         capture_output=True,
     )
@@ -440,14 +440,14 @@ class PkgWorker(_Worker):
             elif self.action == "upgrade":
                 _wait_for_pacman_lock(emit)
                 emit("$ sudo pacman -Syu --noconfirm")
-                rc = _run(["sudo", "pacman", "-Syu", "--noconfirm"], emit)
+                rc = _run(["sudo", "-n", "pacman", "-Syu", "--noconfirm"], emit)
                 if rc == 0:
                     _record_successful_update(emit)
                 self.finished_ok.emit(rc == 0, "Updates installed." if rc == 0 else "Update failed.")
             elif self.action == "full":
                 _wait_for_pacman_lock(emit)
                 emit("[1/3] Syncing + upgrading...")
-                rc = _run(["sudo", "pacman", "-Syu", "--noconfirm"], emit)
+                rc = _run(["sudo", "-n", "pacman", "-Syu", "--noconfirm"], emit)
                 if rc != 0:
                     self.finished_ok.emit(False, "Full update failed.")
                     return
@@ -462,11 +462,11 @@ class PkgWorker(_Worker):
                 ).stdout.split()
                 if orphans:
                     _wait_for_pacman_lock(emit)
-                    if _run(["sudo", "pacman", "-Rns", "--noconfirm"] + orphans, emit) != 0:
+                    if _run(["sudo", "-n", "pacman", "-Rns", "--noconfirm"] + orphans, emit) != 0:
                         failed.append("removing orphaned packages")
                 _purge_stale_download_sandboxes()
                 _wait_for_pacman_lock(emit)
-                if _run(["sudo", "pacman", "-Sc", "--noconfirm"], emit) != 0:
+                if _run(["sudo", "-n", "pacman", "-Sc", "--noconfirm"], emit) != 0:
                     failed.append("cleaning the package cache")
                 emit("[3/3] Flatpak update...")
                 if _run(["flatpak", "update", "-y"], emit) != 0:
@@ -478,7 +478,7 @@ class PkgWorker(_Worker):
             elif self.action == "reyos":
                 _wait_for_pacman_lock(emit)
                 emit("$ sudo pacman -Sy")
-                rc = _run(["sudo", "pacman", "-Sy"], emit)
+                rc = _run(["sudo", "-n", "pacman", "-Sy"], emit)
                 if rc != 0:
                     self.finished_ok.emit(False, "Could not sync package databases.")
                     return
@@ -498,7 +498,7 @@ class PkgWorker(_Worker):
                     return
                 emit("Updating: " + ", ".join(to_install))
                 _wait_for_pacman_lock(emit)
-                rc = _run(["sudo", "pacman", "-S", "--needed", "--noconfirm"] + to_install, emit)
+                rc = _run(["sudo", "-n", "pacman", "-S", "--needed", "--noconfirm"] + to_install, emit)
                 self.finished_ok.emit(rc == 0, f"Updated {len(to_install)} ReyOS app(s)." if rc == 0 else "Update failed.")
             elif self.action == "clean":
                 orphans = subprocess.run(
@@ -507,12 +507,12 @@ class PkgWorker(_Worker):
                 if orphans:
                     emit("Removing: " + " ".join(orphans))
                     _wait_for_pacman_lock(emit)
-                    _run(["sudo", "pacman", "-Rns", "--noconfirm"] + orphans, emit)
+                    _run(["sudo", "-n", "pacman", "-Rns", "--noconfirm"] + orphans, emit)
                 else:
                     emit("No orphaned packages.")
                 _purge_stale_download_sandboxes()
                 _wait_for_pacman_lock(emit)
-                _run(["sudo", "pacman", "-Sc", "--noconfirm"], emit)
+                _run(["sudo", "-n", "pacman", "-Sc", "--noconfirm"], emit)
                 self.finished_ok.emit(True, "Cache cleaned.")
         except Exception as e:
             self.finished_ok.emit(False, str(e))
@@ -818,10 +818,10 @@ class Backend(QObject):
             # breaking visudo -c for the whole sudoers file).
             if "#[multilib]" in Path("/etc/pacman.conf").read_text():
                 emit("Enabling multilib repository...")
-                _run(["sudo", "/usr/share/reyos/welcome/enable-multilib.sh"], emit)
+                _run(["sudo", "-n", "/usr/share/reyos/welcome/enable-multilib.sh"], emit)
 
             emit("$ sudo pacman -Sy --noconfirm")
-            rc = _run(["sudo", "pacman", "-Sy", "--noconfirm"], emit)
+            rc = _run(["sudo", "-n", "pacman", "-Sy", "--noconfirm"], emit)
             if rc != 0:
                 return False, "Could not sync package databases -- check your network connection."
 
@@ -843,7 +843,7 @@ class Backend(QObject):
                 groups.insert(0, [vk])
             for group in groups:
                 emit("$ sudo pacman -S --needed --noconfirm " + " ".join(group))
-                rc = _run(["sudo", "pacman", "-S", "--needed", "--noconfirm"] + group, emit)
+                rc = _run(["sudo", "-n", "pacman", "-S", "--needed", "--noconfirm"] + group, emit)
                 if rc != 0:
                     return False, f"Install failed ({' '.join(group)}) -- check your network connection and try again."
 
@@ -1138,7 +1138,7 @@ class Backend(QObject):
     @staticmethod
     def _write_governor(paths, gov):
         return all(
-            subprocess.run(["sudo", "tee", p], input=gov, capture_output=True, text=True).returncode == 0
+            subprocess.run(["sudo", "-n", "tee", p], input=gov, capture_output=True, text=True).returncode == 0
             for p in paths
         )
 
@@ -1146,10 +1146,10 @@ class Backend(QObject):
     def _apply_swappiness(value):
         # `sysctl -w` only touches live kernel state -- the sysctl.d drop-in
         # makes it survive a reboot instead of silently reverting.
-        live = subprocess.run(["sudo", "sysctl", "-w", f"vm.swappiness={value}"],
+        live = subprocess.run(["sudo", "-n", "sysctl", "-w", f"vm.swappiness={value}"],
                               capture_output=True).returncode == 0
         saved = subprocess.run(
-            ["sudo", "tee", "/etc/sysctl.d/99-reyos-swappiness.conf"],
+            ["sudo", "-n", "tee", "/etc/sysctl.d/99-reyos-swappiness.conf"],
             input=f"vm.swappiness={value}\n", capture_output=True, text=True,
         ).returncode == 0
         return live and saved
@@ -1217,21 +1217,21 @@ class Backend(QObject):
                 # boot, so mask it (an /etc/systemd/system mask always wins
                 # over that generated unit) rather than editing fstab directly.
                 units = [Backend._swap_unit_for_device(d) for d in swap_on]
-                subprocess.run(["sudo", "swapoff", "-a"], capture_output=True)
+                subprocess.run(["sudo", "-n", "swapoff", "-a"], capture_output=True)
                 for unit in units:
                     if unit:
-                        subprocess.run(["sudo", "systemctl", "mask", unit], capture_output=True)
+                        subprocess.run(["sudo", "-n", "systemctl", "mask", unit], capture_output=True)
                 if Backend._active_swaps():
                     return False, "Couldn't turn swap off."
                 return True, "Swap disabled (stays off after reboot)."
             units = Backend._masked_swap_units()
             for unit in units:
-                subprocess.run(["sudo", "systemctl", "unmask", unit], capture_output=True)
+                subprocess.run(["sudo", "-n", "systemctl", "unmask", unit], capture_output=True)
             # zram swap (ReyOS's default) has no fstab line, so swapon -a
             # alone never brings it back -- start its unit as well.
             for unit in units:
-                subprocess.run(["sudo", "systemctl", "start", unit], capture_output=True)
-            subprocess.run(["sudo", "swapon", "-a"], capture_output=True)
+                subprocess.run(["sudo", "-n", "systemctl", "start", unit], capture_output=True)
+            subprocess.run(["sudo", "-n", "swapon", "-a"], capture_output=True)
             if not Backend._active_swaps():
                 return False, "Couldn't turn swap on -- no swap device came up."
             return True, "Swap enabled."
@@ -1767,7 +1767,7 @@ class Backend(QObject):
             if not any(g["nvidiaOpenSupported"] for g in self._compute_driver_status()["gpus"]):
                 return False, "This NVIDIA card is not supported by the current proprietary driver. Keep the open-source nouveau driver."
             result = subprocess.run(
-                ["sudo", "pacman", "-S", "--noconfirm", "--needed", "nvidia-open-dkms", "nvidia-utils"],
+                ["sudo", "-n", "pacman", "-S", "--noconfirm", "--needed", "nvidia-open-dkms", "nvidia-utils"],
                 capture_output=True, text=True,
             )
             ok = result.returncode == 0
@@ -1939,7 +1939,7 @@ class Backend(QObject):
     def removePackage(self, pkgname):
         def task(emit):
             _wait_for_pacman_lock(emit)
-            rc = _run(["sudo", "pacman", "-Rns", "--noconfirm", pkgname], emit)
+            rc = _run(["sudo", "-n", "pacman", "-Rns", "--noconfirm", pkgname], emit)
             return rc == 0, (
                 f"Removed: {pkgname}" if rc == 0
                 else f"Failed to remove {pkgname} -- it may still be required by another package."
@@ -2083,7 +2083,7 @@ class Backend(QObject):
     @Slot(str, bool)
     def setServiceActive(self, unit, start):
         def task(emit):
-            rc = _run(["sudo", "systemctl", "start" if start else "stop", unit], emit)
+            rc = _run(["sudo", "-n", "systemctl", "start" if start else "stop", unit], emit)
             verb = "started" if start else "stopped"
             return rc == 0, (f"{unit}: {verb}." if rc == 0 else f"Failed to {'start' if start else 'stop'} {unit}.")
         self._run_action(task)
@@ -2091,7 +2091,7 @@ class Backend(QObject):
     @Slot(str, bool)
     def setServiceEnabled(self, unit, enable):
         def task(emit):
-            rc = _run(["sudo", "systemctl", "enable" if enable else "disable", unit], emit)
+            rc = _run(["sudo", "-n", "systemctl", "enable" if enable else "disable", unit], emit)
             verb = "enabled" if enable else "disabled"
             return rc == 0, (f"{unit}: {verb}." if rc == 0 else f"Failed to {verb} {unit}.")
         self._run_action(task)
@@ -2105,7 +2105,7 @@ class Backend(QObject):
     def _compute_firewall_status():
         try:
             out = subprocess.check_output(
-                ["sudo", "ufw", "status", "verbose"], text=True, stderr=subprocess.STDOUT,
+                ["sudo", "-n", "ufw", "status", "verbose"], text=True, stderr=subprocess.STDOUT,
             )
         except Exception as e:
             return {"enabled": False, "rules": [], "error": str(e)}
@@ -2117,7 +2117,7 @@ class Backend(QObject):
         rules = []
         try:
             numbered = subprocess.check_output(
-                ["sudo", "ufw", "status", "numbered"], text=True, stderr=subprocess.STDOUT,
+                ["sudo", "-n", "ufw", "status", "numbered"], text=True, stderr=subprocess.STDOUT,
             )
             for line in numbered.splitlines():
                 line = line.strip()
@@ -2147,9 +2147,9 @@ class Backend(QObject):
                 # out of SSH, had to recover via the VM's virtual
                 # keyboard/mouse). If sshd is actually running, open 22/tcp
                 # first so enabling never strands an active SSH session.
-                subprocess.run(["sudo", "ufw", "allow", "22/tcp"], capture_output=True)
+                subprocess.run(["sudo", "-n", "ufw", "allow", "22/tcp"], capture_output=True)
                 note = " (SSH access on 22/tcp was kept open automatically.)"
-            cmd = ["sudo", "ufw", "--force", "enable"] if enable else ["sudo", "ufw", "disable"]
+            cmd = ["sudo", "-n", "ufw", "--force", "enable"] if enable else ["sudo", "-n", "ufw", "disable"]
             rc = subprocess.run(cmd, capture_output=True, text=True).returncode
             if rc != 0:
                 return False, "Failed to change firewall state."
@@ -2163,7 +2163,7 @@ class Backend(QObject):
             if not port:
                 return False, "Enter a port (e.g. 22 or 22/tcp) or service name."
             verb = "allow" if allow else "deny"
-            result = subprocess.run(["sudo", "ufw", verb, port], capture_output=True, text=True)
+            result = subprocess.run(["sudo", "-n", "ufw", verb, port], capture_output=True, text=True)
             ok = result.returncode == 0
             return ok, (f"Rule added: {verb} {port}" if ok else (result.stderr.strip() or result.stdout.strip() or "Failed to add rule."))
         self._run_action(task)
@@ -2172,7 +2172,7 @@ class Backend(QObject):
     def removeFirewallRule(self, rule_num):
         def task(emit):
             result = subprocess.run(
-                ["sudo", "ufw", "--force", "delete", rule_num], capture_output=True, text=True,
+                ["sudo", "-n", "ufw", "--force", "delete", rule_num], capture_output=True, text=True,
             )
             ok = result.returncode == 0
             return ok, (f"Rule {rule_num} removed." if ok else (result.stderr.strip() or "Failed to remove rule."))
@@ -2193,7 +2193,7 @@ class Backend(QObject):
         active = ""
         try:
             out = subprocess.check_output(
-                ["sudo", "wg", "show", "interfaces"], text=True, stderr=subprocess.DEVNULL,
+                ["sudo", "-n", "wg", "show", "interfaces"], text=True, stderr=subprocess.DEVNULL,
             ).split()
             active = out[0] if out else ""
         except Exception:
@@ -2227,7 +2227,7 @@ class Backend(QObject):
                 return False, f"File not found: {src}"
             name = Path(src).stem
             rc = subprocess.run(
-                ["sudo", "install", "-Dm600", src, f"/etc/wireguard/{name}.conf"]
+                ["sudo", "-n", "install", "-Dm600", src, f"/etc/wireguard/{name}.conf"]
             ).returncode
             return rc == 0, (f'Imported "{name}".' if rc == 0 else "Failed to import config.")
         self._run_action(task)
@@ -2241,15 +2241,15 @@ class Backend(QObject):
             # leave two tunnels racing for the default route.
             try:
                 active = subprocess.check_output(
-                    ["sudo", "wg", "show", "interfaces"], text=True, stderr=subprocess.DEVNULL,
+                    ["sudo", "-n", "wg", "show", "interfaces"], text=True, stderr=subprocess.DEVNULL,
                 ).split()
             except Exception:
                 active = []
             for iface in active:
                 if iface != name:
-                    subprocess.run(["sudo", "systemctl", "stop", f"wg-quick@{iface}"], capture_output=True)
+                    subprocess.run(["sudo", "-n", "systemctl", "stop", f"wg-quick@{iface}"], capture_output=True)
             result = subprocess.run(
-                ["sudo", "systemctl", "start", f"wg-quick@{name}"], capture_output=True, text=True,
+                ["sudo", "-n", "systemctl", "start", f"wg-quick@{name}"], capture_output=True, text=True,
             )
             ok = result.returncode == 0
             return ok, (f"Connected: {name}" if ok else (result.stderr.strip() or "Failed to connect."))
@@ -2259,7 +2259,7 @@ class Backend(QObject):
     def disconnectVpn(self, name):
         def task(emit):
             result = subprocess.run(
-                ["sudo", "systemctl", "stop", f"wg-quick@{name}"], capture_output=True, text=True,
+                ["sudo", "-n", "systemctl", "stop", f"wg-quick@{name}"], capture_output=True, text=True,
             )
             ok = result.returncode == 0
             return ok, ("Disconnected." if ok else (result.stderr.strip() or "Failed to disconnect."))
@@ -2268,8 +2268,8 @@ class Backend(QObject):
     @Slot(str)
     def deleteVpnConfig(self, name):
         def task(emit):
-            subprocess.run(["sudo", "systemctl", "stop", f"wg-quick@{name}"], capture_output=True)
-            rc = subprocess.run(["sudo", "rm", "-f", f"/etc/wireguard/{name}.conf"]).returncode
+            subprocess.run(["sudo", "-n", "systemctl", "stop", f"wg-quick@{name}"], capture_output=True)
+            rc = subprocess.run(["sudo", "-n", "rm", "-f", f"/etc/wireguard/{name}.conf"]).returncode
             return rc == 0, (f'Removed "{name}".' if rc == 0 else "Failed to remove config.")
         self._run_action(task)
 
@@ -2328,24 +2328,24 @@ class Backend(QObject):
             # turning this on without one risks locking out a USB
             # keyboard/mouse the moment the service comes up.
             policy = subprocess.run(
-                ["sudo", "usbguard", "generate-policy"], capture_output=True, text=True,
+                ["sudo", "-n", "usbguard", "generate-policy"], capture_output=True, text=True,
             )
             if policy.returncode != 0:
                 return False, "Failed to generate a USB device policy."
             write = subprocess.run(
-                ["sudo", "tee", "/etc/usbguard/rules.conf"],
+                ["sudo", "-n", "tee", "/etc/usbguard/rules.conf"],
                 input=policy.stdout, capture_output=True, text=True,
             )
             if write.returncode != 0:
                 return False, "Failed to write the USB device policy."
-            rc = subprocess.run(["sudo", "systemctl", "enable", "--now", "usbguard"]).returncode
+            rc = subprocess.run(["sudo", "-n", "systemctl", "enable", "--now", "usbguard"]).returncode
             return rc == 0, ("USB protection enabled. Currently connected devices were allowed automatically." if rc == 0 else "Failed to start USBGuard.")
         self._run_action(task)
 
     @Slot()
     def disableUsbGuard(self):
         def task(emit):
-            rc = subprocess.run(["sudo", "systemctl", "disable", "--now", "usbguard"]).returncode
+            rc = subprocess.run(["sudo", "-n", "systemctl", "disable", "--now", "usbguard"]).returncode
             return rc == 0, ("USB protection disabled." if rc == 0 else "Failed to stop USBGuard.")
         self._run_action(task)
 
@@ -2944,7 +2944,7 @@ class Backend(QObject):
                 # Cancel is a normal outcome, not a failure -- say nothing.
                 return True, ""
             result = subprocess.run(
-                ["sudo", "nmcli", "connection", "import", "type", "wireguard", "file", path],
+                ["sudo", "-n", "nmcli", "connection", "import", "type", "wireguard", "file", path],
                 capture_output=True, text=True,
             )
             ok = result.returncode == 0
@@ -3072,7 +3072,7 @@ class Backend(QObject):
     @Slot(str)
     def setTimezone(self, tz):
         def task(emit):
-            rc = subprocess.run(["sudo", "timedatectl", "set-timezone", tz], capture_output=True).returncode
+            rc = subprocess.run(["sudo", "-n", "timedatectl", "set-timezone", tz], capture_output=True).returncode
             return rc == 0, (f"Timezone set to {tz}." if rc == 0 else "Failed to set timezone.")
         self._run_action(task)
 
@@ -3080,7 +3080,7 @@ class Backend(QObject):
     def setNtpEnabled(self, enable):
         def task(emit):
             rc = subprocess.run(
-                ["sudo", "timedatectl", "set-ntp", "true" if enable else "false"], capture_output=True,
+                ["sudo", "-n", "timedatectl", "set-ntp", "true" if enable else "false"], capture_output=True,
             ).returncode
             return rc == 0, (("Automatic time sync enabled." if enable else "Automatic time sync disabled.") if rc == 0 else "Failed to change NTP setting.")
         self._run_action(task)
@@ -3088,7 +3088,7 @@ class Backend(QObject):
     @Slot(str)
     def setManualDateTime(self, value):
         def task(emit):
-            result = subprocess.run(["sudo", "timedatectl", "set-time", value], capture_output=True, text=True)
+            result = subprocess.run(["sudo", "-n", "timedatectl", "set-time", value], capture_output=True, text=True)
             ok = result.returncode == 0
             return ok, ("Date/time set." if ok else (result.stderr.strip() or "Failed -- disable automatic sync first."))
         self._run_action(task)
@@ -3614,7 +3614,7 @@ class Backend(QObject):
             # works for the large majority of printers made since ~2015
             # without needing to locate and install a vendor PPD/driver.
             result = subprocess.run(
-                ["sudo", "lpadmin", "-p", name, "-E", "-v", uri, "-m", "everywhere"],
+                ["sudo", "-n", "lpadmin", "-p", name, "-E", "-v", uri, "-m", "everywhere"],
                 capture_output=True, text=True,
             )
             if result.returncode == 0:
@@ -3625,7 +3625,7 @@ class Backend(QObject):
     @Slot(str)
     def removePrinter(self, name):
         def task(emit):
-            result = subprocess.run(["sudo", "lpadmin", "-x", name], capture_output=True, text=True)
+            result = subprocess.run(["sudo", "-n", "lpadmin", "-x", name], capture_output=True, text=True)
             if result.returncode == 0:
                 return True, f'"{name}" removed.'
             return False, (result.stderr.strip() or "Could not remove that printer.")
@@ -3634,7 +3634,7 @@ class Backend(QObject):
     @Slot(str)
     def setDefaultPrinter(self, name):
         def task(emit):
-            result = subprocess.run(["sudo", "lpadmin", "-d", name], capture_output=True, text=True)
+            result = subprocess.run(["sudo", "-n", "lpadmin", "-d", name], capture_output=True, text=True)
             if result.returncode == 0:
                 return True, f'"{name}" set as default.'
             return False, (result.stderr.strip() or "Could not set the default printer.")
