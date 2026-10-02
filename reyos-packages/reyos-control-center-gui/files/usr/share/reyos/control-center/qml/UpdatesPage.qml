@@ -6,8 +6,9 @@ import org.kde.kirigami as Kirigami
 Kirigami.ScrollablePage {
     title: "Updates"
 
-    property bool running: false
-    property string logText: ""
+    // Reopening the page mid-update must keep the buttons locked.
+    property bool running: backend.pkgActionRunning()
+    property string logText: running ? "A package operation started earlier is still running...\n" : ""
 
     function appendLog(line) {
         logText += line + "\n"

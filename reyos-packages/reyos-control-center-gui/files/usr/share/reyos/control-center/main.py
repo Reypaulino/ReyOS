@@ -635,8 +635,17 @@ class Backend(QObject):
         self._stats_worker.stop()
         self._stats_worker.wait(1000)
 
+    @Slot(result=bool)
+    def pkgActionRunning(self):
+        return self._pkg_worker is not None and self._pkg_worker.isRunning()
+
     @Slot(str)
     def runPkgAction(self, action):
+        # The Updates page forgets its own busy state when it is reopened, so
+        # refuse here rather than start a second pacman next to the first.
+        if self.pkgActionRunning():
+            self.pkgFinished.emit(False, "A package operation is still running -- wait for it to finish.")
+            return
         worker = PkgWorker(action)
         self._pkg_worker = worker
         worker.progress.connect(self.pkgProgress.emit)
