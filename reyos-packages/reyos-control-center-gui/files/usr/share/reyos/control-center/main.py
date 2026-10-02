@@ -223,6 +223,27 @@ def _purge_stale_download_sandboxes():
     )
 
 
+# Per-user diagnostics: failed actions (the same one-line message the UI
+# shows -- never a password or other input) and the full output of the last
+# package operation. Kept small: the failure log is cut back when it grows.
+STATE_DIR = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local" / "state") / "reyos"
+FAILURE_LOG = STATE_DIR / "control-center.log"
+PKG_LOG = STATE_DIR / "last-package-operation.log"
+
+
+def _log_failure(kind, ok, message):
+    if ok:
+        return
+    try:
+        STATE_DIR.mkdir(parents=True, exist_ok=True)
+        if FAILURE_LOG.is_file() and FAILURE_LOG.stat().st_size > 512 * 1024:
+            FAILURE_LOG.write_text(FAILURE_LOG.read_text(errors="replace")[-256 * 1024:])
+        with FAILURE_LOG.open("a") as f:
+            f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {kind} FAILED: {message}\n")
+    except OSError:
+        pass
+
+
 class _ThreadKeeper(QObject):
     # Dropping the last reference to a running QThread aborts the whole app
     # (qFatal), and every page replaces its worker attribute when reopened.
@@ -378,13 +399,30 @@ class PkgWorker(_Worker):
         # can ask for a restart (running apps, plasmashell and the kernel
         # keep using the old versions until then) only when it matters.
         self.changed = False
+        self._log = None
 
     def _emit(self, line):
         if not self.changed and _PKG_CHANGED_RE.match(line):
             self.changed = True
+        if self._log is not None:
+            self._log.write(line + "\n")
+            self._log.flush()
         self.progress.emit(line)
 
     def run(self):
+        try:
+            STATE_DIR.mkdir(parents=True, exist_ok=True)
+            self._log = PKG_LOG.open("w")
+            self._log.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {self.action}\n")
+        except OSError:
+            self._log = None
+        try:
+            self._run_action()
+        finally:
+            if self._log is not None:
+                self._log.close()
+
+    def _run_action(self):
         try:
             emit = self._emit
             if self.action in ("upgrade", "full", "clean", "reyos") and _is_live_session():
@@ -3663,6 +3701,9 @@ def main():
     backend = Backend()
     app.aboutToQuit.connect(backend.stopStatsWorker)
     app.aboutToQuit.connect(Backend._bt_stop_scan)
+    backend.actionFinished.connect(lambda ok, msg: _log_failure("action", ok, msg))
+    backend.pkgFinished.connect(lambda ok, msg: _log_failure("package", ok, msg + f" (output: {PKG_LOG})"))
+    backend.gamingFinished.connect(lambda ok, msg: _log_failure("gaming", ok, msg))
     app.aboutToQuit.connect(backend.cancelControllerSetup)
     # A package update still running when the window closes finishes first.
     app.aboutToQuit.connect(_THREADS.wait_all)
