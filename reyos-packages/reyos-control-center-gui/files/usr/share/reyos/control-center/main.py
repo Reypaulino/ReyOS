@@ -1802,7 +1802,10 @@ class Backend(QObject):
         filesystems = []
         try:
             out = subprocess.check_output(
-                ["df", "-h", "--output=source,size,used,avail,pcent,target"], text=True
+                # devtmpfs (source "dev" on Arch) and efivarfs aren't disks the
+                # user stores anything on -- they used to show up as rows here.
+                ["df", "-h", "-x", "tmpfs", "-x", "devtmpfs", "-x", "efivarfs",
+                 "--output=source,size,used,avail,pcent,target"], text=True
             )
             for line in out.splitlines()[1:]:
                 parts = line.split()
