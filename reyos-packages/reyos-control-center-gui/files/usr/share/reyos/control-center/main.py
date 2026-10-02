@@ -1051,42 +1051,64 @@ class Backend(QObject):
             paths = glob.glob("/sys/devices/system/cpu/cpu*/cpufreq/scaling_governor")
             if not paths:
                 return False, "No cpufreq scaling available on this system (common in VMs)."
-            for p in paths:
-                subprocess.run(["sudo", "tee", p], input=gov, capture_output=True, text=True)
+            if gov not in Backend._available_governors():
+                return False, f"This CPU doesn't offer the {gov} governor."
+            if not Backend._write_governor(paths, gov):
+                return False, "Couldn't change the governor (permission denied)."
             return True, f"Governor set to: {gov}"
         self._run_action(task)
+
+    @staticmethod
+    def _available_governors():
+        try:
+            return Path("/sys/devices/system/cpu/cpu0/cpufreq/scaling_available_governors").read_text().split()
+        except OSError:
+            return []
+
+    @staticmethod
+    def _write_governor(paths, gov):
+        return all(
+            subprocess.run(["sudo", "tee", p], input=gov, capture_output=True, text=True).returncode == 0
+            for p in paths
+        )
+
+    @staticmethod
+    def _apply_swappiness(value):
+        # `sysctl -w` only touches live kernel state -- the sysctl.d drop-in
+        # makes it survive a reboot instead of silently reverting.
+        live = subprocess.run(["sudo", "sysctl", "-w", f"vm.swappiness={value}"],
+                              capture_output=True).returncode == 0
+        saved = subprocess.run(
+            ["sudo", "tee", "/etc/sysctl.d/99-reyos-swappiness.conf"],
+            input=f"vm.swappiness={value}\n", capture_output=True, text=True,
+        ).returncode == 0
+        return live and saved
 
     @Slot()
     def performanceMode(self):
         def task(emit):
             paths = glob.glob("/sys/devices/system/cpu/cpu*/cpufreq/scaling_governor")
+            note = " (governor skipped -- no cpufreq scaling on this system)"
             if paths:
-                for p in paths:
-                    subprocess.run(["sudo", "tee", p], input="performance", capture_output=True, text=True)
-            subprocess.run(["sudo", "sysctl", "-w", "vm.swappiness=10"], capture_output=True)
-            Backend._persist_swappiness(10)
-            note = "" if paths else " (governor skipped — no cpufreq scaling on this system)"
-            return True, f"Performance mode applied.{note} Swappiness → 10 (persists across reboots)."
+                if "performance" not in Backend._available_governors():
+                    note = " (this CPU has no performance governor)"
+                elif Backend._write_governor(paths, "performance"):
+                    note = ""
+                else:
+                    return False, "Couldn't change the governor (permission denied)."
+            if not Backend._apply_swappiness(10):
+                return False, "Couldn't change swappiness (permission denied)."
+            return True, f"Performance mode applied.{note} Swappiness -> 10 (persists across reboots)."
         self._run_action(task)
-
-    @staticmethod
-    def _persist_swappiness(value):
-        # `sysctl -w` only touches live kernel state -- write the same value to
-        # a sysctl.d drop-in so it survives reboot instead of silently reverting
-        # to the distro default.
-        subprocess.run(
-            ["sudo", "tee", "/etc/sysctl.d/99-reyos-swappiness.conf"],
-            input=f"vm.swappiness={value}\n", capture_output=True, text=True,
-        )
 
     @Slot(int)
     def setSwappiness(self, value):
         def task(emit):
-            subprocess.run(["sudo", "sysctl", "-w", f"vm.swappiness={value}"], capture_output=True)
-            Backend._persist_swappiness(value)
-            return True, f"Swappiness set to: {value} (persists across reboots)"
+            v = max(0, min(200, int(value)))
+            if not Backend._apply_swappiness(v):
+                return False, "Couldn't change swappiness (permission denied)."
+            return True, f"Swappiness set to: {v} (persists across reboots)"
         self._run_action(task)
-
 
     @staticmethod
     def _swap_unit_for_device(device):
@@ -1108,28 +1130,41 @@ class Backend(QObject):
             return []
         return [line.split()[0] for line in out.splitlines() if line.split()]
 
+    @staticmethod
+    def _active_swaps():
+        try:
+            return [l.split()[0] for l in Path("/proc/swaps").read_text().splitlines()[1:] if l.split()]
+        except OSError:
+            return []
+
     @Slot()
     def toggleSwap(self):
         def task(emit):
-            swap_on = subprocess.run(
-                ["swapon", "--show=NAME", "--noheadings"], capture_output=True, text=True
-            ).stdout.strip()
+            swap_on = Backend._active_swaps()
             if swap_on:
                 # swapoff -a only affects the running session -- systemd
-                # regenerates the swap unit from fstab on every boot, so mask
-                # it (an /etc/systemd/system mask always wins over that
-                # generated unit) rather than editing fstab directly.
-                units = [Backend._swap_unit_for_device(d) for d in swap_on.splitlines()]
+                # regenerates the swap unit (fstab or zram-generator) on every
+                # boot, so mask it (an /etc/systemd/system mask always wins
+                # over that generated unit) rather than editing fstab directly.
+                units = [Backend._swap_unit_for_device(d) for d in swap_on]
                 subprocess.run(["sudo", "swapoff", "-a"], capture_output=True)
                 for unit in units:
                     if unit:
                         subprocess.run(["sudo", "systemctl", "mask", unit], capture_output=True)
+                if Backend._active_swaps():
+                    return False, "Couldn't turn swap off."
                 return True, "Swap disabled (stays off after reboot)."
-            else:
-                for unit in Backend._masked_swap_units():
-                    subprocess.run(["sudo", "systemctl", "unmask", unit], capture_output=True)
-                subprocess.run(["sudo", "swapon", "-a"], capture_output=True)
-                return True, "Swap enabled."
+            units = Backend._masked_swap_units()
+            for unit in units:
+                subprocess.run(["sudo", "systemctl", "unmask", unit], capture_output=True)
+            # zram swap (ReyOS's default) has no fstab line, so swapon -a
+            # alone never brings it back -- start its unit as well.
+            for unit in units:
+                subprocess.run(["sudo", "systemctl", "start", unit], capture_output=True)
+            subprocess.run(["sudo", "swapon", "-a"], capture_output=True)
+            if not Backend._active_swaps():
+                return False, "Couldn't turn swap on -- no swap device came up."
+            return True, "Swap enabled."
         self._run_action(task)
 
     # plasma-apply-lookandfeel's KPackage lookup silently no-ops on our own
