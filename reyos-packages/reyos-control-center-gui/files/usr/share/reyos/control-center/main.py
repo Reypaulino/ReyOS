@@ -157,6 +157,27 @@ def _run(cmd, progress_emit=None):
     return proc.wait()
 
 
+def _nmcli_fields(line):
+    # `nmcli -t` separates fields with ':' and escapes a ':' or '\' inside a
+    # value as '\:' / '\\' -- a plain split(":") cut SSIDs and connection
+    # names containing ':' (e.g. "ADC-V723 (24:CE:A4)") into wrong columns.
+    fields, cur, i = [], [], 0
+    while i < len(line):
+        c = line[i]
+        if c == "\\" and i + 1 < len(line):
+            cur.append(line[i + 1])
+            i += 2
+            continue
+        if c == ":":
+            fields.append("".join(cur))
+            cur = []
+        else:
+            cur.append(c)
+        i += 1
+    fields.append("".join(cur))
+    return fields
+
+
 def _restart_plasmashell_and_wait(timeout=30):
     # kquitapp6 sends a graceful quit request and returns immediately --
     # it does NOT block until the old process actually releases its D-Bus
@@ -2845,11 +2866,10 @@ class Backend(QObject):
                 )
                 seen = set()
                 for line in out.splitlines():
-                    parts = line.split(":")
+                    parts = _nmcli_fields(line)
                     if len(parts) < 4:
                         continue
-                    in_use, ssid, signal = parts[0], parts[1], parts[2]
-                    security = ":".join(parts[3:])
+                    in_use, ssid, signal, security = parts[0], parts[1], parts[2], parts[3]
                     if not ssid or ssid in seen:
                         continue
                     seen.add(ssid)
@@ -2866,7 +2886,7 @@ class Backend(QObject):
         try:
             out = subprocess.check_output(["nmcli", "-t", "-f", "NAME,TYPE", "connection", "show"], text=True)
             for line in out.splitlines():
-                parts = line.split(":")
+                parts = _nmcli_fields(line)
                 if len(parts) >= 2 and parts[1] == "802-11-wireless":
                     saved.append(parts[0])
         except Exception:
@@ -2918,7 +2938,7 @@ class Backend(QObject):
                 ["nmcli", "-t", "-f", "NAME,TYPE,ACTIVE", "connection", "show"], text=True,
             )
             for line in out.splitlines():
-                parts = line.split(":")
+                parts = _nmcli_fields(line)
                 if len(parts) >= 3 and parts[1] == "wireguard":
                     conns.append({"name": parts[0], "active": parts[2] == "yes"})
         except Exception:
