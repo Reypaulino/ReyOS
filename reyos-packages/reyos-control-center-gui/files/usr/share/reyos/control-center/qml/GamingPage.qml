@@ -14,7 +14,7 @@ Kirigami.ScrollablePage {
     property bool showLog: false
 
     property var emuSystems: []
-    property var emuGames: []
+    readonly property int gameCount: emuSystems.reduce(function (n, s) { return n + s.games }, 0)
     property var emuSelected: ({})
     property var emuSettings: ({ fullscreen: true, picture: "fill", resolution: 1 })
     property var controllers: []
@@ -38,7 +38,6 @@ Kirigami.ScrollablePage {
         steamInstalled = status.steamInstalled
         gamemodeInstalled = status.gamemodeInstalled
         emuSystems = backend.emulationSystems()
-        emuGames = backend.emulationGames()
         emuSettings = backend.emulationSettings()
         controllers = backend.gameControllers()
         bios = backend.biosReport()
@@ -326,15 +325,15 @@ Kirigami.ScrollablePage {
                         Controls.Label {
                             Layout.fillWidth: true
                             wrapMode: Text.Wrap
-                            opacity: emuGames.length > 0 ? 1 : 0.7
-                            text: emuGames.length > 0
-                                  ? emuGames.length + (emuGames.length === 1 ? " game" : " games") + " in ~/Games/ROMs."
+                            opacity: gameCount > 0 ? 1 : 0.7
+                            text: gameCount > 0
+                                  ? gameCount + (gameCount === 1 ? " game" : " games") + " in ~/Games/ROMs."
                                   : "No games yet. Put them in the folder for their system under ~/Games/ROMs (for example ~/Games/ROMs/n64/), then press Refresh."
                         }
                         Controls.Button {
                             text: "Open game library"
                             icon.name: "view-list-icons"
-                            highlighted: emuGames.length > 0
+                            highlighted: gameCount > 0
                             onClicked: backend.openGameLibrary()
                         }
                     }

@@ -836,20 +836,6 @@ class Backend(QObject):
             })
         return result
 
-    @Slot(result="QVariantList")
-    def emulationGames(self):
-        games = []
-        for system in EMU_SYSTEMS:
-            playable = emulation.system_installed(system)
-            for path in emulation.scan_games(system):
-                games.append({
-                    "title": emulation.game_title(path),
-                    "system": system["name"], "short": system["short"], "systemId": system["id"],
-                    "path": str(path), "playable": playable,
-                })
-        games.sort(key=lambda g: (g["title"].lower(), g["system"]))
-        return games
-
     @Slot("QVariantList")
     def installEmulation(self, system_ids):
         valid = {s["id"] for s in EMU_SYSTEMS}
