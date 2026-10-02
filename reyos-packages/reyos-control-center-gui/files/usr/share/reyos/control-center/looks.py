@@ -163,6 +163,38 @@ def _write_panel_theme():
             shutil.rmtree(p, ignore_errors=True) if p.is_dir() else p.unlink(missing_ok=True)
 
 
+def _look_wallpaper(look_id):
+    walls = sorted((LOOKS_DIR / look_id / "wallpaper").glob("*.jpg"))
+    if not walls:
+        return None
+    return next((w for w in walls if w.name == "reyos-wallpaper.jpg"), walls[0])
+
+
+_LOCK_WALLPAPER_DEFAULT = "file:///usr/share/backgrounds/reyos-wallpaper.jpg"
+
+
+def _write_lock_wallpaper(look_id):
+    # Lock screen shows the same picture as the login screen. Only replaces
+    # ReyOS's own defaults, so a wallpaper the user picked in System Settings stays.
+    wall = _look_wallpaper(look_id)
+    if not wall:
+        return
+    groups = ["--group", "Greeter", "--group", "Wallpaper", "--group", "org.kde.image", "--group", "General"]
+    try:
+        current = subprocess.check_output(
+            ["kreadconfig6", "--file", "kscreenlockerrc", *groups, "--key", "Image"],
+            text=True, stderr=subprocess.DEVNULL,
+        ).strip()
+    except (OSError, subprocess.CalledProcessError):
+        return
+    target = f"file://{wall}"
+    if current == target:
+        return
+    if current and current != _LOCK_WALLPAPER_DEFAULT and not current.startswith(f"file://{LOOKS_DIR}/"):
+        return
+    subprocess.run(["kwriteconfig6", "--file", "kscreenlockerrc", *groups, "--key", "Image", target])
+
+
 def _recolor_look_assets(look_id):
     """Recolor every file that bakes the accent in as a literal -- ReyOS
     icons, the app/launcher icons, the Aurorae window border, reyos-browser,
@@ -172,6 +204,7 @@ def _recolor_look_assets(look_id):
     Center icon and the window border went back to copper), and Light/Dark
     never re-ran it. Now also called by applyLookAndFeel() and at login
     (--reapply-look, see main()) so the active Look always wins."""
+    _write_lock_wallpaper(look_id)
     parser = _look_parser(look_id)
     # reyos-icons' own branded overrides -- the gear used for every
     # "preferences-*"-style sidebar icon, and the folder-shaped
@@ -215,9 +248,8 @@ def _recolor_look_assets(look_id):
             # reached from the theme's backgrounds/ dir (SilentSDDM prefixes
             # that) so nothing has to be copied.
             text = _SDDM_TEMPLATE.read_text().replace(_COPPER_RGB_HEX, accent_hex)
-            walls = sorted((LOOKS_DIR / look_id / "wallpaper").glob("*.jpg"))
-            if walls:
-                wall = next((w for w in walls if w.name == "reyos-wallpaper.jpg"), walls[0])
+            wall = _look_wallpaper(look_id)
+            if wall:
                 text = re.sub(r'(?m)^background = ".*"$',
                               f'background = "../../../../reyos/looks/{look_id}/wallpaper/{wall.name}"', text)
             current = _SDDM_CONFIG.read_text() if _SDDM_CONFIG.is_file() else ""
