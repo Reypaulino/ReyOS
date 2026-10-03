@@ -419,12 +419,13 @@ class PasswordBridge(QObject):
         self._backend = backend
         self.setObjectName("passwordBridge")
 
-    @Slot(str, str, str)
-    def reportFormSubmit(self, origin: str, username: str, password: str) -> None:
+    @Slot(str, str, str, str)
+    def reportFormSubmit(self, origin: str, username: str, password: str, page_url: str) -> None:
         normalized_origin = normalize_origin(origin)
         cleaned_username = username.strip()
         if (
             not normalized_origin
+            or normalized_origin != normalize_origin(page_url)
             or not cleaned_username
             or not password
             or self._backend.isPasswordSaveBlocked(normalized_origin)
@@ -433,9 +434,14 @@ class PasswordBridge(QObject):
             return
         self.savePromptRequested.emit(normalized_origin, cleaned_username, password)
 
-    @Slot(str, result="QVariantList")
-    def credentialsFor(self, origin: str):
-        return self._backend.getPasswordsForOrigin(origin)
+    # page_url is the tab's real address, supplied by QML, never by the page:
+    # a page asking for another site's origin gets nothing.
+    @Slot(str, str, result="QVariantList")
+    def credentialsFor(self, origin: str, page_url: str):
+        normalized_origin = normalize_origin(origin)
+        if not normalized_origin or normalized_origin != normalize_origin(page_url):
+            return []
+        return self._backend.getPasswordsForOrigin(normalized_origin)
 
 
 class BrowserBackend(QObject):

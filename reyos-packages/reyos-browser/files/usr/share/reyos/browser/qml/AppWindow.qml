@@ -174,9 +174,9 @@ ApplicationWindow {
                 elide: Text.ElideMiddle
             }
             Label {
-                text: view.url.scheme === "https" ? "Connection: Secure HTTPS" : "Connection: Not secure — this page does not use HTTPS"
+                text: String(view.url).indexOf("https:") === 0 ? "Connection: Secure HTTPS" : "Connection: Not secure — this page does not use HTTPS"
                 wrapMode: Text.Wrap
-                color: view.url.scheme === "https" ? "#9AD8AE" : "#F0B46A"
+                color: String(view.url).indexOf("https:") === 0 ? "#9AD8AE" : "#F0B46A"
                 Layout.fillWidth: true
             }
             Label {

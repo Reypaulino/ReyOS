@@ -384,17 +384,6 @@ ApplicationWindow {
     Shortcut { sequence: "Ctrl+F"; onActivated: window.openFind() }
     Shortcut { sequence: "Ctrl+Shift+R"; onActivated: window.openReaderMode() }
 
-    QtObject {
-        id: passwordBridgeChannelObject
-        WebChannel.id: "passwordBridge"
-        function reportFormSubmit(origin, username, password) {
-            passwordBridge.reportFormSubmit(origin, username, password)
-        }
-        function credentialsFor(origin, callback) {
-            callback(passwordBridge.credentialsFor(origin))
-        }
-    }
-
     Connections {
         target: passwordBridge
         function onSavePromptRequested(origin, username, password) {
@@ -1242,9 +1231,9 @@ ApplicationWindow {
                 elide: Text.ElideMiddle
             }
             Label {
-                text: currentView && currentView.url.scheme === "https" ? "Connection: Secure HTTPS" : "Connection: Not secure — this page does not use HTTPS"
+                text: currentView && String(currentView.url).indexOf("https:") === 0 ? "Connection: Secure HTTPS" : "Connection: Not secure — this page does not use HTTPS"
                 wrapMode: Text.Wrap
-                color: currentView && currentView.url.scheme === "https" ? "#9AD8AE" : accentGlow
+                color: currentView && String(currentView.url).indexOf("https:") === 0 ? "#9AD8AE" : accentGlow
                 Layout.fillWidth: true
             }
             Label {
@@ -1937,9 +1926,24 @@ ApplicationWindow {
                     }
                 }
 
+                // One bridge per tab, answering only for that tab's own address.
+                // The channel lives in an isolated script world, so the page's
+                // own scripts can't reach it at all.
+                QtObject {
+                    id: tabPasswordBridge
+                    WebChannel.id: "passwordBridge"
+                    function reportFormSubmit(origin, username, password) {
+                        passwordBridge.reportFormSubmit(origin, username, password, browserView.url.toString())
+                    }
+                    function credentialsFor(origin) {
+                        return passwordBridge.credentialsFor(origin, browserView.url.toString())
+                    }
+                }
+
                 profile: privateProfile
+                webChannelWorld: WebEngineScript.ApplicationWorld
                 webChannel: WebChannel {
-                    registeredObjects: [passwordBridgeChannelObject]
+                    registeredObjects: [tabPasswordBridge]
                 }
                 userScripts.collection: [
                     {
@@ -1977,8 +1981,8 @@ ApplicationWindow {
                     window.updateHistoryTitle(url.toString(), title)
                 }
                 onLoadingChanged: function(loadRequest) {
-                    if (loadRequest.status === WebEngineLoadingInfo.LoadSucceededStatus && (url.scheme === "http" || url.scheme === "https")) {
-                        runJavaScript(browserBackend.passwordScriptSource)
+                    if (loadRequest.status === WebEngineLoadingInfo.LoadSucceededStatus && /^https?:/.test(String(url))) {
+                        runJavaScript(browserBackend.passwordScriptSource, WebEngineScript.ApplicationWorld, function() {})
                     }
                 }
             }
