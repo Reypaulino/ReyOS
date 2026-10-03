@@ -157,6 +157,10 @@ def _run(cmd, progress_emit=None):
     return proc.wait()
 
 
+# For tools whose output is parsed (lpstat, scanimage translate theirs).
+_C_LOCALE = dict(os.environ, LC_ALL="C")
+
+
 def _nmcli_fields(line):
     # `nmcli -t` separates fields with ':' and escapes a ':' or '\' inside a
     # value as '\:' / '\\' -- a plain split(":") cut SSIDs and connection
@@ -3583,16 +3587,22 @@ class Backend(QObject):
     @Slot()
     def refreshPrinters(self):
         def task():
-            result = subprocess.run(["lpstat", "-p"], capture_output=True, text=True)
-            default_result = subprocess.run(["lpstat", "-d"], capture_output=True, text=True)
+            # lpstat translates its output ("la impresora X está inactiva"),
+            # so read it in the C locale. A printer that is printing or
+            # disabled has no "is <state>" in its line ("printer X now
+            # printing X-1." / "printer X disabled since ...") -- matching
+            # only "is" dropped it from the list right after adding it.
+            result = subprocess.run(["lpstat", "-p"], capture_output=True, text=True, env=_C_LOCALE)
+            default_result = subprocess.run(["lpstat", "-d"], capture_output=True, text=True, env=_C_LOCALE)
             default_name = default_result.stdout.rsplit(":", 1)[-1].strip() if ":" in default_result.stdout else ""
             printers = []
             for line in result.stdout.splitlines():
-                m = re.match(r"printer (\S+) is (\w+)", line)
+                m = re.match(r"printer (\S+) (?:is (.+?)\.|(now printing)|(disabled))", line)
                 if m:
+                    status = m.group(2) or ("printing" if m.group(3) else "disabled")
                     printers.append({
                         "name": m.group(1),
-                        "status": m.group(2),
+                        "status": status,
                         "isDefault": m.group(1) == default_name,
                     })
             return printers
@@ -3680,7 +3690,7 @@ class Backend(QObject):
     @Slot()
     def refreshScanners(self):
         def task():
-            result = subprocess.run(["scanimage", "-L"], capture_output=True, text=True, timeout=20)
+            result = subprocess.run(["scanimage", "-L"], capture_output=True, text=True, timeout=20, env=_C_LOCALE)
             scanners = []
             for line in result.stdout.splitlines():
                 m = re.match(r"device `([^']+)' is (.+)", line)
