@@ -4,6 +4,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import QtWebChannel
 import QtWebEngine
+import "components"
 
 ApplicationWindow {
     id: window
@@ -15,7 +16,8 @@ ApplicationWindow {
     title: currentView && currentView.title ? currentView.title + " — ReyOS Browser" : "ReyOS Browser"
     color: accentSurfaceWindow
 
-    property var currentView: pages.itemAt(tabBar.currentIndex)
+    // pages.count is read so this re-evaluates once the first tab's view exists.
+    property var currentView: pages.count > tabBar.currentIndex ? pages.itemAt(tabBar.currentIndex) : null
     property var downloadRequests: ({})
     property var closedTabsStack: []
     property int findMatchCount: 0
@@ -44,6 +46,50 @@ ApplicationWindow {
     readonly property color accentHoverStrong: "#4A3420"     // pinned ("keep alive") tab's own hover shade
     readonly property color accentGlow: "#F0A96A"             // non-https padlock / accent label text
     readonly property string iconLinkFinderScript: "(function() { function abs(href) { try { return new URL(href, document.baseURI).href } catch (e) { return '' } } var links = document.querySelectorAll('link[rel~=\"icon\"], link[rel=\"apple-touch-icon\"], link[rel=\"apple-touch-icon-precomposed\"]'); var best = ''; var bestSize = 0; for (var i = 0; i < links.length; i++) { var link = links[i]; var href = link.getAttribute('href'); if (!href) continue; var size = 32; var sizesAttr = link.getAttribute('sizes') || ''; var match = sizesAttr.match(/(\\d+)x\\d+/); if (match) { size = parseInt(match[1], 10) } else if ((link.getAttribute('rel') || '').indexOf('apple-touch-icon') !== -1) { size = 180 } if (size > bestSize) { bestSize = size; best = href } } return best ? abs(best) : '' })()"
+
+    // Fusion draws every stock control from the palette, so this one block
+    // keeps dialogs, fields, menus and buttons dark and on the active Look.
+    palette.window: accentSurfaceRaised
+    palette.windowText: "#FFF3E6"
+    palette.base: accentSurfaceWindow
+    palette.alternateBase: accentSurfaceBase
+    palette.text: "#FFF3E6"
+    palette.button: accentSurfaceHover
+    palette.buttonText: "#FFF3E6"
+    palette.highlight: accentColor
+    palette.highlightedText: "#FFFFFF"
+    palette.placeholderText: "#9F8873"
+    palette.toolTipBase: accentSurfaceRaised
+    palette.toolTipText: "#FFF3E6"
+    palette.light: accentHoverStrong
+    palette.midlight: accentSurfaceHover
+    palette.mid: accentBorder
+    palette.dark: accentSurfaceBase
+    palette.shadow: "#000000"
+    palette.link: accentGlow
+    palette.brightText: accentGlow
+    palette.disabled.buttonText: "#8C7867"
+    palette.disabled.windowText: "#8C7867"
+    palette.disabled.text: "#8C7867"
+
+    QtObject {
+        id: theme
+        readonly property color accent: window.accentColor
+        readonly property color border: window.accentBorder
+        readonly property color hover: window.accentSurfaceHover
+        readonly property color hoverStrong: window.accentHoverStrong
+        readonly property color raised: window.accentSurfaceRaised
+        readonly property color base: window.accentSurfaceBase
+        readonly property color toolbar: window.accentSurfaceToolbar
+        readonly property color windowBg: window.accentSurfaceWindow
+        readonly property color glow: window.accentGlow
+    }
+
+    readonly property bool currentIsHome: currentView ? isHomeUrl(currentView.url.toString()) : true
+    readonly property bool currentIsHttps: currentView ? String(currentView.url).indexOf("https:") === 0 : false
+    readonly property real tabWidth: Math.max(112, Math.min(224, (tabStrip.width - brandRow.width - newTabButton.width - 48) / Math.max(1, tabs.count)))
+    readonly property bool compactToolbar: width < 900
+    property int activeDownloadCount: 0
 
     ListModel { id: tabs }
     ListModel { id: downloads }
@@ -132,9 +178,12 @@ ApplicationWindow {
             if (downloads.get(i).downloadId === download.id) {
                 var completed = download.state === WebEngineDownloadRequest.DownloadCompleted
                 var cancelled = download.state === WebEngineDownloadRequest.DownloadCancelled
+                if (!downloads.get(i).finished) {
+                    activeDownloadCount = Math.max(0, activeDownloadCount - 1)
+                }
                 downloads.setProperty(i, "finished", true)
                 downloads.setProperty(i, "completed", completed)
-                downloads.setProperty(i, "state", completed ? "Completed" : (cancelled ? "Cancelled" : "Failed: " + download.interruptReasonString))
+                downloads.setProperty(i, "status", completed ? "Completed" : (cancelled ? "Cancelled" : "Failed: " + download.interruptReasonString))
                 if (completed) {
                     browserBackend.notify("Download finished", download.downloadFileName + " is ready in Downloads")
                 } else if (!cancelled) {
@@ -150,13 +199,14 @@ ApplicationWindow {
         downloads.append({
             downloadId: download.id,
             name: download.downloadFileName,
-            state: "Starting",
+            status: "Starting",
             receivedBytes: download.receivedBytes,
             totalBytes: download.totalBytes,
             finished: false,
             completed: false
         })
         downloadRequests[download.id] = download
+        activeDownloadCount += 1
         download.receivedBytesChanged.connect(function() { window.updateDownload(download) })
         download.totalBytesChanged.connect(function() { window.updateDownload(download) })
         download.isFinishedChanged.connect(function() {
@@ -200,6 +250,7 @@ ApplicationWindow {
         }
         currentView.url = text
         address.focus = false
+        Qt.callLater(window.syncCurrentSite)
     }
 
     function toggleBookmark() {
@@ -335,6 +386,24 @@ ApplicationWindow {
     function addTab() {
         tabs.append({ pageUrl: homeUrl.toString(), pageTitle: "New Tab", readerOriginalUrl: "", keepAlive: false })
         tabBar.currentIndex = tabs.count - 1
+        Qt.callLater(newTabPage.focusSearch)
+    }
+
+    function openInNewTab(pageUrl) {
+        if (!pageUrl) {
+            return
+        }
+        tabs.append({ pageUrl: String(pageUrl), pageTitle: "Loading…", readerOriginalUrl: "", keepAlive: false })
+    }
+
+    function openShortcutDialog(index) {
+        shortcutDialog.editIndex = index
+        shortcutDialog.errorText = ""
+        var entry = index >= 0 ? browserBackend.shortcuts[index] : null
+        shortcutNameField.text = entry ? entry.title : ""
+        shortcutUrlField.text = entry ? entry.url : ""
+        shortcutDialog.open()
+        Qt.callLater(function() { (entry ? shortcutNameField : shortcutUrlField).forceActiveFocus() })
     }
 
     function stashClosedTab(index) {
@@ -383,6 +452,7 @@ ApplicationWindow {
     Shortcut { sequence: "Ctrl+R"; onActivated: { if (currentView) currentView.reload() } }
     Shortcut { sequence: "Ctrl+F"; onActivated: window.openFind() }
     Shortcut { sequence: "Ctrl+Shift+R"; onActivated: window.openReaderMode() }
+    Shortcut { sequence: "Ctrl+Q"; onActivated: Qt.quit() }
 
     Connections {
         target: passwordBridge
@@ -398,230 +468,322 @@ ApplicationWindow {
         id: headerLayout
         spacing: 0
 
-        TabBar {
-            id: tabBar
+        Rectangle {
+            id: tabStrip
             Layout.fillWidth: true
-            currentIndex: 0
-            onCurrentIndexChanged: {
-                address.focus = false
-                Qt.callLater(window.syncCurrentSite)
-            }
-            background: Rectangle { color: accentSurfaceBase }
+            implicitHeight: 46
+            color: accentSurfaceWindow
 
-            Repeater {
-                model: tabs
-                delegate: TabButton {
-                    id: tabButton
-                    required property int index
-                    required property string pageTitle
-                    required property bool keepAlive
-                    text: pageTitle.length > 22 ? pageTitle.slice(0, 21) + "…" : pageTitle
-                    onClicked: tabBar.currentIndex = index
-                    background: Rectangle {
-                        color: tabButton.checked ? accentColor : (tabButton.hovered ? accentSurfaceHover : accentSurfaceBase)
-                        radius: 6
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 12
+                anchors.rightMargin: 8
+                spacing: 6
+
+                RowLayout {
+                    id: brandRow
+                    spacing: 8
+                    Layout.rightMargin: 6
+                    Image {
+                        source: Qt.resolvedUrl("../assets/reyos-r-penguin.png")
+                        sourceSize.width: 24
+                        sourceSize.height: 24
+                        Layout.preferredWidth: 24
+                        Layout.preferredHeight: 24
+                        mipmap: true
                     }
-                    contentItem: RowLayout {
-                        spacing: 2
-                        Label {
-                            text: tabButton.text
-                            color: "#FFFFFF"
-                            elide: Text.ElideRight
-                            Layout.fillWidth: true
-                        }
-                        Label {
-                            text: pages.itemAt(index) && pages.itemAt(index).lifecycleState === WebEngineView.LifecycleState.Discarded ? "◌" : (pages.itemAt(index) && pages.itemAt(index).lifecycleState === WebEngineView.LifecycleState.Frozen ? "❄" : "")
-                            color: "#F4D5A8"
-                            font.pixelSize: 19
-                            font.bold: true
-                        }
-                        ToolButton {
-                            id: keepAliveButton
-                            icon.source: Qt.resolvedUrl("../icons/reyos-pin.svg")
-                            icon.width: 18
-                            icon.height: 18
-                            implicitWidth: 26
-                            implicitHeight: 26
-                            opacity: tabButton.keepAlive ? 1.0 : 0.75
+                    Label {
+                        visible: window.width >= 1000
+                        text: "ReyOS Browser"
+                        color: "#FFF3E6"
+                        font.pixelSize: 14
+                        font.weight: Font.DemiBold
+                    }
+                }
+
+                TabBar {
+                    id: tabBar
+                    currentIndex: 0
+                    spacing: 4
+                    Layout.preferredHeight: 38
+                    Layout.alignment: Qt.AlignBottom
+                    Layout.preferredWidth: tabs.count * (window.tabWidth + spacing)
+                    Layout.maximumWidth: tabStrip.width - brandRow.width - newTabButton.width - 48
+                    onCurrentIndexChanged: {
+                        address.focus = false
+                        Qt.callLater(window.syncCurrentSite)
+                    }
+                    background: Item {}
+
+                    Repeater {
+                        model: tabs
+                        delegate: TabButton {
+                            id: tabButton
+                            required property int index
+                            required property string pageTitle
+                            required property bool keepAlive
+                            readonly property bool isCurrent: index === tabBar.currentIndex
+                            readonly property var view: pages.itemAt(index)
+                            readonly property int lifecycle: view ? view.lifecycleState : WebEngineView.LifecycleState.Active
+                            width: window.tabWidth
+                            height: 38
+                            text: pageTitle
+                            focusPolicy: Qt.NoFocus
+                            onClicked: tabBar.currentIndex = index
+                            ToolTip.visible: hovered && pageTitle.length > 18
+                            ToolTip.delay: 700
+                            ToolTip.text: pageTitle
+
                             background: Rectangle {
-                                color: keepAliveButton.hovered ? accentHoverStrong : (tabButton.keepAlive ? accentSurfaceHover : "transparent")
-                                radius: 6
+                                radius: 9
+                                color: tabButton.isCurrent ? accentSurfaceToolbar : (tabButton.hovered ? accentSurfaceBase : "transparent")
+                                border.width: tabButton.isCurrent ? 1 : 0
+                                border.color: Qt.rgba(accentColor.r, accentColor.g, accentColor.b, 0.5)
+                                Rectangle {
+                                    visible: tabButton.isCurrent
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.bottom: parent.bottom
+                                    anchors.leftMargin: 10
+                                    anchors.rightMargin: 10
+                                    height: 2
+                                    radius: 1
+                                    color: accentColor
+                                }
                             }
-                            onClicked: tabs.setProperty(tabButton.index, "keepAlive", !tabButton.keepAlive)
-                            ToolTip.visible: hovered
-                            ToolTip.text: tabButton.keepAlive ? "Keep running: On — stays active in the background" : "Keep this tab running in the background (e.g. music or video)"
-                            Accessible.name: "Keep tab running in background"
-                        }
-                        ToolButton {
-                            text: "×"
-                            onClicked: window.closeTab(tabButton.index)
+                            contentItem: RowLayout {
+                                spacing: 6
+                                Item {
+                                    Layout.leftMargin: 4
+                                    Layout.preferredWidth: 16
+                                    Layout.preferredHeight: 16
+                                    Image {
+                                        id: tabFavicon
+                                        anchors.fill: parent
+                                        source: tabButton.view && !window.isHomeUrl(tabButton.view.url.toString()) ? tabButton.view.icon : ""
+                                        sourceSize.width: 16
+                                        sourceSize.height: 16
+                                        visible: status === Image.Ready
+                                    }
+                                    Image {
+                                        anchors.fill: parent
+                                        visible: tabFavicon.status !== Image.Ready
+                                        source: tabButton.view && window.isHomeUrl(tabButton.view.url.toString()) ? Qt.resolvedUrl("../assets/reyos-r-penguin.png") : Qt.resolvedUrl("../icons/reyos-globe.svg")
+                                        sourceSize.width: 16
+                                        sourceSize.height: 16
+                                        mipmap: true
+                                        opacity: 0.85
+                                    }
+                                }
+                                Label {
+                                    text: tabButton.pageTitle
+                                    color: tabButton.isCurrent ? "#FFF3E6" : "#C9B6A3"
+                                    font.pixelSize: 13
+                                    elide: Text.ElideRight
+                                    Layout.fillWidth: true
+                                }
+                                Label {
+                                    visible: text.length > 0
+                                    text: tabButton.lifecycle === WebEngineView.LifecycleState.Discarded ? "◌" : (tabButton.lifecycle === WebEngineView.LifecycleState.Frozen ? "❄" : "")
+                                    color: "#F4D5A8"
+                                    font.pixelSize: 15
+                                    ToolTip.visible: tabStateHover.hovered
+                                    ToolTip.text: tabButton.lifecycle === WebEngineView.LifecycleState.Discarded ? "Unloaded to save memory — reloads when selected" : "Paused to save memory"
+                                    HoverHandler { id: tabStateHover }
+                                }
+                                ToolButton {
+                                    id: keepAliveButton
+                                    visible: tabButton.keepAlive || tabButton.hovered || hovered
+                                    focusPolicy: Qt.NoFocus
+                                    icon.source: Qt.resolvedUrl("../icons/reyos-pin.svg")
+                                    icon.width: 14
+                                    icon.height: 14
+                                    icon.color: tabButton.keepAlive ? accentGlow : "#C9B6A3"
+                                    implicitWidth: 22
+                                    implicitHeight: 22
+                                    padding: 0
+                                    background: Rectangle {
+                                        color: keepAliveButton.hovered ? accentHoverStrong : (tabButton.keepAlive ? accentSurfaceHover : "transparent")
+                                        radius: 6
+                                    }
+                                    onClicked: tabs.setProperty(tabButton.index, "keepAlive", !tabButton.keepAlive)
+                                    ToolTip.visible: hovered
+                                    ToolTip.text: tabButton.keepAlive ? "Keep running: On — stays active in the background" : "Keep this tab running in the background (e.g. music or video)"
+                                    Accessible.name: "Keep tab running in background"
+                                }
+                                ToolButton {
+                                    id: tabCloseButton
+                                    focusPolicy: Qt.NoFocus
+                                    icon.source: Qt.resolvedUrl("../icons/reyos-close.svg")
+                                    icon.width: 12
+                                    icon.height: 12
+                                    icon.color: tabButton.isCurrent || tabCloseButton.hovered ? "#FFF3E6" : "#C9B6A3"
+                                    implicitWidth: 22
+                                    implicitHeight: 22
+                                    padding: 0
+                                    background: Rectangle { radius: 6; color: tabCloseButton.hovered ? accentHoverStrong : "transparent" }
+                                    onClicked: window.closeTab(tabButton.index)
+                                    ToolTip.visible: hovered
+                                    ToolTip.delay: 700
+                                    ToolTip.text: "Close tab (Ctrl+W)"
+                                    Accessible.name: "Close tab"
+                                }
+                            }
                         }
                     }
                 }
-            }
 
-            TabButton {
-                text: "+"
-                font.pixelSize: 27
-                implicitWidth: 48
-                implicitHeight: 38
-                palette.buttonText: "#FFFFFF"
-                background: Rectangle { color: parent.hovered ? accentSurfaceHover : "transparent"; radius: 6 }
-                onClicked: window.addTab()
+                IconButton {
+                    id: newTabButton
+                    iconSource: Qt.resolvedUrl("../icons/reyos-plus.svg")
+                    iconSize: 18
+                    implicitWidth: 34
+                    implicitHeight: 34
+                    hoverColor: accentSurfaceHover
+                    tip: "New tab (Ctrl+T)"
+                    onClicked: window.addTab()
+                }
+
+                Item { Layout.fillWidth: true }
             }
         }
 
         ToolBar {
+            id: navBar
             Layout.fillWidth: true
-            implicitHeight: 46
-            background: Rectangle { color: accentSurfaceRaised }
+            implicitHeight: 54
+            leftPadding: 10
+            rightPadding: 10
+            background: Rectangle {
+                color: accentSurfaceToolbar
+                Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: accentSurfaceBase }
+            }
             contentItem: RowLayout {
-                spacing: 3
+                spacing: 4
 
-                ToolButton {
+                IconButton {
                     id: backButton
-                    icon.source: Qt.resolvedUrl("../icons/reyos-back.svg")
-                    icon.width: 22
-                    icon.height: 22
-                    implicitWidth: 40
-                    implicitHeight: 42
+                    iconSource: Qt.resolvedUrl("../icons/reyos-back.svg")
+                    hoverColor: accentSurfaceHover
                     enabled: currentView && currentView.canGoBack
-                    opacity: enabled ? 1.0 : 0.5
-                    background: Rectangle { color: backButton.hovered ? accentSurfaceHover : "transparent"; radius: 8 }
+                    tip: "Back"
                     onClicked: currentView.goBack()
-                    ToolTip.visible: hovered
-                    ToolTip.text: "Back"
-                    Accessible.name: "Back"
                 }
-
-                ToolButton {
+                IconButton {
                     id: forwardButton
-                    icon.source: Qt.resolvedUrl("../icons/reyos-forward.svg")
-                    icon.width: 22
-                    icon.height: 22
-                    implicitWidth: 40
-                    implicitHeight: 42
+                    iconSource: Qt.resolvedUrl("../icons/reyos-forward.svg")
+                    hoverColor: accentSurfaceHover
                     enabled: currentView && currentView.canGoForward
-                    opacity: enabled ? 1.0 : 0.5
-                    background: Rectangle { color: forwardButton.hovered ? accentSurfaceHover : "transparent"; radius: 8 }
+                    tip: "Forward"
                     onClicked: currentView.goForward()
-                    ToolTip.visible: hovered
-                    ToolTip.text: "Forward"
-                    Accessible.name: "Forward"
                 }
-
-                ToolButton {
+                IconButton {
                     id: reloadButton
-                    icon.source: Qt.resolvedUrl("../icons/reyos-refresh.svg")
-                    icon.width: 20
-                    icon.height: 20
-                    implicitWidth: 38
-                    implicitHeight: 42
-                    background: Rectangle { color: reloadButton.hovered ? accentSurfaceHover : "transparent"; radius: 8 }
-                    onClicked: currentView.reload()
-                    ToolTip.visible: hovered
-                    ToolTip.text: "Reload"
-                    Accessible.name: "Reload"
+                    iconSource: Qt.resolvedUrl("../icons/reyos-refresh.svg")
+                    iconSize: 19
+                    hoverColor: accentSurfaceHover
+                    tint: "#FFF3E6"
+                    tip: currentView && currentView.loading ? "Stop" : "Reload (Ctrl+R)"
+                    onClicked: currentView.loading ? currentView.stop() : currentView.reload()
                 }
 
-                TextField {
-                    id: address
+                Rectangle {
+                    id: addressFrame
                     Layout.fillWidth: true
-                    Layout.preferredWidth: 520
-                    Layout.minimumWidth: 280
-                    implicitHeight: 32
-                    placeholderText: "Search privately or enter an address"
-                    selectByMouse: true
-                    Component.onCompleted: text = window.addressLabel()
-                    onAccepted: window.openAddress(text)
+                    Layout.minimumWidth: 240
+                    Layout.leftMargin: 6
+                    Layout.rightMargin: 6
+                    implicitHeight: 40
+                    radius: 12
+                    color: accentSurfaceWindow
+                    border.width: address.activeFocus ? 2 : 1
+                    border.color: address.activeFocus ? accentColor : Qt.rgba(accentColor.r, accentColor.g, accentColor.b, 0.45)
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 6
+                        anchors.rightMargin: 10
+                        spacing: 4
+
+                        IconButton {
+                            id: siteInfoButton
+                            implicitWidth: 30
+                            implicitHeight: 30
+                            iconSize: 17
+                            hoverColor: accentSurfaceHover
+                            iconSource: window.currentIsHome ? Qt.resolvedUrl("../icons/reyos-search.svg")
+                                       : (window.currentIsHttps ? Qt.resolvedUrl("../icons/reyos-lock.svg") : Qt.resolvedUrl("../icons/reyos-warning.svg"))
+                            tint: window.currentIsHome || window.currentIsHttps ? "#D7C1AA" : accentGlow
+                            enabled: !window.currentIsHome
+                            opacity: 1.0
+                            tip: window.currentIsHttps ? "Connection is secure — site safety" : "Connection is not secure — site safety"
+                            onClicked: siteSafetyDialog.open()
+                        }
+                        TextField {
+                            id: address
+                            Layout.fillWidth: true
+                            // Steady cursor: a blinking one redraws the whole window twice a second.
+                            cursorDelegate: Rectangle { width: 2; color: "#F0A96A"; visible: address.cursorVisible }
+                            background: null
+                            color: "#FFF3E6"
+                            font.pixelSize: 14
+                            placeholderText: "Search privately or enter an address"
+                            placeholderTextColor: "#9F8873"
+                            selectByMouse: true
+                            Component.onCompleted: text = window.addressLabel()
+                            onAccepted: window.openAddress(text)
+                            onActiveFocusChanged: if (activeFocus) Qt.callLater(selectAll)
+                            Keys.onEscapePressed: {
+                                text = window.addressLabel()
+                                focus = false
+                            }
+                            Accessible.name: "Address and search bar"
+                        }
+                    }
                 }
 
-                ToolButton {
+                IconButton {
                     id: bookmarkButton
-                    icon.source: Qt.resolvedUrl("../icons/reyos-bookmark.svg")
-                    icon.width: 21
-                    icon.height: 21
-                    implicitWidth: 38
-                    implicitHeight: 42
-                    opacity: currentView && browserBackend.isBookmarked(currentView.url.toString()) ? 1.0 : 0.72
-                    background: Rectangle { color: bookmarkButton.hovered ? accentSurfaceHover : "transparent"; radius: 8 }
+                    readonly property bool marked: {
+                        browserBackend.bookmarksVersion
+                        return currentView ? browserBackend.isBookmarked(currentView.url.toString()) : false
+                    }
+                    iconSource: marked ? Qt.resolvedUrl("../icons/reyos-star-filled.svg") : Qt.resolvedUrl("../icons/reyos-star.svg")
+                    tint: marked ? accentColor : "#FFF3E6"
+                    hoverColor: accentSurfaceHover
+                    enabled: !window.currentIsHome
+                    tip: marked ? "Remove bookmark" : "Bookmark this page"
                     onClicked: window.toggleBookmark()
-                    ToolTip.visible: hovered
-                    ToolTip.text: currentView && browserBackend.isBookmarked(currentView.url.toString()) ? "Remove bookmark" : "Bookmark this page"
-                    Accessible.name: "Bookmark this page"
                 }
-
-                ToolButton {
-                    id: readerButton
-                    icon.source: Qt.resolvedUrl("../icons/reyos-reader.svg")
-                    icon.width: 20
-                    icon.height: 20
-                    implicitWidth: 38
-                    implicitHeight: 42
-                    opacity: window.readerIsActive() ? 0.72 : 1.0
-                    background: Rectangle { color: readerButton.hovered ? accentSurfaceHover : "transparent"; radius: 8 }
-                    onClicked: window.openReaderMode()
-                    ToolTip.visible: hovered
-                    ToolTip.text: window.readerIsActive() ? "Return to original page" : "Reader Mode"
-                    Accessible.name: "Reader Mode"
-                }
-
-                ToolButton {
-                    id: historyButton
-                    icon.source: Qt.resolvedUrl("../icons/reyos-history.svg")
-                    icon.width: 20
-                    icon.height: 20
-                    implicitWidth: 38
-                    implicitHeight: 42
-                    background: Rectangle { color: historyButton.hovered ? accentSurfaceHover : "transparent"; radius: 8 }
-                    onClicked: historyDialog.open()
-                    ToolTip.visible: hovered
-                    ToolTip.text: "Private session history"
-                    Accessible.name: "Private session history"
-                }
-
-                ToolButton {
-                    id: memoryButton
-                    icon.source: Qt.resolvedUrl("../icons/reyos-memory.svg")
-                    icon.width: 20
-                    icon.height: 20
-                    implicitWidth: 38
-                    implicitHeight: 42
-                    opacity: browserBackend.lowMemoryMode ? 1.0 : 0.5
-                    background: Rectangle { color: memoryButton.hovered ? accentSurfaceHover : "transparent"; radius: 8 }
-                    onClicked: browserBackend.toggleLowMemoryMode()
-                    ToolTip.visible: hovered
-                    ToolTip.text: browserBackend.lowMemoryMode ? "Low Memory Mode: On" : "Low Memory Mode: Off"
-                    Accessible.name: "Low Memory Mode"
-                }
-
-                ToolButton {
+                IconButton {
                     id: shieldsButton
-                    icon.source: Qt.resolvedUrl("../icons/reyos-shields.svg")
-                    icon.width: 23
-                    icon.height: 23
-                    implicitWidth: 40
-                    implicitHeight: 42
-                    opacity: browserBackend.shieldsEnabled ? 1.0 : 0.5
-                    background: Rectangle { color: shieldsButton.hovered ? accentSurfaceHover : "transparent"; radius: 8 }
-                    onClicked: siteSafetyDialog.open()
-                    ToolTip.visible: hovered
-                    ToolTip.text: "Site Safety"
-                    Accessible.name: "Site Safety"
+                    iconSource: Qt.resolvedUrl("../icons/reyos-shields.svg")
+                    iconSize: 22
+                    hoverColor: accentSurfaceHover
+                    opacity: browserBackend.shieldsEnabled && browserBackend.currentSiteShieldsEnabled ? 1.0 : 0.5
+                    active: siteSafetyDialog.visible
+                    tip: browserBackend.shieldsEnabled ? "ReyOS Shields — " + browserBackend.blockedRequestCount + " blocked this session" : "ReyOS Shields are off"
+                    onClicked: siteSafetyDialog.visible ? siteSafetyDialog.close() : siteSafetyDialog.open()
                 }
-
-                ToolButton {
+                IconButton {
+                    id: downloadsButton
+                    visible: !window.compactToolbar || window.activeDownloadCount > 0
+                    iconSource: Qt.resolvedUrl("../icons/reyos-download.svg")
+                    hoverColor: accentSurfaceHover
+                    tint: window.activeDownloadCount > 0 ? accentGlow : "#FFF3E6"
+                    badge: window.activeDownloadCount > 0
+                    badgeColor: accentColor
+                    active: downloadsDialog.visible
+                    tip: window.activeDownloadCount > 0 ? window.activeDownloadCount + " download" + (window.activeDownloadCount > 1 ? "s" : "") + " in progress" : "Downloads"
+                    onClicked: downloadsDialog.visible ? downloadsDialog.close() : downloadsDialog.open()
+                }
+                IconButton {
                     id: browserMenuButton
-                    icon.source: Qt.resolvedUrl("../icons/reyos-menu.svg")
-                    icon.width: 22
-                    icon.height: 22
-                    implicitWidth: 38
-                    implicitHeight: 42
-                    background: Rectangle { color: browserMenuButton.hovered ? accentSurfaceHover : "transparent"; radius: 8 }
-                    onClicked: browserMenu.open()
-                    ToolTip.visible: hovered
-                    ToolTip.text: "Browser menu"
-                    Accessible.name: "Browser menu"
+                    iconSource: Qt.resolvedUrl("../icons/reyos-menu.svg")
+                    hoverColor: accentSurfaceHover
+                    active: browserMenu.visible
+                    tip: "Menu"
+                    onClicked: browserMenu.visible ? browserMenu.close() : browserMenu.open()
                 }
             }
         }
@@ -1174,6 +1336,7 @@ ApplicationWindow {
             RowLayout {
                 Layout.fillWidth: true
                 Button { text: "Import CSV…"; onClicked: browserBackend.choosePasswordImport() }
+                Button { text: "System Password Manager"; onClicked: browserBackend.openSystemPasswordManager() }
                 Item { Layout.fillWidth: true }
                 Button { text: "Reset…"; onClicked: resetPasswordsConfirmDialog.open() }
                 Button { text: "Close"; onClicked: passwordsDialog.close() }
@@ -1215,9 +1378,12 @@ ApplicationWindow {
     Dialog {
         id: siteSafetyDialog
         title: "Site Safety"
-        modal: true
-        width: 450
-        anchors.centerIn: parent
+        parent: window.contentItem
+        modal: false
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        width: Math.min(400, window.width - 24)
+        x: Math.max(12, window.contentItem.width - width - 60)
+        y: 4
         padding: 18
         background: Rectangle { color: accentSurfaceRaised; border.color: accentBorder; border.width: 1; radius: 12 }
         contentItem: ColumnLayout {
@@ -1417,184 +1583,139 @@ ApplicationWindow {
         parent: window.contentItem
         x: Math.max(8, window.contentItem.width - width - 10)
         y: 4
-        width: 278
-        height: contentItem.implicitHeight + 16
+        width: 290
+        height: Math.min(window.contentItem.height - 12, menuColumn.implicitHeight + 16)
         padding: 8
         modal: false
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-        background: Rectangle { color: accentSurfaceRaised; border.color: accentBorder; border.width: 1; radius: 10 }
-        contentItem: ColumnLayout {
-            spacing: 3
+        background: Rectangle { color: accentSurfaceRaised; border.color: accentBorder; border.width: 1; radius: 12 }
 
-            Button {
-                id: bookmarksMenuButton
-                Layout.fillWidth: true
-                implicitHeight: 36
-                background: Rectangle { color: bookmarksMenuButton.hovered ? accentSurfaceHover : "transparent"; radius: 7 }
-                contentItem: RowLayout {
-                    spacing: 10
-                    Image { source: Qt.resolvedUrl("../icons/reyos-bookmark.svg"); sourceSize.width: 20; sourceSize.height: 20; Layout.leftMargin: 10 }
-                    Label { text: "Bookmarks"; color: "#FFF3E6"; font.pixelSize: 14; Layout.fillWidth: true }
-                }
-                onClicked: {
-                    browserMenu.close()
-                    bookmarksDialog.open()
-                }
-            }
+        component MenuDivider: Rectangle {
+            Layout.fillWidth: true
+            Layout.topMargin: 4
+            Layout.bottomMargin: 4
+            implicitHeight: 1
+            color: accentBorder
+            opacity: 0.7
+        }
 
-            Button {
-                id: passwordsMenuButton
-                Layout.fillWidth: true
-                implicitHeight: 36
-                background: Rectangle { color: passwordsMenuButton.hovered ? accentSurfaceHover : "transparent"; radius: 7 }
-                contentItem: RowLayout {
-                    spacing: 10
-                    Image { source: Qt.resolvedUrl("../icons/reyos-password.svg"); sourceSize.width: 20; sourceSize.height: 20; Layout.leftMargin: 10 }
-                    Label { text: "Passwords"; color: "#FFF3E6"; font.pixelSize: 14; Layout.fillWidth: true }
-                }
-                onClicked: {
-                    browserMenu.close()
-                    passwordsDialog.open()
-                }
-            }
+        contentItem: Flickable {
+            clip: true
+            contentHeight: menuColumn.implicitHeight
+            boundsBehavior: Flickable.StopAtBounds
 
-            Button {
-                id: openSystemPasswordsMenuButton
-                Layout.fillWidth: true
-                implicitHeight: 36
-                background: Rectangle { color: openSystemPasswordsMenuButton.hovered ? accentSurfaceHover : "transparent"; radius: 7 }
-                contentItem: RowLayout {
-                    spacing: 10
-                    Image { source: Qt.resolvedUrl("../icons/reyos-external-key.svg"); sourceSize.width: 20; sourceSize.height: 20; Layout.leftMargin: 10 }
-                    Label { text: "Open System Password Manager"; color: "#FFF3E6"; font.pixelSize: 14; Layout.fillWidth: true }
-                }
-                onClicked: {
-                    browserMenu.close()
-                    browserBackend.openSystemPasswordManager()
-                }
-            }
+            ColumnLayout {
+                id: menuColumn
+                width: parent.width
+                spacing: 2
 
-            Button {
-                id: findMenuButton
-                Layout.fillWidth: true
-                implicitHeight: 36
-                background: Rectangle { color: findMenuButton.hovered ? accentSurfaceHover : "transparent"; radius: 7 }
-                contentItem: RowLayout {
-                    spacing: 10
-                    Image { source: Qt.resolvedUrl("../icons/reyos-find.svg"); sourceSize.width: 20; sourceSize.height: 20; Layout.leftMargin: 10 }
-                    Label { text: "Find in page"; color: "#FFF3E6"; font.pixelSize: 14; Layout.fillWidth: true }
+                MenuRow {
+                    text: "New Tab"
+                    iconSource: Qt.resolvedUrl("../icons/reyos-plus.svg")
+                    shortcutText: "Ctrl+T"
+                    hoverColor: accentSurfaceHover
+                    onClicked: { browserMenu.close(); window.addTab() }
                 }
-                onClicked: {
-                    browserMenu.close()
-                    window.openFind()
+                MenuRow {
+                    text: "Reopen Closed Tab"
+                    iconSource: Qt.resolvedUrl("../icons/reyos-history.svg")
+                    shortcutText: "Ctrl+Shift+T"
+                    hoverColor: accentSurfaceHover
+                    onClicked: { browserMenu.close(); window.reopenClosedTab() }
                 }
-            }
 
-            Button {
-                id: downloadsMenuButton
-                Layout.fillWidth: true
-                implicitHeight: 36
-                background: Rectangle { color: downloadsMenuButton.hovered ? accentSurfaceHover : "transparent"; radius: 7 }
-                contentItem: RowLayout {
-                    spacing: 10
-                    Image { source: Qt.resolvedUrl("../icons/reyos-download.svg"); sourceSize.width: 20; sourceSize.height: 20; Layout.leftMargin: 10 }
-                    Label { text: "Downloads"; color: "#FFF3E6"; font.pixelSize: 14; Layout.fillWidth: true }
-                }
-                onClicked: {
-                    browserMenu.close()
-                    downloadsDialog.open()
-                }
-            }
+                MenuDivider {}
 
-            Button {
-                id: shieldsMenuButton
-                enabled: browserBackend.currentSite.length > 0
-                Layout.fillWidth: true
-                implicitHeight: 36
-                background: Rectangle { color: shieldsMenuButton.hovered ? accentSurfaceHover : "transparent"; radius: 7 }
-                contentItem: RowLayout {
-                    spacing: 10
-                    Image {
-                        source: Qt.resolvedUrl("../icons/reyos-shields.svg")
-                        sourceSize.width: 20
-                        sourceSize.height: 20
-                        opacity: shieldsMenuButton.enabled ? 1.0 : 0.45
-                        Layout.leftMargin: 10
-                    }
-                    Label {
-                        text: browserBackend.currentSiteShieldsEnabled ? "Disable shields for this site" : "Enable shields for this site"
-                        color: shieldsMenuButton.enabled ? "#FFF3E6" : "#9F8873"
-                        font.pixelSize: 14
-                        Layout.fillWidth: true
-                        elide: Text.ElideRight
-                    }
+                MenuRow {
+                    text: "Bookmarks"
+                    iconSource: Qt.resolvedUrl("../icons/reyos-bookmark.svg")
+                    hoverColor: accentSurfaceHover
+                    onClicked: { browserMenu.close(); bookmarksDialog.open() }
                 }
-                onClicked: {
-                    browserMenu.close()
-                    browserBackend.toggleCurrentSiteShields()
+                MenuRow {
+                    text: "Downloads"
+                    iconSource: Qt.resolvedUrl("../icons/reyos-download.svg")
+                    shortcutText: window.activeDownloadCount > 0 ? window.activeDownloadCount + " active" : ""
+                    hoverColor: accentSurfaceHover
+                    onClicked: { browserMenu.close(); downloadsDialog.open() }
                 }
-            }
+                MenuRow {
+                    text: "Session History"
+                    iconSource: Qt.resolvedUrl("../icons/reyos-history.svg")
+                    hoverColor: accentSurfaceHover
+                    onClicked: { browserMenu.close(); historyDialog.open() }
+                }
+                MenuRow {
+                    text: "Passwords"
+                    iconSource: Qt.resolvedUrl("../icons/reyos-password.svg")
+                    hoverColor: accentSurfaceHover
+                    onClicked: { browserMenu.close(); passwordsDialog.open() }
+                }
+                MenuRow {
+                    text: "Install This Site as an App"
+                    iconSource: Qt.resolvedUrl("../icons/reyos-webapp.svg")
+                    hoverColor: accentSurfaceHover
+                    enabled: !window.currentIsHome
+                    onClicked: { browserMenu.close(); window.installCurrentAsApp() }
+                }
+                MenuRow {
+                    text: "Manage Web Apps"
+                    iconSource: Qt.resolvedUrl("../icons/reyos-webapp.svg")
+                    hoverColor: accentSurfaceHover
+                    onClicked: { browserMenu.close(); manageAppsDialog.open() }
+                }
 
-            Button {
-                id: installAppMenuButton
-                enabled: currentView && !isHomeUrl(currentView.url.toString())
-                Layout.fillWidth: true
-                implicitHeight: 36
-                background: Rectangle { color: installAppMenuButton.hovered ? accentSurfaceHover : "transparent"; radius: 7 }
-                contentItem: RowLayout {
-                    spacing: 10
-                    Image {
-                        source: Qt.resolvedUrl("../icons/reyos-webapp.svg")
-                        sourceSize.width: 20
-                        sourceSize.height: 20
-                        opacity: installAppMenuButton.enabled ? 1.0 : 0.45
-                        Layout.leftMargin: 10
-                    }
-                    Label {
-                        text: "Install this site as an app"
-                        color: installAppMenuButton.enabled ? "#FFF3E6" : "#9F8873"
-                        font.pixelSize: 14
-                        Layout.fillWidth: true
-                        elide: Text.ElideRight
-                    }
-                }
-                onClicked: {
-                    browserMenu.close()
-                    window.installCurrentAsApp()
-                }
-            }
+                MenuDivider {}
 
-            Button {
-                id: manageAppsMenuButton
-                Layout.fillWidth: true
-                implicitHeight: 36
-                background: Rectangle { color: manageAppsMenuButton.hovered ? accentSurfaceHover : "transparent"; radius: 7 }
-                contentItem: RowLayout {
-                    spacing: 10
-                    Image { source: Qt.resolvedUrl("../icons/reyos-webapp.svg"); sourceSize.width: 20; sourceSize.height: 20; Layout.leftMargin: 10 }
-                    Label { text: "Manage installed apps"; color: "#FFF3E6"; font.pixelSize: 14; Layout.fillWidth: true }
+                MenuRow {
+                    text: "Privacy & Shields"
+                    iconSource: Qt.resolvedUrl("../icons/reyos-shields.svg")
+                    hoverColor: accentSurfaceHover
+                    onClicked: { browserMenu.close(); siteSafetyDialog.open() }
                 }
-                onClicked: {
-                    browserMenu.close()
-                    manageAppsDialog.open()
+                MenuRow {
+                    text: "Low Memory Mode"
+                    iconSource: Qt.resolvedUrl("../icons/reyos-memory.svg")
+                    hoverColor: accentSurfaceHover
+                    accent: accentColor
+                    toggle: true
+                    on: browserBackend.lowMemoryMode
+                    onClicked: browserBackend.toggleLowMemoryMode()
                 }
-            }
 
-            Rectangle { Layout.fillWidth: true; height: 1; color: accentBorder; Layout.topMargin: 3; Layout.bottomMargin: 3 }
+                MenuDivider {}
 
-            Button {
-                id: settingsMenuButton
-                Layout.fillWidth: true
-                implicitHeight: 36
-                background: Rectangle { color: settingsMenuButton.hovered ? accentSurfaceHover : "transparent"; radius: 7 }
-                contentItem: RowLayout {
-                    spacing: 10
-                    Image { source: Qt.resolvedUrl("../icons/reyos-settings.svg"); sourceSize.width: 20; sourceSize.height: 20; Layout.leftMargin: 10 }
-                    Label { text: "Browser Settings"; color: "#FFF3E6"; font.pixelSize: 14; Layout.fillWidth: true }
+                MenuRow {
+                    text: window.readerIsActive() ? "Exit Reader Mode" : "Reader Mode"
+                    iconSource: Qt.resolvedUrl("../icons/reyos-reader.svg")
+                    shortcutText: "Ctrl+Shift+R"
+                    hoverColor: accentSurfaceHover
+                    enabled: !window.currentIsHome
+                    onClicked: { browserMenu.close(); window.openReaderMode() }
                 }
-                onClicked: {
-                    browserMenu.close()
-                    settingsDialog.open()
+                MenuRow {
+                    text: "Find in Page"
+                    iconSource: Qt.resolvedUrl("../icons/reyos-find.svg")
+                    shortcutText: "Ctrl+F"
+                    hoverColor: accentSurfaceHover
+                    enabled: !window.currentIsHome
+                    onClicked: { browserMenu.close(); window.openFind() }
+                }
+
+                MenuDivider {}
+
+                MenuRow {
+                    text: "Settings"
+                    iconSource: Qt.resolvedUrl("../icons/reyos-settings.svg")
+                    hoverColor: accentSurfaceHover
+                    onClicked: { browserMenu.close(); settingsDialog.open() }
+                }
+                MenuRow {
+                    text: "Quit ReyOS Browser"
+                    iconSource: Qt.resolvedUrl("../icons/reyos-quit.svg")
+                    shortcutText: "Ctrl+Q"
+                    hoverColor: accentSurfaceHover
+                    onClicked: Qt.quit()
                 }
             }
         }
@@ -1806,15 +1927,18 @@ ApplicationWindow {
     Dialog {
         id: downloadsDialog
         title: "Downloads"
-        modal: true
-        width: 460
-        height: Math.max(205, Math.min(440, downloads.count * 86 + 125))
-        anchors.centerIn: parent
-        padding: 18
+        parent: window.contentItem
+        modal: false
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        width: Math.min(420, window.width - 24)
+        height: Math.max(190, Math.min(440, downloads.count * 86 + 125))
+        x: Math.max(12, window.contentItem.width - width - 12)
+        y: 4
+        padding: 16
         background: Rectangle { color: accentSurfaceRaised; border.color: accentBorder; radius: 12 }
         contentItem: ColumnLayout {
             spacing: 10
-            Label { visible: downloads.count === 0; text: "No downloads in this private session"; color: "#D7C1AA" }
+            Label { visible: downloads.count === 0; text: "No downloads in this private session"; color: "#D7C1AA"; Layout.fillWidth: true; Layout.fillHeight: true }
             ListView {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
@@ -1826,7 +1950,7 @@ ApplicationWindow {
                 delegate: Rectangle {
                     required property int downloadId
                     required property string name
-                    required property string state
+                    required property string status
                     required property double receivedBytes
                     required property double totalBytes
                     required property bool finished
@@ -1842,7 +1966,7 @@ ApplicationWindow {
                         RowLayout {
                             Layout.fillWidth: true
                             Label { text: name; color: "#FFF3E6"; elide: Text.ElideRight; Layout.fillWidth: true }
-                            Label { text: state; color: completed ? "#9AD8AE" : "#D7C1AA"; font.pixelSize: 12 }
+                            Label { text: status; color: completed ? "#9AD8AE" : "#D7C1AA"; font.pixelSize: 12 }
                         }
                         ProgressBar {
                             visible: !finished
@@ -1861,7 +1985,8 @@ ApplicationWindow {
                                 Layout.fillWidth: true
                             }
                             Button { visible: !finished; text: "Cancel"; onClicked: window.cancelDownload(downloadId) }
-                            Button { visible: completed; text: "Open File"; onClicked: window.openDownload(name) }
+                            Button { visible: completed; text: "Open"; onClicked: window.openDownload(name) }
+                            Button { visible: completed; text: "Show in Folder"; onClicked: Qt.openUrlExternally("file://" + window.downloadsPath) }
                         }
                     }
                 }
@@ -1969,6 +2094,12 @@ ApplicationWindow {
                 onPermissionRequested: function(request) {
                     window.requestPermission(request)
                 }
+                onContextMenuRequested: function(request) {
+                    request.accepted = true
+                    pageContextMenu.request = request
+                    pageContextMenu.view = browserView
+                    pageContextMenu.popup()
+                }
                 onUrlChanged: {
                     tabs.setProperty(index, "pageUrl", url.toString())
                     window.recordHistory(url.toString(), title)
@@ -1988,4 +2119,137 @@ ApplicationWindow {
             }
         }
     }
+    NewTabPage {
+        id: newTabPage
+        anchors.fill: parent
+        visible: window.currentIsHome && !window.readerIsActive()
+        theme: theme
+        shortcuts: browserBackend.shortcuts
+        onSearchRequested: function(text) { window.openAddress(text) }
+        onShortcutOpened: function(url) { window.openBookmarkUrl(url) }
+        onAddShortcutRequested: window.openShortcutDialog(-1)
+        onEditShortcutRequested: function(index) { window.openShortcutDialog(index) }
+        onRemoveShortcutRequested: function(index) { browserBackend.removeShortcut(index) }
+    }
+
+    Dialog {
+        id: shortcutDialog
+        property int editIndex: -1
+        property string errorText: ""
+        title: editIndex >= 0 ? "Edit Shortcut" : "Add Shortcut"
+        modal: true
+        width: Math.min(420, window.width - 32)
+        anchors.centerIn: parent
+        padding: 18
+        background: Rectangle { color: accentSurfaceRaised; border.color: accentBorder; border.width: 1; radius: 12 }
+
+        function save() {
+            if (browserBackend.updateShortcut(editIndex, shortcutNameField.text, shortcutUrlField.text)) {
+                close()
+            } else {
+                errorText = "Enter a web address, for example github.com"
+            }
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 8
+            Label { text: "Name"; color: "#D7C1AA" }
+            TextField {
+                id: shortcutNameField
+                Layout.fillWidth: true
+                placeholderText: "GitHub"
+                selectByMouse: true
+                onAccepted: shortcutDialog.save()
+            }
+            Label { text: "Address"; color: "#D7C1AA"; Layout.topMargin: 4 }
+            TextField {
+                id: shortcutUrlField
+                Layout.fillWidth: true
+                placeholderText: "github.com"
+                selectByMouse: true
+                onTextChanged: shortcutDialog.errorText = ""
+                onAccepted: shortcutDialog.save()
+            }
+            Label {
+                visible: shortcutDialog.errorText.length > 0
+                text: shortcutDialog.errorText
+                color: accentGlow
+                wrapMode: Text.Wrap
+                Layout.fillWidth: true
+            }
+            Label {
+                text: "Shortcuts open in a normal private tab. They are saved on this computer, like bookmarks."
+                color: "#9F8873"
+                font.pixelSize: 12
+                wrapMode: Text.Wrap
+                Layout.fillWidth: true
+                Layout.topMargin: 4
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                Layout.topMargin: 6
+                Item { Layout.fillWidth: true }
+                Button { text: "Cancel"; onClicked: shortcutDialog.close() }
+                Button {
+                    text: shortcutDialog.editIndex >= 0 ? "Save" : "Add"
+                    enabled: shortcutUrlField.text.trim().length > 0
+                    onClicked: shortcutDialog.save()
+                }
+            }
+        }
+    }
+
+    Menu {
+        id: pageContextMenu
+        property var request: null
+        property var view: null
+        readonly property string linkUrl: request ? String(request.linkUrl) : ""
+        readonly property string mediaUrl: request ? String(request.mediaUrl) : ""
+        readonly property bool hasSelection: request ? request.selectedText.length > 0 : false
+        readonly property bool editable: request ? request.isContentEditable : false
+        readonly property bool isImage: request ? request.mediaType === ContextMenuRequest.MediaTypeImage : false
+        readonly property bool plainPage: !linkUrl && !hasSelection && !editable && !isImage
+
+        function act(action) {
+            if (view) {
+                view.triggerWebAction(action)
+            }
+        }
+
+        MenuItem { text: "Back"; visible: pageContextMenu.plainPage; height: visible ? implicitHeight : 0; enabled: pageContextMenu.view && pageContextMenu.view.canGoBack; onTriggered: pageContextMenu.view.goBack() }
+        MenuItem { text: "Forward"; visible: pageContextMenu.plainPage; height: visible ? implicitHeight : 0; enabled: pageContextMenu.view && pageContextMenu.view.canGoForward; onTriggered: pageContextMenu.view.goForward() }
+        MenuItem { text: "Reload"; visible: pageContextMenu.plainPage; height: visible ? implicitHeight : 0; onTriggered: pageContextMenu.view.reload() }
+
+        MenuItem { text: "Open Link in New Tab"; visible: pageContextMenu.linkUrl.length > 0; height: visible ? implicitHeight : 0; onTriggered: window.openInNewTab(pageContextMenu.linkUrl) }
+        MenuItem { text: "Copy Link Address"; visible: pageContextMenu.linkUrl.length > 0; height: visible ? implicitHeight : 0; onTriggered: pageContextMenu.act(WebEngineView.CopyLinkToClipboard) }
+        MenuItem { text: "Save Link As…"; visible: pageContextMenu.linkUrl.length > 0; height: visible ? implicitHeight : 0; onTriggered: pageContextMenu.act(WebEngineView.DownloadLinkToDisk) }
+
+        MenuItem { text: "Open Image in New Tab"; visible: pageContextMenu.isImage; height: visible ? implicitHeight : 0; onTriggered: window.openInNewTab(pageContextMenu.mediaUrl) }
+        MenuItem { text: "Copy Image"; visible: pageContextMenu.isImage; height: visible ? implicitHeight : 0; onTriggered: pageContextMenu.act(WebEngineView.CopyImageToClipboard) }
+        MenuItem { text: "Save Image As…"; visible: pageContextMenu.isImage; height: visible ? implicitHeight : 0; onTriggered: pageContextMenu.act(WebEngineView.DownloadImageToDisk) }
+
+        MenuItem { text: "Cut"; visible: pageContextMenu.editable; height: visible ? implicitHeight : 0; enabled: pageContextMenu.hasSelection; onTriggered: pageContextMenu.act(WebEngineView.Cut) }
+        MenuItem { text: "Copy"; visible: pageContextMenu.hasSelection || pageContextMenu.editable; height: visible ? implicitHeight : 0; enabled: pageContextMenu.hasSelection; onTriggered: pageContextMenu.act(WebEngineView.Copy) }
+        MenuItem { text: "Paste"; visible: pageContextMenu.editable; height: visible ? implicitHeight : 0; onTriggered: pageContextMenu.act(WebEngineView.Paste) }
+        MenuItem { text: "Select All"; visible: pageContextMenu.editable; height: visible ? implicitHeight : 0; onTriggered: pageContextMenu.act(WebEngineView.SelectAll) }
+        MenuItem {
+            text: "Search for “" + (pageContextMenu.request ? pageContextMenu.request.selectedText.slice(0, 24) : "") + (pageContextMenu.request && pageContextMenu.request.selectedText.length > 24 ? "…" : "") + "”"
+            visible: pageContextMenu.hasSelection && !pageContextMenu.editable
+            height: visible ? implicitHeight : 0
+            onTriggered: window.openInNewTab(browserBackend.searchBase + encodeURIComponent(pageContextMenu.request.selectedText))
+        }
+
+        MenuSeparator { visible: pageContextMenu.plainPage; height: visible ? implicitHeight : 0 }
+        MenuItem { text: "Save Page As…"; visible: pageContextMenu.plainPage; height: visible ? implicitHeight : 0; onTriggered: pageContextMenu.act(WebEngineView.SavePage) }
+        MenuItem { text: "View Page Source"; visible: pageContextMenu.plainPage; height: visible ? implicitHeight : 0; onTriggered: window.openInNewTab("view-source:" + pageContextMenu.view.url) }
+
+        background: Rectangle {
+            implicitWidth: 230
+            color: accentSurfaceRaised
+            border.color: accentBorder
+            border.width: 1
+            radius: 10
+        }
+    }
+
 }

@@ -360,6 +360,25 @@ def normalize_origin(value: str) -> str:
     return f"{scheme}://{host}"
 
 
+MAX_SHORTCUTS = 12
+
+
+def normalize_shortcut_url(value: str) -> str:
+    text = value.strip()
+    if text and "://" not in text:
+        text = "https://" + text
+    parsed = QUrl(text)
+    host = parsed.host()
+    if (
+        parsed.scheme().lower() not in {"http", "https"}
+        or not host
+        or " " in text
+        or ("." not in host and host != "localhost")
+    ):
+        return ""
+    return parsed.toString()
+
+
 def _webapp_id(url: str, title: str) -> str:
     base = re.sub(r"[^a-z0-9]+", "-", (title or "").strip().lower()).strip("-")
     if not base:
@@ -452,6 +471,7 @@ class BrowserBackend(QObject):
     currentSiteShieldsChanged = Signal()
     searchEngineChanged = Signal()
     bookmarksChanged = Signal()
+    shortcutsChanged = Signal()
     installedWebAppsChanged = Signal()
     passwordsChanged = Signal()
     bookmarkImportFinished = Signal(int, str)
@@ -478,6 +498,8 @@ class BrowserBackend(QObject):
         self._bookmarks_path = BROWSER_STATE_DIR / "bookmarks.json"
         self._password_blocklist_path = PASSWORD_BLOCKLIST_PATH
         self._bookmarks = self._load_bookmarks()
+        self._shortcuts_path = BROWSER_STATE_DIR / "shortcuts.json"
+        self._shortcuts = self._load_shortcuts()
         self._password_blocklist = self._load_password_blocklist()
         interceptor.blocked.connect(self._record_blocked)
         self._shields_update_worker = None
@@ -559,6 +581,29 @@ class BrowserBackend(QObject):
         os.chmod(temp_path, 0o600)
         os.replace(temp_path, self._bookmarks_path)
 
+    def _load_shortcuts(self) -> list[dict]:
+        try:
+            data = json.loads(self._shortcuts_path.read_text(encoding="utf-8"))
+            if isinstance(data, list):
+                return [
+                    {"title": str(entry.get("title", "")), "url": entry["url"]}
+                    for entry in data
+                    if isinstance(entry, dict) and isinstance(entry.get("url"), str)
+                ][:MAX_SHORTCUTS]
+        except (OSError, json.JSONDecodeError):
+            pass
+        return []
+
+    def _save_shortcuts(self) -> None:
+        self._shortcuts_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        temp_path = self._shortcuts_path.with_suffix(".tmp")
+        with open(temp_path, "w", encoding="utf-8") as handle:
+            json.dump(self._shortcuts, handle, ensure_ascii=False, indent=2)
+            handle.write("\n")
+        os.chmod(temp_path, 0o600)
+        os.replace(temp_path, self._shortcuts_path)
+        self.shortcutsChanged.emit()
+
     def _load_password_blocklist(self) -> list[str]:
         try:
             data = json.loads(self._password_blocklist_path.read_text(encoding="utf-8"))
@@ -610,6 +655,38 @@ class BrowserBackend(QObject):
     @Property(int, notify=bookmarksChanged)
     def bookmarksVersion(self) -> int:
         return len(self._bookmarks)
+
+    @Property("QVariantList", notify=shortcutsChanged)
+    def shortcuts(self):
+        return self._shortcuts
+
+    @Slot(str, str, result=bool)
+    def addShortcut(self, title: str, url: str) -> bool:
+        return self.updateShortcut(-1, title, url)
+
+    # index -1 appends; returns False when the address isn't a usable web address.
+    @Slot(int, str, str, result=bool)
+    def updateShortcut(self, index: int, title: str, url: str) -> bool:
+        cleaned = normalize_shortcut_url(url)
+        if not cleaned:
+            return False
+        entry = {"title": (title.strip() or QUrl(cleaned).host())[:60], "url": cleaned}
+        if index < 0:
+            if len(self._shortcuts) >= MAX_SHORTCUTS:
+                return False
+            self._shortcuts.append(entry)
+        elif index < len(self._shortcuts):
+            self._shortcuts[index] = entry
+        else:
+            return False
+        self._save_shortcuts()
+        return True
+
+    @Slot(int)
+    def removeShortcut(self, index: int) -> None:
+        if 0 <= index < len(self._shortcuts):
+            del self._shortcuts[index]
+            self._save_shortcuts()
 
     @Property("QVariantList", notify=passwordsChanged)
     def passwordOrigins(self):
