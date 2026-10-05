@@ -4,7 +4,7 @@
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>MPL-2.0</project_license>
   <name>Reyva</name>
-  <summary>Private-by-default web browser built for ReyOS</summary>
+  <summary>Private-by-default web browser</summary>
 
   <developer id="com.reyapps">
     <name>ReyApps</name>
@@ -14,24 +14,37 @@
 
   <description>
     <p>
-      Reyva is a native Qt WebEngine browser with a private, session-only
-      profile by default, built-in Shields filtering, reader mode, download
-      management, and saved-password support.
+      Reyva is a lightweight Chromium-based browser that keeps nothing by
+      default. Tabs, history, cookies and site data live in memory and are
+      gone when you close it. No account, no sync, no telemetry.
     </p>
-    <p>
-      This Flatpak packaging is intended for running the browser outside ReyOS
-      while preserving the same application behavior and visual identity.
-    </p>
+    <ul>
+      <li>Shields: built-in tracker and ad blocking, with per-site exceptions</li>
+      <li>HTTPS upgrade, tracking-parameter stripping and fingerprinting protection</li>
+      <li>Optional saved passwords, stored in your system keyring</li>
+      <li>Bookmarks with folders, and import from other browsers</li>
+      <li>Reader mode, find in page and a download manager</li>
+      <li>Low Memory Mode, which suspends background tabs you are not using</li>
+    </ul>
   </description>
 
-  <url type="homepage">https://reyapps.com</url>
+  <url type="homepage">https://reyos.reyapps.com</url>
   <url type="bugtracker">https://github.com/Reypaulino/ReyOS/issues</url>
   <url type="vcs-browser">https://github.com/Reypaulino/ReyOS</url>
 
+  <branding>
+    <color type="primary" scheme_preference="light">#E8C9A8</color>
+    <color type="primary" scheme_preference="dark">#5A3A1E</color>
+  </branding>
+
   <screenshots>
     <screenshot type="default">
-      <caption>New tab — private by default, no account required</caption>
+      <caption>New tab page</caption>
       <image>https://raw.githubusercontent.com/Reypaulino/ReyOS/main/flatpak/screenshots/new-tab.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Browsing with Shields on</caption>
+      <image>https://raw.githubusercontent.com/Reypaulino/ReyOS/main/flatpak/screenshots/browsing.png</image>
     </screenshot>
   </screenshots>
 
@@ -44,10 +57,19 @@
     <binary>com.reyapps.Reyva</binary>
   </provides>
 
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+  </supports>
+
+  <requires>
+    <display_length compare="ge">768</display_length>
+  </requires>
+
   <releases>
-    <release version="0.1.0" date="2026-08-22">
+    <release version="0.1.0" date="2026-10-05">
       <description>
-        <p>Initial Flatpak metadata scaffold for Reyva.</p>
+        <p>First Flathub release.</p>
       </description>
     </release>
   </releases>

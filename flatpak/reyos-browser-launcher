@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+export QTWEBENGINEPROCESS_PATH=/app/bin/QtWebEngineProcess
 exec /usr/bin/python3 /app/share/reyos/browser/main.py "$@"

@@ -377,8 +377,13 @@ ApplicationWindow {
         })
     }
 
-    function initializeFirstTab() {
-        if (tabs.count === 0) {
+    function initializeFirstTab(startUrls) {
+        if (startUrls && startUrls.length > 0) {
+            for (var i = 0; i < startUrls.length; ++i) {
+                openInNewTab(startUrls[i])
+            }
+            tabBar.currentIndex = tabs.count - 1
+        } else if (tabs.count === 0) {
             addTab()
         }
     }
@@ -1336,7 +1341,7 @@ ApplicationWindow {
             RowLayout {
                 Layout.fillWidth: true
                 Button { text: "Import CSV…"; onClicked: browserBackend.choosePasswordImport() }
-                Button { text: "System Password Manager"; onClicked: browserBackend.openSystemPasswordManager() }
+                Button { text: "System Password Manager"; visible: !browserBackend.sandboxed; onClicked: browserBackend.openSystemPasswordManager() }
                 Item { Layout.fillWidth: true }
                 Button { text: "Reset…"; onClicked: resetPasswordsConfirmDialog.open() }
                 Button { text: "Close"; onClicked: passwordsDialog.close() }
@@ -1653,6 +1658,7 @@ ApplicationWindow {
                 }
                 MenuRow {
                     text: "Install This Site as an App"
+                    visible: !browserBackend.sandboxed
                     iconSource: Qt.resolvedUrl("../icons/reyos-webapp.svg")
                     hoverColor: accentSurfaceHover
                     enabled: !window.currentIsHome
@@ -1660,6 +1666,7 @@ ApplicationWindow {
                 }
                 MenuRow {
                     text: "Manage Web Apps"
+                    visible: !browserBackend.sandboxed
                     iconSource: Qt.resolvedUrl("../icons/reyos-webapp.svg")
                     hoverColor: accentSurfaceHover
                     onClicked: { browserMenu.close(); manageAppsDialog.open() }

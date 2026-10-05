@@ -15,11 +15,19 @@ from html.parser import HTMLParser
 from pathlib import Path
 
 IS_WINDOWS = sys.platform == "win32"
+IS_FLATPAK = os.path.exists("/.flatpak-info")
 
 try:
     import secretstorage
 except ModuleNotFoundError:
     secretstorage = None
+
+try:
+    import linux_dbus
+except ImportError:
+    linux_dbus = None
+if secretstorage is None and linux_dbus is not None:
+    secretstorage = linux_dbus
 
 try:
     import keyring
@@ -42,7 +50,8 @@ APP_DIR = Path(__file__).resolve().parent
 if IS_WINDOWS:
     BROWSER_STATE_DIR = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming")) / "Reyva"
 else:
-    BROWSER_STATE_DIR = Path.home() / ".local" / "share" / "reyos-browser"
+    # Flatpak points XDG_DATA_HOME into the app's own sandboxed data dir.
+    BROWSER_STATE_DIR = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share") / "reyos-browser"
 PASSWORD_BLOCKLIST_PATH = BROWSER_STATE_DIR / "password-blocklist.json"
 SETTINGS_PATH = BROWSER_STATE_DIR / "settings.json"
 PASSWORD_AUTOFILL_SCRIPT_PATH = APP_DIR / "password-autofill.js"
@@ -1058,6 +1067,12 @@ class BrowserBackend(QObject):
             self._search_engine = engine
             self.searchEngineChanged.emit()
 
+    @Property(bool, constant=True)
+    def sandboxed(self) -> bool:
+        """True in the Flatpak build, where launchers can't be written to the host
+        and host apps (KWallet Manager) can't be started."""
+        return IS_FLATPAK
+
     @Property(bool, notify=lowMemoryChanged)
     def lowMemoryMode(self) -> bool:
         return self._low_memory_mode
@@ -1074,11 +1089,20 @@ class BrowserBackend(QObject):
         if IS_WINDOWS:
             self._windows_toast(title, message)
             return
-        subprocess.Popen(
-            ["notify-send", "-a", "Reyva", "-i", "reyos-browser", title, message],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+        if shutil.which("notify-send") is None and linux_dbus is not None:
+            try:
+                linux_dbus.notify("Reyva", "com.reyapps.Reyva" if IS_FLATPAK else "reyos-browser", title, message)
+            except Exception:
+                pass
+            return
+        try:
+            subprocess.Popen(
+                ["notify-send", "-a", "Reyva", "-i", "reyos-browser", title, message],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except OSError:
+            pass
 
     def _windows_toast(self, title: str, message: str) -> None:
         # Windows shows a balloon/toast only from a visible tray icon, so it's
@@ -1514,7 +1538,7 @@ def _enable_page_gc_flag():
 def _app_icon() -> QIcon:
     if IS_WINDOWS:
         return QIcon(str(APP_ICON_ICO))
-    return QIcon.fromTheme("reyos-browser", QIcon(str(APP_DIR / "assets" / "reyos-browser-logo.png")))
+    return QIcon.fromTheme("com.reyapps.Reyva" if IS_FLATPAK else "reyos-browser", QIcon(str(APP_DIR / "assets" / "reyos-browser-logo.png")))
 
 
 def _set_windows_app_id(app_id: str) -> None:
@@ -1543,6 +1567,7 @@ def main():
     app_url = ""
     app_title = ""
     app_icon = ""
+    start_urls = []
     for arg in sys.argv[1:]:
         if arg.startswith("--app-url="):
             app_url = arg.split("=", 1)[1]
@@ -1550,6 +1575,11 @@ def main():
             app_title = arg.split("=", 1)[1]
         elif arg.startswith("--app-icon="):
             app_icon = arg.split("=", 1)[1]
+        elif not arg.startswith("-"):
+            # Links opened from other apps (desktop file Exec=... %U).
+            url = QUrl.fromUserInput(arg, os.getcwd())
+            if url.isValid() and url.scheme() in {"http", "https", "file"}:
+                start_urls.append(url.toString())
 
     if setproctitle is not None:
         # ps/top/htop/GNOME System Monitor all read the OS-level process name
@@ -1590,7 +1620,7 @@ def main():
         return app.exec()
 
     app.setApplicationName("Reyva")
-    app.setDesktopFileName("reyos-browser")
+    app.setDesktopFileName("com.reyapps.Reyva" if IS_FLATPAK else "reyos-browser")
     if IS_WINDOWS:
         _set_windows_app_id("ReyApps.Reyva")
     app.aboutToQuit.connect(backend.persistShieldsStats)
@@ -1603,7 +1633,7 @@ def main():
     if profile is None:
         return 1
     profile.setUrlRequestInterceptor(interceptor)
-    window.initializeFirstTab()
+    window.initializeFirstTab(start_urls)
     window.setIcon(_app_icon())
     return app.exec()
 

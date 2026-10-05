@@ -9,5 +9,5 @@ Terminal=false
 Categories=Network;WebBrowser;
 MimeType=text/html;text/xml;application/xhtml+xml;x-scheme-handler/http;x-scheme-handler/https;
 StartupNotify=true
-StartupWMClass=com.reyapps.Reyva
+StartupWMClass=Reyva
 Keywords=browser;web;private;privacy;

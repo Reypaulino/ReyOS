@@ -261,10 +261,12 @@ Rectangle {
                     }
                     PrivacyCard {
                         theme: page.theme
-                        iconSource: Qt.resolvedUrl("../../icons/reyos-webapp.svg")
-                        title: "Web Apps"
+                        iconSource: Qt.resolvedUrl(browserBackend.sandboxed ? "../../icons/reyos-shields.svg" : "../../icons/reyos-webapp.svg")
+                        title: browserBackend.sandboxed ? "Shields On" : "Web Apps"
                         divider: cardGrid.columns > 1
-                        body: "Install selected sites as apps when you want a persistent login."
+                        body: browserBackend.sandboxed
+                            ? "Trackers and ads are blocked on every site, with per-site exceptions."
+                            : "Install selected sites as apps when you want a persistent login."
                     }
                 }
             }
