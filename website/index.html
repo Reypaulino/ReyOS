@@ -851,7 +851,7 @@
         <h3>KNOWN LIMITATIONS RIGHT NOW</h3>
         <ul>
           <li>The public ISO is out (2026.10.01) — download and checksums are in the Download section below. New since the last release: the installer no longer fails on computers with a lot of RAM, installed systems no longer keep live-session leftovers (such as a passwordless root login on the console and SSH root login), graphics drivers are chosen by your hardware, and the Control Center gained Screen &amp; Sleep settings and a fixed Bluetooth pairing flow. These installer changes have been checked piece by piece but not yet through a full install on real hardware, and installing next to an existing, nearly full system has only been tested in a virtual machine so far — back up your data first. Remote Desktop's video/input hasn't been verified end-to-end on real hardware yet.</li>
-          <li>Reyva for Windows is built but not tested on Windows yet; the Linux versions are the supported ones today.</li>
+          <li>Reyva for Windows is out (0.1.0.105). It was tested on a clean Windows machine (install, start-up, real sites, saved passwords, uninstall), but not yet used day-to-day by a person on a real PC, and the installer isn't code-signed, so SmartScreen warns on first run.</li>
           <li>Not recommended as a daily-driver machine yet — best tried on spare hardware or a virtual machine.</li>
           <li><a href="#wsl" style="color:var(--copper-light);">ReyOS WSL</a> — a separate, terminal-only build for Windows Subsystem for Linux — is downloadable now, but was only built and verified on Linux (a real Dev VM build run). It hasn't been installed on a real Windows 11 + WSL2 machine yet.</li>
         </ul>
@@ -975,14 +975,15 @@
         <div class="platform-card">
           <div class="platform-icon">🪟</div>
           <div class="platform-name">Windows</div>
-          <p class="platform-desc">A Windows build is in development and not yet available.</p>
-          <span class="btn btn-ghost btn-disabled">In Development</span>
+          <p class="platform-desc">Windows 10/11, 64-bit. A per-user installer: no admin rights needed. Saved passwords go to Windows Credential Manager, and installed web apps show up in the Start menu.</p>
+          <a href="https://github.com/Reypaulino/ReyOS/releases/download/reyva-windows-v0.1.0.105/Reyva-Setup-0.1.0.105.exe" class="btn btn-ghost">Download for Windows (151 MB)</a>
+          <p class="platform-subnote"><a href="#browser-windows">Install notes ↓</a></p>
         </div>
       </div>
 
       <div id="browser-build" class="install-note" style="margin-top:28px;">
         <p style="color:var(--text); font-weight:700; margin-bottom:10px;">Run Reyva outside ReyOS</p>
-        <p>The browser itself is cross-distro Qt/PySide code. On Arch-based systems, build the package directly from the ReyOS repo — not from the AUR. On Ubuntu or Debian, grab the ready-made <code>.deb</code> below. On any other distro, use the Flatpak, which updates itself.</p>
+        <p>The browser itself is cross-distro Qt/PySide code. On Arch-based systems, build the package directly from the ReyOS repo — not from the AUR. On Ubuntu or Debian, grab the ready-made <code>.deb</code> below. On any other distro, use the Flatpak, which updates itself. On Windows, use the installer.</p>
 
         <p style="color:var(--text); font-weight:700; margin: 22px 0 10px;">Arch-based distros</p>
         <p>It's a real package with no ReyOS-specific runtime dependencies. This is not an AUR install: <code>pyside6</code>, <code>qt6-webengine</code>, <code>qt6-webchannel</code>, <code>libnotify</code>, <code>kdialog</code>, and <code>python-secretstorage</code> are all in the official Arch Linux repos, so <code>makepkg</code> handles everything:</p>
@@ -1002,8 +1003,14 @@ sudo apt install ./reyos-browser_0.1.0-117ubuntu1_amd64.deb</code></pre>
         <p style="color:var(--text); font-weight:700; margin: 22px 0 10px;">Any distro (Flatpak)</p>
         <p>Works anywhere Flatpak is installed: Fedora, openSUSE, Mint, Pop!_OS, Steam Deck and more. Updates arrive with your normal Flatpak updates (software center or <code>flatpak update</code>). The first install also pulls the KDE runtime from Flathub. The sandboxed version can't install sites as apps:</p>
         <pre><code>flatpak install --user https://reypaulino.github.io/reyva-flatpak/com.reyapps.Reyva.flatpakref</code></pre>
-        <p>Then launch it from your app menu, or run <code>flatpak run com.reyapps.Reyva</code>. Prefer a single file? The <a href="https://github.com/Reypaulino/ReyOS/releases/tag/reyva-flatpak-v0.1.0">Reyva.flatpak</a> download installs the same app and updates the same way.</p>
+        <p>Then launch it from your app menu, or run <code>flatpak run com.reyapps.Reyva</code>. Prefer a single file? The <a href="https://github.com/Reypaulino/ReyOS/releases/tag/reyva-flatpak-v0.1.0" style="color:var(--copper-light);">Reyva.flatpak</a> download installs the same app and updates the same way.</p>
         <a href="https://reypaulino.github.io/reyva-flatpak/" class="btn btn-ghost">Install Flatpak</a>
+
+        <p id="browser-windows" style="color:var(--text); font-weight:700; margin: 22px 0 10px; scroll-margin-top: 96px;">Windows</p>
+        <p>Download <a href="https://github.com/Reypaulino/ReyOS/releases/download/reyva-windows-v0.1.0.105/Reyva-Setup-0.1.0.105.exe" style="color:var(--copper-light);"><code>Reyva-Setup-0.1.0.105.exe</code></a> and run it. It installs for your user only (to <code>%LOCALAPPDATA%\Programs\Reyva</code>, no admin prompt) and adds Reyva to the Start menu. The installer isn't code-signed yet, so Windows SmartScreen may show "Windows protected your PC": click <strong style="color:var(--text);">More info → Run anyway</strong>.</p>
+        <p>Saved passwords live in Windows Credential Manager; "Install This Site as an App" adds the site to the Start menu under <em>Reyva Web Apps</em> with its own taskbar icon. There are no automatic updates yet: run a newer installer over the old one. Uninstall from Settings → Apps; bookmarks and settings in <code>%APPDATA%\Reyva</code> are kept.</p>
+        <img src="screenshots/reyva-windows.png" alt="Reyva's New Tab page running on Windows" loading="lazy" style="width:100%; max-width:640px; height:auto; border-radius:10px; border:1px solid var(--border, rgba(255,255,255,0.1)); margin: 6px 0 14px;" />
+        <a href="https://github.com/Reypaulino/ReyOS/releases/tag/reyva-windows-v0.1.0.105" class="btn btn-ghost">Windows release notes</a>
       </div>
     </div>
   </section>
