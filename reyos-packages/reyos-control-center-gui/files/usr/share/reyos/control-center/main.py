@@ -116,6 +116,92 @@ def _desktop_entries():
     return entries
 
 
+_AUTOSTART_USER_DIR = Path.home() / ".config" / "autostart"
+_APPLICATION_DIRS = [
+    Path("/usr/share/applications"),
+    Path("/var/lib/flatpak/exports/share/applications"),
+    Path.home() / ".local/share/flatpak/exports/share/applications",
+    Path.home() / ".local/share/applications",
+]
+# Desktop plumbing that also starts through autostart; switching any of these
+# off breaks the panel, sign-in prompts, tray or accessibility.
+_SESSION_PLUMBING = {
+    "org.kde.plasmashell.desktop", "polkit-kde-authentication-agent-1.desktop", "kglobalacceld.desktop",
+    "powerdevil.desktop", "at-spi-dbus-bus.desktop", "xembedsniproxy.desktop", "gmenudbusmenuproxy.desktop",
+    "xapp-sn-watcher.desktop", "org.kde.plasma-fallback-session-restore.desktop", "kaccess.desktop",
+    "xdg-user-dirs.desktop", "reyos-top-panel-update.desktop", "reyos-installer.desktop",
+}
+
+
+def _autostart_system_dirs():
+    dirs = os.environ.get("XDG_CONFIG_DIRS") or "/etc/xdg"
+    return [Path(d) / "autostart" for d in dirs.split(":") if d and (Path(d) / "autostart").is_dir()]
+
+
+def _valid_desktop_id(entry_id):
+    return bool(re.fullmatch(r"[A-Za-z0-9_.+-]+\.desktop", entry_id or "")) and ".." not in entry_id
+
+
+def _read_desktop_entry(path):
+    fields, in_entry = {}, False
+    try:
+        lines = Path(path).read_text(errors="ignore").splitlines()
+    except OSError:
+        return fields
+    for line in lines:
+        s = line.strip()
+        if s.startswith("["):
+            in_entry = s == "[Desktop Entry]"
+            continue
+        if in_entry and "=" in s and not s.startswith("#"):
+            key, value = s.split("=", 1)
+            fields.setdefault(key.strip(), value.strip())
+    return fields
+
+
+def _set_desktop_keys(path, updates):
+    # Keys go inside [Desktop Entry]; appending at the end of the file would
+    # land them in a [Desktop Action ...] group and be ignored.
+    lines = Path(path).read_text(errors="ignore").splitlines()
+    out, in_entry, written = [], False, False
+    for line in lines:
+        s = line.strip()
+        if s.startswith("["):
+            if in_entry and not written:
+                out.extend(f"{k}={v}" for k, v in updates.items())
+                written = True
+            in_entry = s == "[Desktop Entry]"
+        elif in_entry and "=" in s and s.split("=", 1)[0].strip() in updates:
+            continue
+        out.append(line)
+    if not written:
+        out.extend(f"{k}={v}" for k, v in updates.items())
+    Path(path).write_text("\n".join(out) + "\n")
+
+
+def _shown_in_kde(fields):
+    only = [x for x in fields.get("OnlyShowIn", "").split(";") if x]
+    never = [x for x in fields.get("NotShowIn", "").split(";") if x]
+    return (not only or "KDE" in only) and "KDE" not in never
+
+
+def _is_session_plumbing(file_name, fields):
+    return (file_name in _SESSION_PLUMBING
+            or fields.get("X-KDE-autostart-phase", "") in ("PreInitialization", "0"))
+
+
+def _autostart_item(entry_id, fields, system, enabled):
+    return {
+        "id": entry_id,
+        "name": fields.get("Name", entry_id.removesuffix(".desktop")),
+        "comment": fields.get("Comment", ""),
+        "icon": fields.get("Icon", ""),
+        "system": system,
+        "builtin": entry_id.startswith("reyos-"),
+        "isEnabled": enabled,
+    }
+
+
 def _is_live_session():
     # /run/archiso/airootfs (the old check here) no longer exists on current
     # archiso builds -- confirmed live on a genuine live boot (2026-08-31,
@@ -668,6 +754,7 @@ class Backend(QObject):
     flatpaksListed = Signal("QVariantList")
     servicesFound = Signal("QVariantList")
     autostartListed = Signal("QVariantList")
+    startupCandidatesListed = Signal("QVariantList")
     audioInfoReady = Signal("QVariantMap")
     bluetoothStatusReady = Signal("QVariantMap")
     wifiStatusReady = Signal("QVariantMap")
@@ -2515,28 +2602,34 @@ class Backend(QObject):
         self._run_action(task)
 
     # --- Startup apps (autostart) -------------------------------------------
+    # User entries live in ~/.config/autostart; system ones in
+    # $XDG_CONFIG_DIRS/autostart. A same-named user file overrides the system
+    # one, and Hidden=true there turns it off for this user only -- the same
+    # convention Plasma's own Autostart settings use, honoured by
+    # systemd-xdg-autostart-generator.
 
     @staticmethod
     def _compute_autostart_list():
-        d = Path.home() / ".config" / "autostart"
-        if not d.is_dir():
-            return []
-        items = []
-        for f in sorted(d.glob("*.desktop")):
-            try:
-                text = f.read_text()
-            except Exception:
-                continue
-            name = f.stem
-            is_enabled = True
-            for line in text.splitlines():
-                line = line.strip()
-                if line.startswith("Name=") and "[" not in line:
-                    name = line.split("=", 1)[1]
-                elif line in ("Hidden=true", "X-GNOME-Autostart-enabled=false"):
-                    is_enabled = False
-            items.append({"file": str(f), "name": name, "isEnabled": is_enabled})
-        return items
+        items, system_fields = {}, {}
+        for d in reversed(_autostart_system_dirs()):
+            for f in sorted(d.glob("*.desktop")):
+                fields = _read_desktop_entry(f)
+                if (fields.get("Hidden") == "true" or not _shown_in_kde(fields)
+                        or _is_session_plumbing(f.name, fields)):
+                    items.pop(f.name, None)
+                    continue
+                items[f.name] = _autostart_item(f.name, fields, system=True, enabled=True)
+                system_fields[f.name] = fields
+        if _AUTOSTART_USER_DIR.is_dir():
+            for f in sorted(_AUTOSTART_USER_DIR.glob("*.desktop")):
+                fields = {**system_fields.get(f.name, {}), **_read_desktop_entry(f)}
+                system = f.name in items and items[f.name]["system"]
+                hidden = fields.get("Hidden") == "true"
+                if not _shown_in_kde(fields) or (hidden and not system):
+                    continue
+                enabled = not hidden and fields.get("X-GNOME-Autostart-enabled") != "false"
+                items[f.name] = _autostart_item(f.name, fields, system=system, enabled=enabled)
+        return sorted(items.values(), key=lambda i: i["name"].lower())
 
     @Slot()
     def listAutostart(self):
@@ -2544,17 +2637,92 @@ class Backend(QObject):
         self._autostart_worker.ready.connect(self.autostartListed.emit)
         self._autostart_worker.start()
 
+    @staticmethod
+    def _compute_startup_candidates():
+        already = {i["id"] for i in Backend._compute_autostart_list()}
+        apps = {}
+        for d in _APPLICATION_DIRS:
+            if not d.is_dir():
+                continue
+            for f in sorted(d.glob("*.desktop")):
+                fields = _read_desktop_entry(f)
+                if (fields.get("Type", "Application") != "Application" or fields.get("NoDisplay") == "true"
+                        or fields.get("Hidden") == "true" or not fields.get("Exec") or not _shown_in_kde(fields)):
+                    apps.pop(f.name, None)
+                    continue
+                if f.name not in already:
+                    apps[f.name] = {"id": f.name, "name": fields.get("Name", f.stem),
+                                    "icon": fields.get("Icon", ""), "comment": fields.get("Comment", "")}
+        return sorted(apps.values(), key=lambda a: a["name"].lower())
+
+    @Slot()
+    def listStartupCandidates(self):
+        self._candidates_worker = ListWorker(self._compute_startup_candidates)
+        self._candidates_worker.ready.connect(self.startupCandidatesListed.emit)
+        self._candidates_worker.start()
+
     @Slot(str, bool)
-    def setAutostartEnabled(self, file_path, enable):
+    def setAutostartEnabled(self, entry_id, enable):
         def task(emit):
-            p = Path(file_path)
-            if not p.is_file():
-                return False, f"File not found: {file_path}"
-            lines = [l for l in p.read_text().splitlines()
-                     if not l.strip().startswith("X-GNOME-Autostart-enabled=")]
-            lines.append("X-GNOME-Autostart-enabled=" + ("true" if enable else "false"))
-            p.write_text("\n".join(lines) + "\n")
-            return True, (("Enabled: " if enable else "Disabled: ") + p.stem)
+            if not _valid_desktop_id(entry_id):
+                return False, "Not a startup entry."
+            target = _AUTOSTART_USER_DIR / entry_id
+            if not target.is_file():
+                source = next((d / entry_id for d in _autostart_system_dirs() if (d / entry_id).is_file()), None)
+                if source is None:
+                    return False, f"Startup entry not found: {entry_id}"
+                _AUTOSTART_USER_DIR.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(source, target)
+            _set_desktop_keys(target, {"Hidden": "false" if enable else "true",
+                                       "X-GNOME-Autostart-enabled": "true" if enable else "false"})
+            name = _read_desktop_entry(target).get("Name", entry_id)
+            return True, ("Starts at login: " if enable else "Won't start at login: ") + name
+        self._run_action(task)
+
+    @Slot(str)
+    def addAutostart(self, desktop_id):
+        def task(emit):
+            if not _valid_desktop_id(desktop_id):
+                return False, "Not an app."
+            source = None
+            for d in _APPLICATION_DIRS:
+                if (d / desktop_id).is_file():
+                    source = d / desktop_id
+            if source is None:
+                return False, f"App not found: {desktop_id}"
+            _AUTOSTART_USER_DIR.mkdir(parents=True, exist_ok=True)
+            target = _AUTOSTART_USER_DIR / desktop_id
+            shutil.copyfile(source, target)
+            _set_desktop_keys(target, {"Hidden": "false", "X-GNOME-Autostart-enabled": "true"})
+            return True, "Starts at login: " + _read_desktop_entry(target).get("Name", desktop_id)
+        self._run_action(task)
+
+    @Slot(str)
+    def removeAutostart(self, entry_id):
+        def task(emit):
+            target = _AUTOSTART_USER_DIR / entry_id
+            if not _valid_desktop_id(entry_id) or not target.is_file():
+                return False, "Startup entry not found."
+            if any((d / entry_id).is_file() for d in _autostart_system_dirs()):
+                return False, "This one comes with the system -- switch it off instead."
+            if entry_id.startswith("reyos-"):
+                return False, "This is part of ReyOS -- switch it off instead."
+            name = _read_desktop_entry(target).get("Name", entry_id)
+            target.unlink()
+            return True, "Removed from startup: " + name
+        self._run_action(task)
+
+    @Slot(result=bool)
+    def sessionRestoreEnabled(self):
+        return self._kread("ksmserverrc", ["General"], "loginMode", "restorePreviousLogout") != "emptySession"
+
+    @Slot(bool)
+    def setSessionRestore(self, enable):
+        def task(emit):
+            self._kwrite("ksmserverrc", ["General"], "loginMode",
+                         "restorePreviousLogout" if enable else "emptySession")
+            return True, ("Apps open at logout will reopen next time." if enable
+                          else "You'll start with an empty desktop next time.")
         self._run_action(task)
 
 
