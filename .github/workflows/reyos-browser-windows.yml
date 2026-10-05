@@ -58,6 +58,58 @@ jobs:
           choco install innosetup -y --no-progress
           iscc /DAppVersion=${{ inputs.version }} windows\reyos-browser.iss
 
+      - name: Saved passwords round trip (Windows Credential Manager)
+        shell: pwsh
+        working-directory: reyos-packages/reyos-browser/files/usr/share/reyos/browser
+        run: |
+          python -c @"
+          import main
+          v = main.PasswordVault()
+          assert type(v).__name__ == '_WindowsPasswordVault', type(v)
+          o = 'https://ci-test.example'
+          v.save_credential(o, 'alice', 'pw-a'); v.save_credential(o, 'bob', 'pw-b')
+          got = {c['username']: c['password'] for c in v.get_credentials(o)}
+          assert got == {'alice': 'pw-a', 'bob': 'pw-b'}, got
+          assert o in v.list_all_origins()
+          v.delete_credential(o, 'alice'); v.delete_credential(o, 'bob')
+          assert v.get_credentials(o) == [] and o not in v.list_all_origins()
+          print('password vault OK')
+          "@
+
+      - name: Install, launch and uninstall the installer build
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+          function Shot($name) {
+            $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+            $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
+            [System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
+            $bmp.Save("smoke-$name.png")
+          }
+          $setup = Get-Item dist\Reyva-Setup-*.exe
+          Start-Process $setup.FullName -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART" -Wait
+          $exe = "$env:LOCALAPPDATA\Programs\Reyva\Reyva.exe"
+          $lnk = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Reyva.lnk"
+          if (-not (Test-Path $exe)) { throw "not installed: $exe" }
+          if (-not (Test-Path $lnk)) { throw "no Start menu shortcut: $lnk" }
+          $p = Start-Process $exe -PassThru
+          Start-Sleep -Seconds 25
+          Shot "installed-newtab"
+          if ($p.HasExited) { throw "installed Reyva.exe exited early with code $($p.ExitCode)" }
+          Stop-Process -Id $p.Id -Force
+          Start-Sleep -Seconds 3
+          Start-Process "$env:LOCALAPPDATA\Programs\Reyva\unins000.exe" -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART" -Wait
+          Start-Sleep -Seconds 5
+          if (Test-Path $exe) { throw "uninstall left $exe" }
+          if (Test-Path $lnk) { throw "uninstall left $lnk" }
+          Write-Host "install / launch / uninstall OK"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: installed-screenshots
+          path: reyos-packages/reyos-browser/smoke-installed-*.png
+
       - uses: actions/upload-artifact@v4
         with:
           name: Reyva-Setup-${{ inputs.version }}
