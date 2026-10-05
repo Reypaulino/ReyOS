@@ -56,6 +56,20 @@ fails with "Remote bundles are not supported". Release tag pattern:
 `<releases>` in the metainfo for each new bundle; no auto-updates yet (would need an
 OSTree repo, e.g. on GitHub Pages, plus a `.flatpakref`).
 
+Auto-updating repo (built 2026-10-05, not yet public): a signed static OSTree repo
+on GitHub Pages, so `flatpak update`/Discover pick up new versions.
+
+    K=9A17D49EE3929AC6402337FA66E4085621026272
+    flatpak-builder --user --force-clean --disable-rofiles-fuse --install-deps-from=flathub --default-branch=stable build-dir com.reyapps.Reyva.yaml
+    flatpak build-export --gpg-sign=$K site/repo build-dir stable     # site/repo = `ostree init --mode=archive-z2` once
+    flatpak build-update-repo --title=Reyva --default-branch=stable --gpg-sign=$K site/repo
+
+`site/` also holds `com.reyapps.Reyva.flatpakref` (Url, Branch=stable, `RuntimeRepo`
+= Flathub, base64 `GPGKey`), `reyva.flatpakrepo`, `reyva.gpg`, `index.html`, `.nojekyll`.
+Largest object is ~88 MB (QtWebEngine), close to GitHub's 100 MB per-file limit.
+To test without publishing, serve `site/` with `python3 -m http.server` and use a
+copy of the flatpakref with a local Url.
+
 **Flathub's generative-AI policy (checked 2026-10-05) blocks an agent-driven submission:**
 "Flathub manifests must not contain AI-generated or AI-assisted content", "AI tools or
 agents must not open or automate Flathub submission pull requests, or generate their
