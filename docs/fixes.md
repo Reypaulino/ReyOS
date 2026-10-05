@@ -2,6 +2,77 @@
 
 Real bugs found and fixed, with root cause. Newest first. See `bugs.md` for what's still open.
 
+## 2026-10-05 — Reyva Flatpak bundle released on GitHub (`reyva-flatpak-v0.1.0`, published)
+
+Since Flathub is off the table for agent submissions, Reyva ships as a single `Reyva.flatpak` (191 MB) on a GitHub Release, built from the manifest's pinned public commit `c497db8` (release tagged there, not marked Latest). Bundle carries `--runtime-repo` = Flathub so the KDE 6.11 runtime + PySide BaseApp install with it. Verified: downloaded the release asset (sha256 `ef9ed751…b149`, identical to the local build), `flatpak install --user Reyva.flatpak` installed it, and it launched with the sandboxed `/app/bin/QtWebEngineProcess` renderers. Caught before anyone used it: `flatpak install <https url>` fails ("Remote bundles are not supported"), so the release notes and website say download first, then install. Website (`reyos.reyapps.com`, "Run Reyva outside ReyOS") gained an "Any distro (Flatpak)" section — deployed and checked live. No auto-updates (needs a hosted OSTree repo, not built). Build steps: `flatpak/README.md`.
+
+## 2026-10-05 — Reyva Flatpak reworked for Flathub (source only, no package bump)
+
+The old manifest bundled PyPI binary wheels (Flathub rejects those), targeted the now end-of-life KDE 6.9 runtime, and listed browser files one by one — it was missing everything the redesign added (`qml/components/`, new icons). Now: `org.kde.Platform//6.11` + `io.qt.PySide.BaseApp//6.11` (PySide6 + QtWebEngine built from source), whole browser dir installed, `jeepney` (pure-Python wheel) + `setproctitle` (sdist) as the only Python deps, pinned to public commit `4df7e29`.
+
+Found by running it in the sandbox:
+- **Crash on launch**: QtWebEngine couldn't find `QtWebEngineProcess` → launcher exports `QTWEBENGINEPROCESS_PATH=/app/bin/QtWebEngineProcess`.
+- **Saved passwords**: `python-secretstorage` needs the compiled `cryptography` package. New `linux_dbus.py` talks Secret Service over jeepney (plain session, local bus only); used only when `secretstorage` isn't importable, so Arch/.deb are unchanged. Save/replace/read/delete round-trip passed against the host keyring from inside the sandbox.
+- **Notifications**: no `notify-send` in the runtime → D-Bus `Notify` through the same module.
+- **Settings/shortcuts/bookmarks couldn't be saved**: state dir was hard-coded to `~/.local/share`; now honours `XDG_DATA_HOME` (same path on Arch/.deb, `~/.var/app/com.reyapps.Reyva/data` in Flatpak).
+- Install as App / Manage Web Apps / System Password Manager hidden when sandboxed (`browserBackend.sandboxed`); the New Tab "Web Apps" card becomes "Shields On". Web apps in Flatpak need the DynamicLauncher portal — not built.
+
+Also fixed for every build: **URLs passed on the command line were ignored** (desktop files say `Exec=... %U`, so links opened from other apps just showed a New Tab). Verified in Flatpak and from source with the host's `.deb` venv.
+
+Lint: manifest clean; repo lint only reports the screenshot-mirroring errors Flathub's own pipeline resolves. New metainfo (description, branding colours, two fresh screenshots). Later the same day: downloads verified (land in `~/Downloads`); CSV import used Qt's own dialog, which inside the sandbox only sees `~/Downloads` → native dialog (= file-chooser portal) in Flatpak only (`c497db8`), verified importing a test CSV from `~/Documents`. Not submitted: Flathub's generative-AI policy forbids AI-written manifests and AI-opened/automated submission PRs, and requires disclosing AI-generated app code — see `flatpak/README.md`. Arch/.deb not rebuilt — the URL-argument and XDG fixes reach them on the next bump. Flathub PR not opened.
+
+## 2026-10-04 (late night) — Control Center Startup Apps page (`reyos-control-center-gui` 1.0.0-108, published)
+
+User noticed apps coming back after a restart and asked for startup control. The existing page only listed `~/.config/autostart`. Now: system autostart entries too (switch off per user via a `Hidden=true` copy in `~/.config/autostart`, Plasma's own convention; desktop plumbing like plasmashell/polkit agent/kglobalacceld excluded — an early version also hid everything in `X-KDE-autostart-phase=1`, which wrongly dropped KDE Connect); **Add App…** picker (installed apps + Flatpaks, searchable) and **Remove** for user-added entries; ReyOS's own helpers labelled "Part of ReyOS" (switch only, backend also refuses to delete them); **Reopen apps from last session** switch (`ksmserverrc [General] loginMode` restorePreviousLogout/emptySession) — what actually brings apps back after a restart. Keys are written inside `[Desktop Entry]` (appending would land in a `[Desktop Action]` group). Tested on the Dev VM: backend in a throwaway HOME (add/disable/re-enable/remove, path-escape rejected) and the real page (add Konsole via search, Remove, session switch round-trip).
+
+## 2026-10-04 (late night) — ReyOS Browser renamed **Reyva** (`reyos-browser` 0.1.0-104 / `.deb` 0.1.0-116ubuntu1, `reyos-control-center-gui` 1.0.0-107, published)
+
+User's choice of name (a standalone browser name, like Edge/Opera), tagline "Private by default". Display name only — window title, tab strip, New Tab page ("Rey" + accent "va"), menus, dialogs, notifications, desktop entries (`Name=Reyva`, `GenericName=Web Browser`), Windows installer/exe/Start menu, Flatpak app ID `com.reyapps.Reyva`, website, README, one Control Center Security-page line. Package/binary/storage stay `reyos-browser`, so existing installs update in place and saved passwords (looked up by the `reyos-browser` attribute/service) and bookmarks are untouched. The Look accent still recolours Reyva's UI on ReyOS (confirmed: red Look on the Dev VM); the logo is a raster and stays orange. Verified on the Dev VM and in a clean `ubuntu:24.04` container; installed on the Ubuntu host. Windows workflow file still only on local master (gh token lacks `workflow` scope).
+
+## 2026-10-04 (night) — ReyOS Browser new logo (`reyos-browser` 0.1.0-103 / `.deb` 0.1.0-115ubuntu1, published)
+
+Crown-R logo (from the user, made in ChatGPT) replaces the R-penguin **in the browser only** — app icon, New Tab page, tab strip, web-app fallback icon, Windows `.ico`; the OS keeps the R-penguin. Source image had a black background, so the rounded tile was cut out with transparent corners (radius ≈239 px of 1108). `hicolor/scalable/apps/reyos-browser.svg` is now an SVG wrapping a 512 px PNG, so every existing path keeps working; Control Center's Look recolour finds no gradient stops in it and leaves it alone. On the Dev VM the top panel and taskbar showed the new icon right after install; the window title bar still showed the old one, almost certainly KDE's in-memory icon cache (only one `reyos-browser` icon exists on disk) — should clear at next login, not verified.
+
+Published: Arch 0.1.0-103 on reyos-pages; `.deb` 0.1.0-115ubuntu1 GitHub Release (114 deleted; clean `ubuntu:24.04` install + launch OK; ISO release kept as "Latest"); installed on the Ubuntu host; origin/main has the Windows support, logo, bump and website (new browser screenshot, link → 115), also deployed to the Pi. **Pending**: the Windows Actions workflow file isn't on GitHub yet — the `gh` token lacks the `workflow` scope (`gh auth refresh -h github.com -s workflow`).
+
+## 2026-10-04 (later) — ReyOS Browser for Windows: completed, not yet run on Windows (`da28b95`)
+
+Notifications (tray toast), Install as App (Start menu shortcut + `.ico`), taskbar identity, real `.ico`, onedir PyInstaller spec (its source path was wrong — would have failed on first build), Inno Setup per-user installer, and a manual GitHub Actions workflow that builds + smoke-tests + uploads the installer. Spec built and launched on the Linux Dev VM to check the bundle; Windows-only code paths need a real Windows run — checklist in `reyos-packages/reyos-browser/windows/README.md`.
+
+## 2026-10-04 — ReyOS Browser redesign + saved-password fix (`reyos-browser` 0.1.0-102 / `.deb` 0.1.0-114ubuntu1, published)
+
+Redesign per `docs/TASK-browser-redesign.md` (commit `5672edd`; Codex validated the first pass, see `docs/browser-redesign-handoff-2026-10-04.md`). Driven interactively on the Dev VM: shortcuts add/edit/remove/open, bad addresses rejected, right-click menu on page/link/image/text field, Shields and Downloads panels, menu, bookmark star, close + reopen tab, 760×520 minimum size, privacy restart check.
+
+- **Saved passwords** (`4120a74`): autofill had never run (`url.scheme` doesn't exist on Qt 6 QML urls) and the bridge's two-argument `credentialsFor` never matched a page call. Fixing only that would have let any page read another site's saved password — reproduced on the VM. Bridge now runs in an isolated script world, one per tab, and Python answers only for the tab's real origin. Same `url.scheme` bug made Site Safety call every HTTPS page "Not secure".
+- **`currentView` was null on the first tab** until another tab was opened: shortcuts, New Tab search and the address bar silently did nothing. The old "+" TabButton inside the TabBar had masked it.
+- **Idle CPU**: a blinking text cursor redrew the whole window twice a second (≈6% of a core under VM software rendering). Steady cursor → 0%, same as before the redesign; memory unchanged (≈930 MB with one tab).
+- Download status label collided with `Item.state` (never showed "Completed"); bookmark star never refreshed after toggling.
+
+Published: Arch `reyos-browser` 0.1.0-102 on reyos-pages (signed, live db verified); Ubuntu/Debian `.deb` 0.1.0-114ubuntu1 as GitHub Release (old 113 release deleted; installed + offscreen-launched in a clean `ubuntu:24.04` container as a normal user, and installed on the Ubuntu host); source on origin/main (`97941a7`, `14f0b4a`, `88ca400`); website `.deb` link → 114 in both copies, redeployed to the Pi. Known drift, not touched: origin/main's browser `main.py` still lacks the `setproctitle` process-name block that `master` has (optional import, so main still works).
+
+## 2026-10-03 — Real-hardware Control Center audit (`reyos-control-center-gui` 1.0.0-106)
+
+An agent on the real ReyOS install (ThinkPad, same machine as the Ubuntu build host) ran `docs/hardware-audit-handoff.md` and left patches plus a report in `~/reyos-audit/BUILD-FIXES.md` on the ReyOS partition. Applied unchanged (built tree is byte-identical to the copy it tested):
+
+- **Wi-Fi / WireGuard names containing `:` were misparsed**: `nmcli -t` escapes `:` as `\:` but the code split on every `:` (`ADC-V723 (24:CE:A4)` showed as SSID `ADC-V723 (24\`, signal 0). New `_nmcli_fields()` splits only on unescaped colons.
+- **Disk page listed `/dev` and efivars as disks**: filtering by source name missed devtmpfs/efivarfs on Arch; now `df -x tmpfs -x devtmpfs -x efivarfs`.
+- **A newly added printer didn't show on the Printers page**: only `printer X is <state>` was matched, so printers that were printing or disabled vanished; and `lpstat` output is translated, so non-English systems always showed an empty list. Now runs `lpstat`/`scanimage` with `LC_ALL=C` and matches all states.
+
+Found but not fixed (need a decision): cache-cleanup `sudo -n find … rm` has no sudoers rule and always fails silently (part of RB-1); Disk page "largest folders" ignores hidden dirs; **memory grows ~0.3–1.3 MB per page opened on real Plasma** (upstream qqc2-desktop-style leak, repro in `~/reyos-audit/minrepro/` on the ReyOS partition; the VM harness likely ran without the Plasma style, hence its +5 MB); Sound inputs list the speaker "Monitor" source.
+
+## 2026-10-01 (night) — Control Center audit (`reyos-control-center-gui` 1.0.0-105)
+
+Full report with evidence, measurements and the open release blocker: `docs/control-center-audit.md`. Fixed here (one commit each):
+
+- **Missing sudo rules locked the user's account**: Control Center has no terminal, so a `sudo` call with no NOPASSWD rule still started PAM authentication and `pam_faillock` counted it (3 → locked out of the lock screen, sudo and SSH for 10 min). Hit twice on the Dev VM while testing. Every call is now `sudo -n` (verified: plain sudo +1 failure, `sudo -n` +0).
+- **Crash reopening a page while it was still loading** (Printers → Home → Printers within ~8 s aborted with a core dump): workers are kept until their thread finishes; on quit, running workers (an update) are waited for.
+- **ReyOS Games crashed when closed during box-art downloads**; missing box art is now retried after 30 days.
+- **"Enable swap" said yes but zram stayed off**; governor/swappiness ignored sudo's result; Full update said "complete" when a clean-up step failed; a second package operation could start after reopening Updates.
+- **Stats**: read from procfs and paused when neither Home nor Performance is open (idle elsewhere 0.35% → 0.03% of a core, no more 90 processes a minute).
+- **Logs**: `~/.local/state/reyos/control-center.log` (failed actions) and `last-package-operation.log`.
+
+**Not fixed — release blocker**: wildcard NOPASSWD sudo rules give root without a password (demonstrated). Also behind the same redesign: VPN page import/delete and USB protection always fail (no rule), and older installs never get new rules. Proposal in the audit; needs the user's decision.
+
 ## 2026-10-01 (later) — Second real install: installer variable bug, firmware boot entry, browser toolbar, dashed border, new top bar
 
 - **"Missing variables are: PK"** (`reyos-calamares` 1.3.6-45): Calamares' shellprocess substitutes every bare `$NAME` in a script before bash sees it and aborts on unknown ones. The GPU-driver step used `$PK` and live-cleanup used `$T`/`$u`. The driver logic moved to `/usr/share/reyos/bin/reyos-hw-drivers`; live-cleanup spells out its paths. Rule: no shell variables inside shellprocess scripts, only `${ROOT}`/`${USER}`.
@@ -190,6 +261,7 @@ Also checked the requested Ollama service on this machine: `ollama.service` is a
 Built and installed `reyos-control-center-gui 1.0.0-84` on the Dev VM; `qmllint` passes, and Plasma's size-apply command was checked with a temporary 32 px setting before restoring the original default. Matching `reyos-looks 1.0.0-12` and `reyos-themes 1.0.0-58` packages were also built and signed. Per the user's later handoff, package upload is left for Claude: use the signed package files in `/tmp/ReyOS-pages-publish-latest`, regenerate/sign the repository indexes from the current `reyos-pages` tip (`c90cd00` at handoff), then push that branch. Do not use the earlier `/tmp/ReyOS-pages-publish` staging tree, which was based on a stale package-repository ref. The source commits had already been pushed to `main` before the handoff arrived.
 
 **Publish handoff completed 2026-09-28 (Claude).** The referenced `/tmp/ReyOS-pages-publish-latest` no longer existed on disk (nor on the Dev VM), and the Dev VM's own `~/reyos-build/local-repo`/`publish-pages-20260928` mirrors turned out to be stale — missing several packages already live on `reyos-pages` (e.g. `reyos-sddm` was still at `-13` there, `-15` was already published; `reyos-themes` only had `-54`/`-58`, missing `-55`..`-57`). Used those directories only as the source for the three actual new package files (already correctly signed against the ReyOS key, verified). Did the repo update from a **fresh clone of `origin/reyos-pages`** instead of any local mirror: cloned it clean on the Dev VM, `repo-add`'d the three new packages into that clean tree (each replaces exactly its own prior entry — `-82`→`-84`, `-10`→`-12`, `-57`→`-58`, every other package left untouched), pulled the regenerated `reyos-local.db.tar.gz`/`.files.tar.gz` back to sign locally with the ReyOS key (never held on the Dev VM), and pushed to `reyos-pages` at `f6a7417`. Confirmed live: `origin/reyos-pages` tip is `f6a7417`, `reypaulino.github.io/ReyOS/reyos-local.db` serves 200. **If this "regenerate wholesale from local-repo" note is followed again, verify the Dev VM's local mirror against the live `reyos-pages` tree first** — it silently drifted behind actual published state this time.
+
 ## 2026-09-28 — Aurorae titlebar glyphs were enlarged into blocks; per-Look cursor accent was too subtle
 
 The new ReyOS Aurorae frame rendered correctly (rounded window, colored active border), but its minimize/maximize/close artwork did not: close became a titlebar-sized X, maximize became a large outline box, and minimize became a solid rounded block. The first live comparison was misleading because removing the three SVG files produced the same pixels while KWin still held the already-parsed theme in memory. Cross-checking the deleted Claude file snapshots against KDE's Aurorae/FrameSvg contract exposed the actual shared cause: every `*-center` state contained only the small glyph. KSvg crops an element to its own bounding box before scaling that crop to `ButtonWidth`/`ButtonHeight`, so it enlarged each small glyph to fill the full 20x20 button; the minimize line's degenerate-height bounds produced the block.
@@ -197,12 +269,6 @@ The new ReyOS Aurorae frame rendered correctly (rounded window, colored active b
 Restored `close.svg`, `maximize.svg`, and `minimize.svg` with a nearly-transparent full 20x20 rectangle inside every state to establish stable FrameSvg bounds, then added `restore.svg` so maximized windows show the proper overlapping-window symbol. This remains a ReyOS design—not an Omarchy copy: visible conventional window controls, rounded dark titlebar, and the current Look's colored border. Also widened the per-Look cursor's matching accent rim from 1.4px to 2px while retaining its light fill and narrow dark contrast keyline, then regenerated all six XCursor themes (Copper, Crimson, Forest, Graphite, Slate, Violet).
 
 Live-verified on the Dev VM with `reyos-themes 1.0.0-58` and `reyos-looks 1.0.0-11`: a fresh Konsole under the real `__aurorae__svg__ReyOS` theme shows the normal line/square/X controls with the copper window border; maximizing it changes the middle button to the new restore glyph. `kcminputrc` reports `ReyOS-Copper`, and all six generated cursor binaries are distinct and rebuild successfully from their Look color schemes. Follow-up request: increased the accent rim from 2px to 4px, regenerated all six cursors, and installed `reyos-looks 1.0.0-12` on the VM. An enlarged Copper preview confirms the heavier rim stays legible around the light pointer shape.
-
-## 2026-09-28 — Control Center Mouse page gains a cursor-size option
-
-The Mouse page already exposed per-device pointer speed, handedness, and natural scrolling, but there was no way to enlarge the on-screen cursor. Added a separate global **Cursor size** selector with the four sizes (24, 32, 48, and 64 px) actually present in ReyOS's custom XCursor assets. The backend persists the choice in Plasma's `kcminputrc` and calls `plasma-apply-cursortheme` with the currently selected cursor theme, so increasing size preserves the active Look's accent-colored ReyOS pointer instead of switching to a generic cursor. Unsupported values are rejected; if live application is unavailable, the saved size takes effect at next login. `reyos-control-center-gui` bumped to `1.0.0-84`.
-
-Also checked the requested Ollama services on this machine: `ollama.service` is already active and enabled, so no service-state change was needed.
 
 ## 2026-09-28 — Logout dialog could not open with ReyOS global themes
 

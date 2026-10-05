@@ -43,6 +43,28 @@ page and real sites, opens URLs passed on the command line, saves settings to
 the sandboxed data dir, and saves/reads/deletes a password through the host's
 Secret Service from inside the sandbox.
 
+Single-file bundle for GitHub Releases (what's actually shipped today, since Flathub
+is blocked — see below). Builds straight from the manifest's pinned public commit:
+
+    flatpak-builder --user --force-clean --disable-rofiles-fuse --install-deps-from=flathub --repo=repo build-dir com.reyapps.Reyva.yaml
+    flatpak build-bundle --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo repo Reyva.flatpak com.reyapps.Reyva
+
+`--runtime-repo` lets the user's `flatpak install` fetch the KDE runtime + PySide
+BaseApp from Flathub. Users must download the file first — `flatpak install <https url>`
+fails with "Remote bundles are not supported". Release tag pattern:
+`reyva-flatpak-v<version>` (not marked Latest — that stays on the ISO). Bump
+`<releases>` in the metainfo for each new bundle; no auto-updates yet (would need an
+OSTree repo, e.g. on GitHub Pages, plus a `.flatpakref`).
+
+**Flathub's generative-AI policy (checked 2026-10-05) blocks an agent-driven submission:**
+"Flathub manifests must not contain AI-generated or AI-assisted content", "AI tools or
+agents must not open or automate Flathub submission pull requests, or generate their
+commit messages, descriptions, review comments, or replies", and AI-generated
+application code must be disclosed (parts + extent; reviewers may reject on that basis).
+So the manifest here is a working reference only: the submitted manifest has to be
+written by a human, and the PR opened and handled by the user. Flathub also wants a
+tagged stable release as the source (not a bare commit).
+
 Before submitting to Flathub:
 - Point the manifest's `commit:` at a public `main` commit containing the files
   it installs (this directory + `reyos-packages/reyos-browser/`).
@@ -50,5 +72,5 @@ Before submitting to Flathub:
   the manifest. After acceptance, Flathub issues a token to place at
   `https://reyapps.com/.well-known/org.flathub.VerifiedApps.txt` for the
   verified-publisher badge.
-- Not yet checked in the sandbox: downloads to `~/Downloads`, CSV password
-  import and bookmark import through the file-chooser portal.
+- Verified in the sandbox too: downloads land in `~/Downloads`; CSV import goes
+  through the file-chooser portal (any folder). Bookmark import uses the same dialog.
