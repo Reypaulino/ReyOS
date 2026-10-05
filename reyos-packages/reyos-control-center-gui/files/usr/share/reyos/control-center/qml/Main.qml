@@ -38,7 +38,7 @@ Kirigami.ApplicationWindow {
                 anchors.margins: Kirigami.Units.largeSpacing
                 spacing: Kirigami.Units.largeSpacing
                 Kirigami.Icon {
-                    source: "file:///usr/share/reyos/control-center/assets/reyos-brand.png"
+                    source: "file:///usr/share/reyos/control-center/assets/reyos-control-center-icon.png"
                     Layout.preferredWidth: Kirigami.Units.iconSizes.medium
                     Layout.preferredHeight: Kirigami.Units.iconSizes.medium
                 }
