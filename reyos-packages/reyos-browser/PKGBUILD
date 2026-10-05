@@ -1,7 +1,7 @@
 # Maintainer: Rey Paulino
 pkgname=reyos-browser
 pkgver=0.1.0
-pkgrel=103
+pkgrel=104
 pkgdesc="Reyva — the private-by-default web browser from ReyOS"
 arch=('any')
 license=('MPL-2.0')
