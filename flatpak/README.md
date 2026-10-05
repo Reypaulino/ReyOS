@@ -1,9 +1,9 @@
-ReyOS Browser Flatpak scaffold
+Reyva Flatpak scaffold
 
-This directory is the starting point for a Flathub submission of ReyOS Browser.
+This directory is the starting point for a Flathub submission of Reyva.
 
 Current status:
-- App ID chosen: `com.reyapps.ReyOSBrowser`
+- App ID chosen: `com.reyapps.Reyva`
 - Flathub-specific desktop file added
 - Flathub-specific Metainfo file added
 - Flatpak manifest aligned to KDE `6.9`
@@ -12,7 +12,7 @@ Current status:
 - Local build completes with `flatpak-builder`
 - Local Flatpak runtime imports verified for `PySide6`, `QtWebEngineQuick`, and `secretstorage`
 - **Local OSTree export to `flatpak/repo` now succeeds** (2026-08-24, after freeing host disk space — the free-space failure below is resolved, not just retried)
-- **Installed from the local repo and launched successfully** (2026-08-24): `flatpak install --user` from `flatpak/repo`, then `flatpak run com.reyapps.ReyOSBrowser` stayed up and running (not a crash-on-launch), confirmed via `flatpak ps` and a clean kill/teardown
+- **Installed from the local repo and launched successfully** (2026-08-24): `flatpak install --user` from `flatpak/repo`, then `flatpak run com.reyapps.Reyva` stayed up and running (not a crash-on-launch), confirmed via `flatpak ps` and a clean kill/teardown
 - **`LICENSE` added** (2026-08-31, MPL-2.0, matching the metainfo's `project_license`) — was previously an unbacked placeholder.
 - **Manifest source switched from local `dir` to the public git repo** (2026-08-31): `type: git`, `url: https://github.com/Reypaulino/ReyOS.git`, pinned to a commit — Flathub's build servers can now actually resolve it. Rebuilt clean from this source on a second pass.
 - **Real bug found and fixed rebuilding from the git source** (2026-08-31): the manifest's install list was missing `fingerprint-protection.js` — `main.py` requires it unconditionally at startup and crashed with `FileNotFoundError` on first real launch. Confirmed fixed: rebuilt, reinstalled, and the app now renders its New Tab page correctly (screenshot-verified on the real host, not just process-alive).

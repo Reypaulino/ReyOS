@@ -13,7 +13,7 @@ ApplicationWindow {
     minimumWidth: 760
     minimumHeight: 520
     visible: true
-    title: currentView && currentView.title ? currentView.title + " — ReyOS Browser" : "ReyOS Browser"
+    title: currentView && currentView.title ? currentView.title + " — Reyva" : "Reyva"
     color: accentSurfaceWindow
 
     // pages.count is read so this re-evaluates once the first tab's view exists.
@@ -494,7 +494,7 @@ ApplicationWindow {
                     }
                     Label {
                         visible: window.width >= 1000
-                        text: "ReyOS Browser"
+                        text: "Reyva"
                         color: "#FFF3E6"
                         font.pixelSize: 14
                         font.weight: Font.DemiBold
@@ -1428,7 +1428,7 @@ ApplicationWindow {
                 }
             }
             Label {
-                text: "Browsing data is in memory and clears when ReyOS Browser closes."
+                text: "Browsing data is in memory and clears when Reyva closes."
                 wrapMode: Text.Wrap
                 color: "#D7C1AA"
                 Layout.fillWidth: true
@@ -1711,7 +1711,7 @@ ApplicationWindow {
                     onClicked: { browserMenu.close(); settingsDialog.open() }
                 }
                 MenuRow {
-                    text: "Quit ReyOS Browser"
+                    text: "Quit Reyva"
                     iconSource: Qt.resolvedUrl("../icons/reyos-quit.svg")
                     shortcutText: "Ctrl+Q"
                     hoverColor: accentSurfaceHover
@@ -1732,7 +1732,7 @@ ApplicationWindow {
         background: Rectangle { color: accentSurfaceRaised; border.color: accentBorder; border.width: 1; radius: 12 }
         contentItem: ColumnLayout {
             spacing: 10
-            Label { text: "Only this browser session · cleared when ReyOS Browser closes"; color: "#D7C1AA"; Layout.fillWidth: true }
+            Label { text: "Only this browser session · cleared when Reyva closes"; color: "#D7C1AA"; Layout.fillWidth: true }
             Label { visible: sessionHistory.count === 0; text: "No pages visited in this session"; color: "#F4D5A8"; Layout.fillWidth: true }
             ListView {
                 model: sessionHistory
@@ -1836,7 +1836,7 @@ ApplicationWindow {
 
     Dialog {
         id: settingsDialog
-        title: "ReyOS Browser Settings"
+        title: "Reyva Settings"
         modal: true
         width: 455
         anchors.centerIn: parent
@@ -1845,7 +1845,7 @@ ApplicationWindow {
         contentItem: ColumnLayout {
             spacing: 14
             Label { text: "Private session"; font.bold: true; font.pixelSize: 19; color: "#FFF3E6" }
-            Label { text: "Your choices reset when ReyOS Browser closes."; wrapMode: Text.Wrap; color: "#F4D5A8"; Layout.fillWidth: true }
+            Label { text: "Your choices reset when Reyva closes."; wrapMode: Text.Wrap; color: "#F4D5A8"; Layout.fillWidth: true }
             Rectangle { Layout.fillWidth: true; height: 1; color: accentBorder }
             Label { text: "Search engine"; font.bold: true; color: "#FFF3E6" }
             ComboBox {

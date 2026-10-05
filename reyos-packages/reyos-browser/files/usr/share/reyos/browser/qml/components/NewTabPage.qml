@@ -91,7 +91,7 @@ Rectangle {
                 Layout.alignment: Qt.AlignHCenter
                 Layout.topMargin: page.compact ? 8 : 14
                 textFormat: Text.StyledText
-                text: "ReyOS <font color=\"" + page.theme.accent + "\">Browser</font>"
+                text: "Rey<font color=\"" + page.theme.accent + "\">va</font>"
                 color: "#FFFFFF"
                 font.pixelSize: page.width < 640 || page.compact ? 36 : 44
                 font.weight: Font.Bold
@@ -99,7 +99,7 @@ Rectangle {
             Label {
                 Layout.alignment: Qt.AlignHCenter
                 Layout.topMargin: 6
-                text: "Private browsing by default"
+                text: "Private by default"
                 color: "#FFF3E6"
                 font.pixelSize: 20
             }
@@ -109,7 +109,7 @@ Rectangle {
                 Layout.maximumWidth: column.width
                 horizontalAlignment: Text.AlignHCenter
                 wrapMode: Text.Wrap
-                text: "Your browsing session is cleared when ReyOS Browser closes."
+                text: "Your browsing session is cleared when Reyva closes."
                 color: "#BBA896"
                 font.pixelSize: 14
             }

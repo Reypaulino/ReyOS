@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 # Build on Windows inside a venv from requirements.txt:
 #   pyinstaller --noconfirm windows/reyos-browser.spec
-# Output: dist/ReyOSBrowser/ (a folder, not one file: a one-file build would
+# Output: dist/Reyva/ (a folder, not one file: a one-file build would
 # unpack ~300 MB of Qt WebEngine to %TEMP% on every launch).
 
 from pathlib import Path
@@ -32,7 +32,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name="ReyOSBrowser",
+    name="Reyva",
     icon=str(BROWSER_DIR / "assets" / "reyos-browser.ico"),
     console=False,
 )
@@ -41,5 +41,5 @@ coll = COLLECT(
     exe,
     a.binaries,
     a.datas,
-    name="ReyOSBrowser",
+    name="Reyva",
 )

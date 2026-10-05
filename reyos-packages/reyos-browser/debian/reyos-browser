@@ -22,7 +22,7 @@ elif venv_works "$USER_VENV"; then
     VENV="$USER_VENV"
 else
     if command -v notify-send >/dev/null 2>&1; then
-        notify-send "ReyOS Browser" "Preparing runtime environment, this may take a minute..." 2>/dev/null || true
+        notify-send "Reyva" "Preparing runtime environment, this may take a minute..." 2>/dev/null || true
     fi
     mkdir -p "$(dirname "$USER_VENV")"
     rm -rf "$USER_VENV"
@@ -30,7 +30,7 @@ else
         || ! "$USER_VENV/bin/python3" -m pip install --no-cache-dir --upgrade pip >/dev/null \
         || ! "$USER_VENV/bin/python3" -m pip install --no-cache-dir -r "$APP_DIR/requirements.txt" >/dev/null; then
         if command -v kdialog >/dev/null 2>&1; then
-            kdialog --error "ReyOS Browser couldn't prepare its runtime environment (needs internet on first repair). Check your connection and try again."
+            kdialog --error "Reyva couldn't prepare its runtime environment (needs internet on first repair). Check your connection and try again."
         fi
         exit 1
     fi

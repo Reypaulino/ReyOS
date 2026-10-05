@@ -1,10 +1,10 @@
-app-id: com.reyapps.ReyOSBrowser
+app-id: com.reyapps.Reyva
 runtime: org.kde.Platform
 runtime-version: "6.9"
 sdk: org.kde.Sdk
 base: io.qt.qtwebengine.BaseApp
 base-version: "6.9"
-command: com.reyapps.ReyOSBrowser
+command: com.reyapps.Reyva
 
 finish-args:
   - --share=ipc
@@ -64,9 +64,9 @@ modules:
   - name: reyos-browser
     buildsystem: simple
     build-commands:
-      - install -Dm755 flatpak/reyos-browser-launcher /app/bin/com.reyapps.ReyOSBrowser
-      - install -Dm644 flatpak/com.reyapps.ReyOSBrowser.desktop /app/share/applications/com.reyapps.ReyOSBrowser.desktop
-      - install -Dm644 flatpak/com.reyapps.ReyOSBrowser.metainfo.xml /app/share/metainfo/com.reyapps.ReyOSBrowser.metainfo.xml
+      - install -Dm755 flatpak/reyos-browser-launcher /app/bin/com.reyapps.Reyva
+      - install -Dm644 flatpak/com.reyapps.Reyva.desktop /app/share/applications/com.reyapps.Reyva.desktop
+      - install -Dm644 flatpak/com.reyapps.Reyva.metainfo.xml /app/share/metainfo/com.reyapps.Reyva.metainfo.xml
       - install -Dm644 reyos-packages/reyos-browser/files/usr/share/reyos/browser/main.py /app/share/reyos/browser/main.py
       - install -Dm644 reyos-packages/reyos-browser/files/usr/share/reyos/browser/home.html /app/share/reyos/browser/home.html
       - install -Dm644 reyos-packages/reyos-browser/files/usr/share/reyos/browser/password-autofill.js /app/share/reyos/browser/password-autofill.js
@@ -75,7 +75,7 @@ modules:
       - install -Dm644 reyos-packages/reyos-browser/files/usr/share/reyos/browser/shields-blocklist.txt /app/share/reyos/browser/shields-blocklist.txt
       - install -Dm644 reyos-packages/reyos-browser/files/usr/share/reyos/browser/qml/Main.qml /app/share/reyos/browser/qml/Main.qml
       - install -Dm644 reyos-packages/reyos-browser/files/usr/share/reyos/browser/assets/reyos-browser-logo.png /app/share/reyos/browser/assets/reyos-browser-logo.png
-      - install -Dm644 reyos-packages/reyos-browser/files/usr/share/icons/hicolor/scalable/apps/reyos-browser.svg /app/share/icons/hicolor/scalable/apps/com.reyapps.ReyOSBrowser.svg
+      - install -Dm644 reyos-packages/reyos-browser/files/usr/share/icons/hicolor/scalable/apps/reyos-browser.svg /app/share/icons/hicolor/scalable/apps/com.reyapps.Reyva.svg
       - install -Dm644 reyos-packages/reyos-browser/files/usr/share/reyos/browser/icons/reyos-back.svg /app/share/reyos/browser/icons/reyos-back.svg
       - install -Dm644 reyos-packages/reyos-browser/files/usr/share/reyos/browser/icons/reyos-bookmark.svg /app/share/reyos/browser/icons/reyos-bookmark.svg
       - install -Dm644 reyos-packages/reyos-browser/files/usr/share/reyos/browser/icons/reyos-download.svg /app/share/reyos/browser/icons/reyos-download.svg

@@ -1,7 +1,9 @@
 [Desktop Entry]
 Version=1.0
 Type=Application
-Name=ReyOS Browser
+Name=Reyva
+GenericName=Web Browser
+Keywords=browser;web;internet;private;ReyOS;privacy;
 Comment=Private browsing and tracking protection by default
 Exec=reyos-browser %U
 Icon=/usr/share/icons/hicolor/scalable/apps/reyos-browser.svg
@@ -10,4 +12,3 @@ Categories=Network;WebBrowser;
 MimeType=text/html;text/xml;application/xhtml+xml;application/vnd.mozilla.xul+xml;x-scheme-handler/http;x-scheme-handler/https;
 StartupNotify=true
 StartupWMClass=reyos-browser
-Keywords=browser;web;private;privacy;

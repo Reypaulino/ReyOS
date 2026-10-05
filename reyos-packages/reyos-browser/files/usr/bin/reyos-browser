@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Start the native ReyOS Browser application.
+# Start Reyva, the ReyOS web browser.
 # Real hardware uses GPU acceleration by default. The VM fallback avoids
 # known VirtIO/virgl rendering failures during development and testing.
 if systemd-detect-virt -q; then

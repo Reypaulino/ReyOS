@@ -6,20 +6,20 @@ ReyOS is a calm, dependable KDE Plasma Linux distribution built on Arch: easy en
 
 ## Screenshots
 
-| Desktop | ReyOS Browser |
+| Desktop | Reyva (browser) |
 |---|---|
-| ![ReyOS desktop](docs/screenshots/desktop.png) | ![ReyOS Browser](docs/screenshots/browser.png) |
+| ![ReyOS desktop](docs/screenshots/desktop.png) | ![Reyva browser](docs/screenshots/browser.png) |
 
 ## Features
 
 - **KDE Plasma 6 / Wayland**, tuned for a clean, low-clutter default desktop.
-- **ReyOS Browser** — a native PySide6/Qt WebEngine (Chromium) browser, not a wrapper around another browser. Private in-memory profile, tab freeze/discard Low Memory Mode, Reader Mode, Find in Page, session history, download manager, and ReyOS Shields ad/tracker blocking.
+- **Reyva** (the ReyOS browser) — a native PySide6/Qt WebEngine (Chromium) browser, not a wrapper around another browser. Private in-memory profile, tab freeze/discard Low Memory Mode, Reader Mode, Find in Page, session history, download manager, and ReyOS Shields ad/tracker blocking.
 - **Control Center** — one place for firewall, drivers, backups, and system settings instead of scattered system tools.
 - **ReyOS Welcome** — a first-login setup flow for picking optional software instead of hunting through a package manager.
 - **Calamares installer** with ReyOS branding, ext4 by default, and a tested end-to-end install path.
 - No telemetry by default.
 
-See [docs/vision-roadmap.md](docs/vision-roadmap.md) for the full product direction and [docs/browser.md](docs/browser.md) for ReyOS Browser's current feature set.
+See [docs/vision-roadmap.md](docs/vision-roadmap.md) for the full product direction and [docs/browser.md](docs/browser.md) for Reyva's current feature set.
 
 ## Status
 
@@ -31,7 +31,7 @@ ReyOS is in active development. Core install → boot → login → desktop flow
 reyos-packages/   PKGBUILDs for every reyos-* package (source of truth for each component)
 reyos-iso/        archiso profile used to build the installable ISO
 docs/             developer guide, roadmap, bug/fix logs
-flatpak/          Flatpak packaging for ReyOS Browser
+flatpak/          Flatpak packaging for Reyva
 ```
 
 See [docs/DEVELOPER.md](docs/DEVELOPER.md) for the full build workflow.

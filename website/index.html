@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ReyOS</title>
   <link rel="icon" type="image/png" href="reyos-r-penguin.png" />
-  <meta name="description" content="ReyOS is a calm, dependable KDE Linux distribution. Download status, known issues, and the built-in private ReyOS Browser." />
+  <meta name="description" content="ReyOS is a calm, dependable KDE Linux distribution. Download status, known issues, and the built-in private browser, Reyva." />
   <meta name="robots" content="index, follow" />
   <link rel="canonical" href="https://reyos.reyapps.com/" />
 
@@ -729,7 +729,7 @@
     <p class="tagline">A calm, dependable KDE desktop built to give older computers a second life.<br>Install it, use it, update it, and recover it — without fear.</p>
     <div class="hero-actions">
       <a href="#download" class="btn btn-primary">Download ISO</a>
-      <a href="#browser" class="btn btn-ghost">ReyOS Browser</a>
+      <a href="#browser" class="btn btn-ghost">Reyva</a>
       <a href="#status" class="btn btn-ghost">Known Issues</a>
     </div>
   </section>
@@ -757,7 +757,7 @@
         <div class="platform-card">
           <div class="platform-icon">🌐</div>
           <div class="platform-name">Web</div>
-          <p class="platform-desc">ReyOS Browser is private by default — session-only, no history, no accounts — with ad/tracker Shields on out of the box, a maintained filter list you can refresh anytime, and a reader mode for cleaner articles. <a href="#browser" style="color:var(--copper-light);">More on the browser ↓</a></p>
+          <p class="platform-desc">Reyva is private by default — session-only, no history, no accounts — with ad/tracker Shields on out of the box, a maintained filter list you can refresh anytime, and a reader mode for cleaner articles. <a href="#browser" style="color:var(--copper-light);">More on the browser ↓</a></p>
         </div>
         <div class="platform-card">
           <div class="platform-icon">📚</div>
@@ -784,8 +784,8 @@
             <p class="screenshot-caption">The desktop — KDE Plasma, Midnight Copper theme.</p>
           </div>
           <div class="screenshot-card">
-            <img src="screenshots/browser.png" alt="ReyOS Browser window open to the ReyOS start page" loading="lazy" />
-            <p class="screenshot-caption">ReyOS Browser — private by default, captured as a live app window.</p>
+            <img src="screenshots/browser.png" alt="Reyva browser window on its New Tab page" loading="lazy" />
+            <p class="screenshot-caption">Reyva — private by default, captured as a live app window.</p>
           </div>
           <div class="screenshot-card">
             <img src="screenshots/toolbox-2.png" alt="ReyOS Toolbox terminal window" loading="lazy" style="object-fit: contain; background: #0b0b0b;" />
@@ -851,7 +851,7 @@
         <h3>KNOWN LIMITATIONS RIGHT NOW</h3>
         <ul>
           <li>The public ISO is out (2026.10.01) — download and checksums are in the Download section below. New since the last release: the installer no longer fails on computers with a lot of RAM, installed systems no longer keep live-session leftovers (such as a passwordless root login on the console and SSH root login), graphics drivers are chosen by your hardware, and the Control Center gained Screen &amp; Sleep settings and a fixed Bluetooth pairing flow. These installer changes have been checked piece by piece but not yet through a full install on real hardware, and installing next to an existing, nearly full system has only been tested in a virtual machine so far — back up your data first. Remote Desktop's video/input hasn't been verified end-to-end on real hardware yet.</li>
-          <li>ReyOS Browser doesn't have a Windows build yet; only the built-in Linux browser exists today.</li>
+          <li>Reyva for Windows is built but not tested on Windows yet; the Linux versions are the supported ones today.</li>
           <li>Not recommended as a daily-driver machine yet — best tried on spare hardware or a virtual machine.</li>
           <li><a href="#wsl" style="color:var(--copper-light);">ReyOS WSL</a> — a separate, terminal-only build for Windows Subsystem for Linux — is downloadable now, but was only built and verified on Linux (a real Dev VM build run). It hasn't been installed on a real Windows 11 + WSL2 machine yet.</li>
         </ul>
@@ -953,7 +953,7 @@
   <!-- Browser -->
   <section id="browser">
     <div class="section-inner">
-      <p class="section-label">ReyOS Browser</p>
+      <p class="section-label">Reyva · the ReyOS browser</p>
       <h2 class="section-title">Private by default</h2>
       <p class="section-desc">The browser built into ReyOS runs a private, session-only profile with no persistent history — Shields blocks ads/trackers, upgrades HTTP to HTTPS, strips tracking parameters from links, and randomizes your canvas/WebGL/audio fingerprint per site, all backed by a filter list you can refresh anytime. Plus a reader mode for cleaner articles, a KWallet-backed password manager, bookmark folders, and its own download manager. No extensions or accounts required.</p>
 
@@ -981,7 +981,7 @@
       </div>
 
       <div id="browser-build" class="install-note" style="margin-top:28px;">
-        <p style="color:var(--text); font-weight:700; margin-bottom:10px;">Run ReyOS Browser outside ReyOS</p>
+        <p style="color:var(--text); font-weight:700; margin-bottom:10px;">Run Reyva outside ReyOS</p>
         <p>The browser itself is cross-distro Qt/PySide code. On Arch-based systems, build the package directly from the ReyOS repo — not from the AUR. On Ubuntu or Debian, grab the ready-made <code>.deb</code> below.</p>
 
         <p style="color:var(--text); font-weight:700; margin: 22px 0 10px;">Arch-based distros</p>
@@ -1062,10 +1062,10 @@ wsl -d ReyOS</code></pre>
         </li>
       </ol>
 
-      <p class="install-note">Selected ReyOS GUI apps (like ReyOS Browser or ReyOS Reader) can launch through WSLg where your WSL/Windows version supports it — this hasn't been confirmed on real hardware yet. KDE Connect device pairing, Bluetooth, and hardware-dependent Control Center pages are not expected to work under WSL and aren't something this build tries to fake.</p>
+      <p class="install-note">Selected ReyOS GUI apps (like Reyva or ReyOS Reader) can launch through WSLg where your WSL/Windows version supports it — this hasn't been confirmed on real hardware yet. KDE Connect device pairing, Bluetooth, and hardware-dependent Control Center pages are not expected to work under WSL and aren't something this build tries to fake.</p>
 
       <div id="wsl-build" class="install-note" style="margin-top:28px;">
-        <p style="color:var(--text); font-weight:700; margin-bottom:10px;">Build and run a real reyos-* package (e.g. ReyOS Browser)</p>
+        <p style="color:var(--text); font-weight:700; margin-bottom:10px;">Build and run a real reyos-* package (e.g. Reyva)</p>
         <p>First check whether GUI forwarding (WSLg) is actually available on this WSL/Windows version:</p>
         <pre><code>echo $WAYLAND_DISPLAY $DISPLAY</code></pre>
         <p>If both come back empty, there's no GUI forwarding here — CLI/build testing below still works fine, a window just won't appear. Either way, get the source and build:</p>

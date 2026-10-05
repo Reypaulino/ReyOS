@@ -2,7 +2,7 @@
 pkgname=reyos-browser
 pkgver=0.1.0
 pkgrel=103
-pkgdesc="ReyOS Browser — a native private-by-default Qt web application"
+pkgdesc="Reyva — the private-by-default web browser from ReyOS"
 arch=('any')
 license=('MPL-2.0')
 # kirigami removed 2026-09-10: the QML has never actually imported it

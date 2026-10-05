@@ -5,7 +5,7 @@ Priority: optional
 Architecture: amd64
 Maintainer: Rey Paulino
 Depends: python3 (>= 3.10), python3-venv, python3-pip, kdialog, libnotify-bin, libnspr4, libnss3, libxcb-cursor0, libatk1.0-0t64, libatk-bridge2.0-0t64, libcups2t64, libdrm2, libgbm1, libxcomposite1, libxdamage1, libxfixes3, libxrandr2, libxkbcommon0, libasound2t64, libpango-1.0-0, libcairo2, libxss1, libxtst6, fonts-liberation, libxkbfile1, libpulse0, libpcsclite1
-Description: ReyOS Browser -- private-by-default Qt web browser
+Description: Reyva -- private-by-default web browser from ReyOS
  A native Qt/PySide6 web browser with tracking protection, Shields,
  password manager integration, and "install as app" support.
  .

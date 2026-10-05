@@ -124,7 +124,7 @@ Kirigami.ScrollablePage {
                     Kirigami.Heading { text: "Browser Shields"; level: 4 }
                     Controls.Label {
                         Layout.fillWidth: true
-                        text: shieldsBlocked > 0 ? (shieldsBlocked + " trackers/ads blocked, lifetime") : "No data yet — open ReyOS Browser"
+                        text: shieldsBlocked > 0 ? (shieldsBlocked + " trackers/ads blocked, lifetime") : "No data yet — open Reyva"
                         color: shieldsBlocked > 0 ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.disabledTextColor
                         font.bold: true
                         wrapMode: Text.Wrap

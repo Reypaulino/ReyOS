@@ -40,7 +40,7 @@ from PySide6.QtWidgets import QApplication, QFileDialog, QSystemTrayIcon
 
 APP_DIR = Path(__file__).resolve().parent
 if IS_WINDOWS:
-    BROWSER_STATE_DIR = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming")) / "ReyOS Browser"
+    BROWSER_STATE_DIR = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming")) / "Reyva"
 else:
     BROWSER_STATE_DIR = Path.home() / ".local" / "share" / "reyos-browser"
 PASSWORD_BLOCKLIST_PATH = BROWSER_STATE_DIR / "password-blocklist.json"
@@ -54,7 +54,7 @@ if IS_WINDOWS:
     WEBAPPS_INDEX_PATH = WEBAPPS_ICON_DIR / "index.json"
     WEBAPPS_SHORTCUT_DIR = (
         Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
-        / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "ReyOS Web Apps"
+        / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Reyva Web Apps"
     )
 APP_ICON_ICO = APP_DIR / "assets" / "reyos-browser.ico"
 QWEBCHANNEL_JS_PATHS = (
@@ -231,7 +231,7 @@ class _LinuxPasswordVault:
     def save_credential(self, origin: str, username: str, password: str) -> None:
         collection = self._get_collection(allow_unlock=True)
         collection.create_item(
-            f"ReyOS Browser: {origin} ({username})",
+            f"Reyva: {origin} ({username})",
             {
                 "application": "reyos-browser",
                 "origin": origin,
@@ -583,7 +583,7 @@ class BrowserBackend(QObject):
     def shieldsLastUpdated(self) -> str:
         raw = self._shields_meta.get("lastUpdated")
         if not raw:
-            return "Never (using the built-in list bundled with ReyOS Browser)"
+            return "Never (using the built-in list bundled with Reyva)"
         try:
             when = datetime.fromisoformat(raw)
             return when.astimezone().strftime("%Y-%m-%d %H:%M")
@@ -1075,7 +1075,7 @@ class BrowserBackend(QObject):
             self._windows_toast(title, message)
             return
         subprocess.Popen(
-            ["notify-send", "-a", "ReyOS Browser", "-i", "reyos-browser", title, message],
+            ["notify-send", "-a", "Reyva", "-i", "reyos-browser", title, message],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
@@ -1088,7 +1088,7 @@ class BrowserBackend(QObject):
         tray = getattr(self, "_tray", None)
         if tray is None:
             tray = QSystemTrayIcon(QIcon(str(APP_ICON_ICO)), self)
-            tray.setToolTip("ReyOS Browser")
+            tray.setToolTip("Reyva")
             self._tray = tray
             self._tray_hide_timer = QTimer(self)
             self._tray_hide_timer.setSingleShot(True)
@@ -1164,7 +1164,7 @@ class BrowserBackend(QObject):
                 "Version=1.0\n"
                 "Type=Application\n"
                 f"Name={display_title}\n"
-                f"Comment=Installed from {normalized} with ReyOS Browser\n"
+                f"Comment=Installed from {normalized} with Reyva\n"
                 f"Exec={exec_value}\n"
                 f"Icon={icon_value}\n"
                 "Terminal=false\n"
@@ -1204,20 +1204,20 @@ class BrowserBackend(QObject):
         link_path = WEBAPPS_SHORTCUT_DIR / f"{safe_name}.lnk"
         try:
             WEBAPPS_SHORTCUT_DIR.mkdir(parents=True, exist_ok=True)
-            _create_windows_shortcut(link_path, command[0], arguments, str(ico_path), f"Installed from {origin} with ReyOS Browser")
+            _create_windows_shortcut(link_path, command[0], arguments, str(ico_path), f"Installed from {origin} with Reyva")
             apps = [entry for entry in _load_windows_webapps() if entry["id"] != app_id]
             apps.append({
                 "id": app_id,
                 "name": title,
                 "icon": str(ico_path),
-                "comment": f"Installed from {origin} with ReyOS Browser",
+                "comment": f"Installed from {origin} with Reyva",
                 "shortcut": str(link_path),
             })
             _save_windows_webapps(apps)
         except (OSError, subprocess.SubprocessError) as error:
             self.notify("Couldn't install app", f"{title}: {error}")
             return False
-        self.notify("App installed", f"{title} was added to the Start menu under ReyOS Web Apps.")
+        self.notify("App installed", f"{title} was added to the Start menu under Reyva Web Apps.")
         self.installedWebAppsChanged.emit()
         return True
 
@@ -1425,7 +1425,7 @@ def load_password_script_source() -> str:
     if qwebchannel_source:
         return qwebchannel_source + "\n\n" + autofill_source
     return (
-        "window.console && console.warn('ReyOS Browser: qwebchannel.js could not be loaded; password autofill is disabled.');\n\n"
+        "window.console && console.warn('Reyva: qwebchannel.js could not be loaded; password autofill is disabled.');\n\n"
         + autofill_source
     )
 
@@ -1569,7 +1569,7 @@ def main():
     if app_url:
         app_id = _webapp_id(app_url, app_title)
         if IS_WINDOWS:
-            _set_windows_app_id(f"ReyOS.Browser.{app_id}")
+            _set_windows_app_id(f"ReyApps.Reyva.{app_id}")
         app.setApplicationName(app_title or "ReyOS Web App")
         app.setDesktopFileName(app_id)
         engine.rootContext().setContextProperty("appUrl", app_url)
@@ -1589,10 +1589,10 @@ def main():
         window.lifecycleActiveChanged.connect(lambda active: window.setIcon(active_icon if active else inactive_icon))
         return app.exec()
 
-    app.setApplicationName("ReyOS Browser")
+    app.setApplicationName("Reyva")
     app.setDesktopFileName("reyos-browser")
     if IS_WINDOWS:
-        _set_windows_app_id("ReyOS.Browser")
+        _set_windows_app_id("ReyApps.Reyva")
     app.aboutToQuit.connect(backend.persistShieldsStats)
     engine.rootContext().setContextProperty("passwordBridge", backend.passwordBridge)
     engine.load(QUrl.fromLocalFile(str(APP_DIR / "qml" / "Main.qml")))
