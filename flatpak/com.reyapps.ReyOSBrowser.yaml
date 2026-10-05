@@ -74,7 +74,7 @@ modules:
       - install -Dm644 reyos-packages/reyos-browser/files/usr/share/reyos/browser/qwebchannel.js /app/share/reyos/browser/qwebchannel.js
       - install -Dm644 reyos-packages/reyos-browser/files/usr/share/reyos/browser/shields-blocklist.txt /app/share/reyos/browser/shields-blocklist.txt
       - install -Dm644 reyos-packages/reyos-browser/files/usr/share/reyos/browser/qml/Main.qml /app/share/reyos/browser/qml/Main.qml
-      - install -Dm644 reyos-packages/reyos-browser/files/usr/share/reyos/browser/assets/reyos-r-penguin.png /app/share/reyos/browser/assets/reyos-r-penguin.png
+      - install -Dm644 reyos-packages/reyos-browser/files/usr/share/reyos/browser/assets/reyos-browser-logo.png /app/share/reyos/browser/assets/reyos-browser-logo.png
       - install -Dm644 reyos-packages/reyos-browser/files/usr/share/icons/hicolor/scalable/apps/reyos-browser.svg /app/share/icons/hicolor/scalable/apps/com.reyapps.ReyOSBrowser.svg
       - install -Dm644 reyos-packages/reyos-browser/files/usr/share/reyos/browser/icons/reyos-back.svg /app/share/reyos/browser/icons/reyos-back.svg
       - install -Dm644 reyos-packages/reyos-browser/files/usr/share/reyos/browser/icons/reyos-bookmark.svg /app/share/reyos/browser/icons/reyos-bookmark.svg

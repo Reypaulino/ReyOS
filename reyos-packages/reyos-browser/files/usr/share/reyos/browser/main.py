@@ -1127,7 +1127,7 @@ class BrowserBackend(QObject):
             return False
         display_title = re.sub(r"[\r\n]+", " ", title or "").strip()[:80] or QUrl(clean_url).host()
         app_id = _webapp_id(clean_url, display_title)
-        icon_value = str(APP_DIR / "assets" / "reyos-r-penguin.png")
+        icon_value = str(APP_DIR / "assets" / "reyos-browser-logo.png")
         try:
             if not IS_WINDOWS:
                 WEBAPPS_DESKTOP_DIR.mkdir(parents=True, exist_ok=True)
@@ -1138,7 +1138,7 @@ class BrowserBackend(QObject):
                 if fetched_icon.save(str(dest_icon), "PNG"):
                     icon_value = str(dest_icon)
             source_icon = Path(icon_path) if icon_path else None
-            if icon_value == str(APP_DIR / "assets" / "reyos-r-penguin.png") and source_icon is not None and source_icon.is_file() and source_icon.stat().st_size > 0:
+            if icon_value == str(APP_DIR / "assets" / "reyos-browser-logo.png") and source_icon is not None and source_icon.is_file() and source_icon.stat().st_size > 0:
                 WEBAPPS_ICON_DIR.mkdir(parents=True, exist_ok=True)
                 dest_icon = WEBAPPS_ICON_DIR / f"{app_id}.png"
                 shutil.copyfile(source_icon, dest_icon)
@@ -1514,7 +1514,7 @@ def _enable_page_gc_flag():
 def _app_icon() -> QIcon:
     if IS_WINDOWS:
         return QIcon(str(APP_ICON_ICO))
-    return QIcon.fromTheme("reyos-browser", QIcon(str(APP_DIR / "assets" / "reyos-r-penguin.png")))
+    return QIcon.fromTheme("reyos-browser", QIcon(str(APP_DIR / "assets" / "reyos-browser-logo.png")))
 
 
 def _set_windows_app_id(app_id: str) -> None:

@@ -79,7 +79,7 @@ Rectangle {
 
             Image {
                 Layout.alignment: Qt.AlignHCenter
-                source: Qt.resolvedUrl("../../assets/reyos-r-penguin.png")
+                source: Qt.resolvedUrl("../../assets/reyos-browser-logo.png")
                 sourceSize.width: page.compact ? 64 : 84
                 sourceSize.height: page.compact ? 64 : 84
                 Layout.preferredWidth: page.compact ? 64 : 84

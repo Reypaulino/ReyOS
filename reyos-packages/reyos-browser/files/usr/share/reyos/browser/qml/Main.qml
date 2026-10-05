@@ -485,7 +485,7 @@ ApplicationWindow {
                     spacing: 8
                     Layout.rightMargin: 6
                     Image {
-                        source: Qt.resolvedUrl("../assets/reyos-r-penguin.png")
+                        source: Qt.resolvedUrl("../assets/reyos-browser-logo.png")
                         sourceSize.width: 24
                         sourceSize.height: 24
                         Layout.preferredWidth: 24
@@ -568,7 +568,7 @@ ApplicationWindow {
                                     Image {
                                         anchors.fill: parent
                                         visible: tabFavicon.status !== Image.Ready
-                                        source: tabButton.view && window.isHomeUrl(tabButton.view.url.toString()) ? Qt.resolvedUrl("../assets/reyos-r-penguin.png") : Qt.resolvedUrl("../icons/reyos-globe.svg")
+                                        source: tabButton.view && window.isHomeUrl(tabButton.view.url.toString()) ? Qt.resolvedUrl("../assets/reyos-browser-logo.png") : Qt.resolvedUrl("../icons/reyos-globe.svg")
                                         sourceSize.width: 16
                                         sourceSize.height: 16
                                         mipmap: true
@@ -1523,7 +1523,7 @@ ApplicationWindow {
                                 anchors.margins: 9
                                 spacing: 10
                                 Image {
-                                    source: webAppEntry.modelData.icon ? Qt.resolvedUrl("file://" + webAppEntry.modelData.icon) : Qt.resolvedUrl("../assets/reyos-r-penguin.png")
+                                    source: webAppEntry.modelData.icon ? Qt.resolvedUrl("file://" + webAppEntry.modelData.icon) : Qt.resolvedUrl("../assets/reyos-browser-logo.png")
                                     sourceSize.width: 36
                                     sourceSize.height: 36
                                     Layout.preferredWidth: 36
