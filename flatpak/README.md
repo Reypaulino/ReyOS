@@ -56,8 +56,15 @@ fails with "Remote bundles are not supported". Release tag pattern:
 `<releases>` in the metainfo for each new bundle; no auto-updates yet (would need an
 OSTree repo, e.g. on GitHub Pages, plus a `.flatpakref`).
 
-Auto-updating repo (built 2026-10-05, not yet public): a signed static OSTree repo
-on GitHub Pages, so `flatpak update`/Discover pick up new versions.
+Auto-updating repo (public since 2026-10-05): github.com/Reypaulino/reyva-flatpak,
+served by GitHub Pages at https://reypaulino.github.io/reyva-flatpak/ — a signed
+static OSTree repo, so `flatpak update`/Discover pick up new versions. Local working
+copy on the Ubuntu host: `~/reyva-flatpak-work/site/` (a git clone of that repo).
+To release a new version: bump `<releases>` in the metainfo and the manifest's
+`commit:`, run the three commands below into that `site/repo`, commit + push the
+repo (`git add -A`), and rebuild the bundle for the GitHub Release with
+`flatpak build-bundle --repo-url=https://reypaulino.github.io/reyva-flatpak/repo/ --gpg-keys=site/reyva.gpg --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo site/repo Reyva.flatpak com.reyapps.Reyva stable`
+(so bundle installs update too).
 
     K=9A17D49EE3929AC6402337FA66E4085621026272
     flatpak-builder --user --force-clean --disable-rofiles-fuse --install-deps-from=flathub --default-branch=stable build-dir com.reyapps.Reyva.yaml

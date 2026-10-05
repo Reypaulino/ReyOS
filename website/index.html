@@ -982,7 +982,7 @@
 
       <div id="browser-build" class="install-note" style="margin-top:28px;">
         <p style="color:var(--text); font-weight:700; margin-bottom:10px;">Run Reyva outside ReyOS</p>
-        <p>The browser itself is cross-distro Qt/PySide code. On Arch-based systems, build the package directly from the ReyOS repo — not from the AUR. On Ubuntu or Debian, grab the ready-made <code>.deb</code> below. On any other distro, use the Flatpak.</p>
+        <p>The browser itself is cross-distro Qt/PySide code. On Arch-based systems, build the package directly from the ReyOS repo — not from the AUR. On Ubuntu or Debian, grab the ready-made <code>.deb</code> below. On any other distro, use the Flatpak, which updates itself.</p>
 
         <p style="color:var(--text); font-weight:700; margin: 22px 0 10px;">Arch-based distros</p>
         <p>It's a real package with no ReyOS-specific runtime dependencies. This is not an AUR install: <code>pyside6</code>, <code>qt6-webengine</code>, <code>qt6-webchannel</code>, <code>libnotify</code>, <code>kdialog</code>, and <code>python-secretstorage</code> are all in the official Arch Linux repos, so <code>makepkg</code> handles everything:</p>
@@ -1000,12 +1000,10 @@ sudo apt install ./reyos-browser_0.1.0-117ubuntu1_amd64.deb</code></pre>
         <a href="https://github.com/Reypaulino/ReyOS/releases/tag/reyos-browser-v0.1.0-117ubuntu1" class="btn btn-ghost">Download for Ubuntu/Debian (.deb)</a>
 
         <p style="color:var(--text); font-weight:700; margin: 22px 0 10px;">Any distro (Flatpak)</p>
-        <p>Works anywhere Flatpak is installed: Fedora, openSUSE, Mint, Pop!_OS, Steam Deck and more. The first install also pulls the KDE runtime from Flathub. The sandboxed version can't install sites as apps, and there are no automatic updates yet, so grab the newer file when a release comes out:</p>
-        <pre><code>cd /tmp
-wget https://github.com/Reypaulino/ReyOS/releases/download/reyva-flatpak-v0.1.0/Reyva.flatpak
-flatpak install --user Reyva.flatpak</code></pre>
-        <p>Then launch it from your app menu, or run <code>flatpak run com.reyapps.Reyva</code>.</p>
-        <a href="https://github.com/Reypaulino/ReyOS/releases/tag/reyva-flatpak-v0.1.0" class="btn btn-ghost">Download Flatpak</a>
+        <p>Works anywhere Flatpak is installed: Fedora, openSUSE, Mint, Pop!_OS, Steam Deck and more. Updates arrive with your normal Flatpak updates (software center or <code>flatpak update</code>). The first install also pulls the KDE runtime from Flathub. The sandboxed version can't install sites as apps:</p>
+        <pre><code>flatpak install --user https://reypaulino.github.io/reyva-flatpak/com.reyapps.Reyva.flatpakref</code></pre>
+        <p>Then launch it from your app menu, or run <code>flatpak run com.reyapps.Reyva</code>. Prefer a single file? The <a href="https://github.com/Reypaulino/ReyOS/releases/tag/reyva-flatpak-v0.1.0">Reyva.flatpak</a> download installs the same app and updates the same way.</p>
+        <a href="https://reypaulino.github.io/reyva-flatpak/" class="btn btn-ghost">Install Flatpak</a>
       </div>
     </div>
   </section>
