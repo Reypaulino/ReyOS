@@ -488,7 +488,9 @@ def choose_open_file(start_dir: Path, title: str, filters: list[tuple[str, list[
     dialog.setWindowTitle(title)
     dialog.setDirectory(str(start_dir))
     dialog.setFileMode(QFileDialog.ExistingFile)
-    dialog.setOption(QFileDialog.DontUseNativeDialog, True)
+    # In Flatpak the native dialog is the file-chooser portal, the only way to
+    # reach files outside the sandbox.
+    dialog.setOption(QFileDialog.DontUseNativeDialog, not IS_FLATPAK)
     dialog.setNameFilters([f"{label} ({' '.join(patterns)})" for label, patterns in filters])
     if not dialog.exec():
         return ""
