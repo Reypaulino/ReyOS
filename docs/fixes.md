@@ -2,6 +2,10 @@
 
 Real bugs found and fixed, with root cause. Newest first. See `bugs.md` for what's still open.
 
+## 2026-10-05 — Reyva URL-args + XDG fixes reach Arch and Ubuntu (`reyos-browser` 0.1.0-105 / `.deb` 0.1.0-117ubuntu1, published)
+
+No new code: packages the two all-builds fixes from the Flatpak rework (links passed on the command line open as tabs; state dir honours `XDG_DATA_HOME`). Arch 105 built and installed on the Dev VM; `reyos-browser https://example.com` in the real Plasma session opened straight on the Example Domain tab (screenshot). Signed, `repo-add`ed (24 db entries before and after), db/files re-signed, all signatures good, pushed to `reyos-pages` (`2d4a8e9`); the live `reypaulino.github.io/ReyOS/reyos-local.db` serves 105. `.deb` built with `debian/build.sh`, installed and ran (until the 20 s timeout, no errors) in a clean `ubuntu:24.04` container; released as `reyos-browser-v0.1.0-117ubuntu1` (116 release deleted), website link bumped and redeployed. Release notes link to the Flatpak for other distros.
+
 ## 2026-10-05 — Reyva Flatpak bundle released on GitHub (`reyva-flatpak-v0.1.0`, published)
 
 Since Flathub is off the table for agent submissions, Reyva ships as a single `Reyva.flatpak` (191 MB) on a GitHub Release, built from the manifest's pinned public commit `c497db8` (release tagged there, not marked Latest). Bundle carries `--runtime-repo` = Flathub so the KDE 6.11 runtime + PySide BaseApp install with it. Verified: downloaded the release asset (sha256 `ef9ed751…b149`, identical to the local build), `flatpak install --user Reyva.flatpak` installed it, and it launched with the sandboxed `/app/bin/QtWebEngineProcess` renderers. Caught before anyone used it: `flatpak install <https url>` fails ("Remote bundles are not supported"), so the release notes and website say download first, then install. Website (`reyos.reyapps.com`, "Run Reyva outside ReyOS") gained an "Any distro (Flatpak)" section — deployed and checked live. No auto-updates (needs a hosted OSTree repo, not built). Build steps: `flatpak/README.md`.
