@@ -1,20 +1,16 @@
 # -*- mode: python ; coding: utf-8 -*-
-#
-# Build with (on Windows, inside the venv from requirements.txt):
-#   pyinstaller windows/reyos-browser.spec
-#
-# UNTESTED as of 2026-08-24 — no Windows/Wine build environment has been used
-# yet. This is a starting point, not a verified build. See the
-# reyos-browser-windows-port project memory for what's still open.
+# Build on Windows inside a venv from requirements.txt:
+#   pyinstaller --noconfirm windows/reyos-browser.spec
+# Output: dist/ReyOSBrowser/ (a folder, not one file: a one-file build would
+# unpack ~300 MB of Qt WebEngine to %TEMP% on every launch).
 
 from pathlib import Path
 
-BROWSER_DIR = Path(SPECPATH).resolve().parent.parent / "files" / "usr" / "share" / "reyos" / "browser"
+BROWSER_DIR = Path(SPECPATH).resolve().parent / "files" / "usr" / "share" / "reyos" / "browser"
 
 a = Analysis(
     [str(BROWSER_DIR / "main.py")],
     pathex=[str(BROWSER_DIR)],
-    binaries=[],
     datas=[
         (str(BROWSER_DIR / "qml"), "qml"),
         (str(BROWSER_DIR / "icons"), "icons"),
@@ -26,25 +22,24 @@ a = Analysis(
         (str(BROWSER_DIR / "shields-blocklist.txt"), "."),
     ],
     hiddenimports=["keyring.backends.Windows"],
-    hookspath=[],
-    runtime_hooks=[],
-    excludes=[],
+    excludes=["tkinter", "secretstorage", "setproctitle"],
 )
 
-pyz = PYZ(a.pure, a.zipped_data)
+pyz = PYZ(a.pure)
 
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
     [],
+    exclude_binaries=True,
     name="ReyOSBrowser",
-    # TODO: no .ico exists yet — only assets/reyos-r-penguin.png (PNG) and
-    # SVG toolbar icons. PyInstaller needs a real .ico on Windows; generate
-    # one (multi-resolution, e.g. via Pillow) before shipping a real build.
-    icon=None,
+    icon=str(BROWSER_DIR / "assets" / "reyos-browser.ico"),
     console=False,
-    onefile=True,
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.datas,
+    name="ReyOSBrowser",
 )

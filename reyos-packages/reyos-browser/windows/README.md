@@ -1,44 +1,58 @@
 # ReyOS Browser on Windows
 
-Status: code is portable (see `main.py`'s `IS_WINDOWS` branches), packaging is
-scaffolded, **nothing has actually been built or run on Windows yet**. No
-Windows/Wine/Winboat environment has been used to test this.
+Status (2026-10-04): feature-complete for Windows, **not yet run on a real
+Windows machine**. The PyInstaller spec was built and launched on Linux to
+check the bundle layout; the Windows-only code paths below need a Windows test.
 
-## What's portable
+## What differs on Windows
 
-- Password storage: Windows Credential Manager via `keyring`, with a local
-  `%APPDATA%\ReyOS Browser\password-index.json` tracking which usernames
-  exist per site (no secrets in that file — passwords live only in
-  Credential Manager). Linux keeps using KWallet/Secret Service, unchanged.
-- App state directory: `%APPDATA%\ReyOS Browser` instead of
-  `~/.local/share/reyos-browser`.
-- Password manager launcher: opens the Windows Credential Manager control
-  panel (`control.exe /name Microsoft.CredentialManager`) instead of
-  KWalletManager/Seahorse.
+| Feature | Linux | Windows |
+|---|---|---|
+| Saved passwords | KWallet / Secret Service | Windows Credential Manager (`keyring`), plus `%APPDATA%\ReyOS Browser\password-index.json` listing usernames per site (no secrets in it) |
+| Browser data (bookmarks, shortcuts, settings) | `~/.local/share/reyos-browser` | `%APPDATA%\ReyOS Browser` |
+| Notifications | `notify-send` | Tray balloon/toast (tray icon shows only while a message is up) |
+| Install site as app | `.desktop` file | Start menu shortcut under **ReyOS Web Apps**, `.ico` + `index.json` in `%APPDATA%\ReyOS Browser\webapps` |
+| System password manager | KWalletManager / Seahorse | Credential Manager control panel |
+| Taskbar | window class | AppUserModelID `ReyOS.Browser` (web apps get their own) |
 
-## What's not done
+## Build
 
-- **Desktop notifications** (`notify()`) are a no-op on Windows right now —
-  would need `win10toast`/`plyer` or a native WinRT toast call.
-- **No `.ico` file exists** — only a PNG (`assets/reyos-r-penguin.png`) and
-  SVG toolbar icons. PyInstaller needs a real `.ico` for the `.exe` icon.
-- **`reyos-browser.spec` is untested.** It's a reasonable starting point
-  (mirrors the file layout PyInstaller needs) but has never actually been
-  run through `pyinstaller`.
-- **No installer.** Once a working `.exe` exists, wrap it with Inno Setup or
-  NSIS for a real installer experience — not started.
-- **Unsigned.** Expect a Windows SmartScreen warning on first run until/unless
-  code-signing is set up — a separate, later decision.
+Easiest: GitHub **Actions -> "ReyOS Browser for Windows" -> Run workflow**
+(`.github/workflows/reyos-browser-windows.yml`). It builds on a Windows runner,
+starts the exe as a smoke test, makes the installer, and attaches
+`ReyOSBrowser-Setup-<version>.exe` to the run as a download.
 
-## Building (once a Windows/Wine environment exists)
+By hand on Windows (Python 3.12, from `reyos-packages\reyos-browser`):
 
 ```
-cd reyos-packages\reyos-browser
 python -m venv windows\.venv
 windows\.venv\Scripts\activate
 pip install -r windows\requirements.txt
-pyinstaller windows\reyos-browser.spec
+pyinstaller --noconfirm windows\reyos-browser.spec
+iscc /DAppVersion=0.1.0.102 windows\reyos-browser.iss
 ```
 
-Output lands in `dist\ReyOSBrowser.exe`. Test it actually launches, that
-Shields/bookmarks/password-save work, before trusting this instruction set.
+`dist\ReyOSBrowser\` is the app folder (about 800 MB unpacked, a folder build
+so Qt WebEngine isn't unpacked to `%TEMP%` on every start);
+`dist\ReyOSBrowser-Setup-<version>.exe` is the installer. The installer is
+per-user (no admin prompt), installs to `%LOCALAPPDATA%\Programs\ReyOS Browser`,
+and its uninstaller removes web app shortcuts but keeps bookmarks/settings.
+
+## Test checklist (first Windows run)
+
+1. Installer runs without an admin prompt; Start menu has ReyOS Browser.
+2. New Tab page, shortcuts, a few real sites, downloads (Open / Show in Folder).
+3. Save a password on a login form, reopen the site: it autofills. It shows up
+   in Credential Manager (menu -> Passwords -> System Password Manager).
+4. A download finishing shows a Windows notification.
+5. Menu -> Install This Site as an App: Start menu -> ReyOS Web Apps has it,
+   it opens in its own window with its own taskbar icon; Manage Web Apps ->
+   Remove deletes the shortcut.
+6. Quit and reopen: no tabs or history come back.
+7. Uninstall: app and web app shortcuts gone.
+
+## Not done
+
+- **Unsigned**: Windows SmartScreen will warn on first run until code signing
+  is set up (separate decision, costs money).
+- No auto-update on Windows; a new version means running a new installer.

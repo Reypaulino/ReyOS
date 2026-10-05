@@ -26,12 +26,17 @@ try:
 except ModuleNotFoundError:
     keyring = None
 
-from PySide6.QtCore import QFile, QIODevice, QObject, Property, Qt, QThread, QUrl, QUrlQuery, Signal, Slot
+try:
+    import setproctitle
+except ModuleNotFoundError:
+    setproctitle = None
+
+from PySide6.QtCore import QFile, QIODevice, QObject, Property, Qt, QThread, QTimer, QUrl, QUrlQuery, Signal, Slot
 from PySide6.QtGui import QIcon, QImage, QPainter, QPixmap
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtWebEngineCore import QWebEngineUrlRequestInfo, QWebEngineUrlRequestInterceptor
 from PySide6.QtWebEngineQuick import QQuickWebEngineProfile, QtWebEngineQuick
-from PySide6.QtWidgets import QApplication, QFileDialog
+from PySide6.QtWidgets import QApplication, QFileDialog, QSystemTrayIcon
 
 APP_DIR = Path(__file__).resolve().parent
 if IS_WINDOWS:
@@ -44,6 +49,14 @@ PASSWORD_AUTOFILL_SCRIPT_PATH = APP_DIR / "password-autofill.js"
 FINGERPRINT_PROTECTION_SCRIPT_PATH = APP_DIR / "fingerprint-protection.js"
 WEBAPPS_DESKTOP_DIR = Path.home() / ".local" / "share" / "applications"
 WEBAPPS_ICON_DIR = Path.home() / ".local" / "share" / "icons" / "hicolor" / "256x256" / "apps"
+if IS_WINDOWS:
+    WEBAPPS_ICON_DIR = BROWSER_STATE_DIR / "webapps"
+    WEBAPPS_INDEX_PATH = WEBAPPS_ICON_DIR / "index.json"
+    WEBAPPS_SHORTCUT_DIR = (
+        Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
+        / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "ReyOS Web Apps"
+    )
+APP_ICON_ICO = APP_DIR / "assets" / "reyos-browser.ico"
 QWEBCHANNEL_JS_PATHS = (
     Path("/usr/share/qt6/webchannel/qwebchannel.js"),
     APP_DIR / "qwebchannel.js",
@@ -385,6 +398,50 @@ def _webapp_id(url: str, title: str) -> str:
         base = re.sub(r"[^a-z0-9]+", "-", QUrl(url).host().lower()).strip("-") or "webapp"
     digest = hashlib.sha256(url.encode("utf-8")).hexdigest()[:8]
     return f"reyos-webapp-{base[:40]}-{digest}"
+
+
+def _browser_launch_command() -> list[str]:
+    """The command that starts this browser: the installed exe on Windows, the
+    reyos-browser wrapper on Linux, or python + main.py when run from source."""
+    if getattr(sys, "frozen", False):
+        return [sys.executable]
+    if IS_WINDOWS:
+        return [sys.executable, str(Path(__file__).resolve())]
+    return ["reyos-browser"]
+
+
+def _load_windows_webapps() -> list[dict]:
+    try:
+        data = json.loads(WEBAPPS_INDEX_PATH.read_text(encoding="utf-8"))
+        return [entry for entry in data if isinstance(entry, dict) and isinstance(entry.get("id"), str)]
+    except (OSError, json.JSONDecodeError, TypeError):
+        return []
+
+
+def _save_windows_webapps(apps: list[dict]) -> None:
+    WEBAPPS_INDEX_PATH.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = WEBAPPS_INDEX_PATH.with_suffix(".tmp")
+    temp_path.write_text(json.dumps(apps, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    os.replace(temp_path, WEBAPPS_INDEX_PATH)
+
+
+def _create_windows_shortcut(link_path: Path, target: str, arguments: str, icon: str, description: str) -> None:
+    # Values go through environment variables so a page title can't break out
+    # of the PowerShell script.
+    script = (
+        "$s = (New-Object -ComObject WScript.Shell).CreateShortcut($env:RB_LNK);"
+        "$s.TargetPath = $env:RB_TARGET; $s.Arguments = $env:RB_ARGS;"
+        "$s.IconLocation = $env:RB_ICON; $s.Description = $env:RB_DESC; $s.Save()"
+    )
+    env = dict(os.environ, RB_LNK=str(link_path), RB_TARGET=target, RB_ARGS=arguments, RB_ICON=icon, RB_DESC=description)
+    subprocess.run(
+        ["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script],
+        env=env,
+        check=True,
+        capture_output=True,
+        timeout=20,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
 
 
 def _quote_desktop_exec_arg(value: str) -> str:
@@ -1015,15 +1072,30 @@ class BrowserBackend(QObject):
     def notify(self, title: str, message: str) -> None:
         """Send a desktop notification without retaining session data."""
         if IS_WINDOWS:
-            # No native toast notifier is wired up yet on Windows (would need
-            # win10toast/plyer or a WinRT toast call) — silently skip rather
-            # than block on a missing dependency.
+            self._windows_toast(title, message)
             return
         subprocess.Popen(
             ["notify-send", "-a", "ReyOS Browser", "-i", "reyos-browser", title, message],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
+
+    def _windows_toast(self, title: str, message: str) -> None:
+        # Windows shows a balloon/toast only from a visible tray icon, so it's
+        # shown for the message and hidden again afterwards.
+        if not QSystemTrayIcon.isSystemTrayAvailable():
+            return
+        tray = getattr(self, "_tray", None)
+        if tray is None:
+            tray = QSystemTrayIcon(QIcon(str(APP_ICON_ICO)), self)
+            tray.setToolTip("ReyOS Browser")
+            self._tray = tray
+            self._tray_hide_timer = QTimer(self)
+            self._tray_hide_timer.setSingleShot(True)
+            self._tray_hide_timer.timeout.connect(tray.hide)
+        tray.show()
+        tray.showMessage(title, message, QSystemTrayIcon.MessageIcon.Information, 5000)
+        self._tray_hide_timer.start(8000)
 
     @staticmethod
     def _fetch_icon_image(icon_url: str) -> QImage | None:
@@ -1046,10 +1118,8 @@ class BrowserBackend(QObject):
 
     @Slot(str, str, str, str, result=bool)
     def installAsApp(self, url: str, title: str, icon_path: str, icon_url: str) -> bool:
-        """Write a .desktop launcher that reopens this page in its own chromeless window."""
-        if IS_WINDOWS:
-            self.notify("Install as App unavailable", "Installing sites as apps isn't supported on Windows yet.")
-            return False
+        """Add a launcher (.desktop on Linux, Start menu shortcut on Windows) that
+        reopens this page in its own chromeless window."""
         clean_url = re.sub(r"[\r\n]+", "", url or "")
         normalized = normalize_origin(clean_url)
         if not normalized:
@@ -1059,7 +1129,8 @@ class BrowserBackend(QObject):
         app_id = _webapp_id(clean_url, display_title)
         icon_value = str(APP_DIR / "assets" / "reyos-r-penguin.png")
         try:
-            WEBAPPS_DESKTOP_DIR.mkdir(parents=True, exist_ok=True)
+            if not IS_WINDOWS:
+                WEBAPPS_DESKTOP_DIR.mkdir(parents=True, exist_ok=True)
             fetched_icon = self._fetch_icon_image(icon_url) if icon_url else None
             if fetched_icon is not None:
                 WEBAPPS_ICON_DIR.mkdir(parents=True, exist_ok=True)
@@ -1077,6 +1148,8 @@ class BrowserBackend(QObject):
                     source_icon.unlink()
                 except OSError:
                     pass
+            if IS_WINDOWS:
+                return self._install_windows_webapp(app_id, clean_url, display_title, normalized, icon_value)
             exec_value = " ".join(
                 _quote_desktop_exec_arg(part)
                 for part in (
@@ -1119,6 +1192,35 @@ class BrowserBackend(QObject):
         self.installedWebAppsChanged.emit()
         return True
 
+    def _install_windows_webapp(self, app_id: str, url: str, title: str, origin: str, png_icon: str) -> bool:
+        WEBAPPS_ICON_DIR.mkdir(parents=True, exist_ok=True)
+        ico_path = WEBAPPS_ICON_DIR / f"{app_id}.ico"
+        image = QImage(png_icon)
+        if image.isNull() or not image.scaled(256, 256, Qt.KeepAspectRatio, Qt.SmoothTransformation).save(str(ico_path), "ICO"):
+            ico_path = APP_ICON_ICO
+        command = _browser_launch_command()
+        arguments = subprocess.list2cmdline([*command[1:], f"--app-url={url}", f"--app-title={title}", f"--app-icon={ico_path}"])
+        safe_name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "", title).strip(" .") or app_id
+        link_path = WEBAPPS_SHORTCUT_DIR / f"{safe_name}.lnk"
+        try:
+            WEBAPPS_SHORTCUT_DIR.mkdir(parents=True, exist_ok=True)
+            _create_windows_shortcut(link_path, command[0], arguments, str(ico_path), f"Installed from {origin} with ReyOS Browser")
+            apps = [entry for entry in _load_windows_webapps() if entry["id"] != app_id]
+            apps.append({
+                "id": app_id,
+                "name": title,
+                "icon": str(ico_path),
+                "comment": f"Installed from {origin} with ReyOS Browser",
+                "shortcut": str(link_path),
+            })
+            _save_windows_webapps(apps)
+        except (OSError, subprocess.SubprocessError) as error:
+            self.notify("Couldn't install app", f"{title}: {error}")
+            return False
+        self.notify("App installed", f"{title} was added to the Start menu under ReyOS Web Apps.")
+        self.installedWebAppsChanged.emit()
+        return True
+
     @staticmethod
     def _read_desktop_field(text: str, field: str) -> str:
         prefix = f"{field}="
@@ -1129,8 +1231,10 @@ class BrowserBackend(QObject):
 
     @Property("QVariantList", notify=installedWebAppsChanged)
     def installedWebApps(self):
+        if IS_WINDOWS:
+            return [{key: entry.get(key, "") for key in ("id", "name", "icon", "comment")} for entry in _load_windows_webapps()]
         apps = []
-        if IS_WINDOWS or not WEBAPPS_DESKTOP_DIR.is_dir():
+        if not WEBAPPS_DESKTOP_DIR.is_dir():
             return apps
         for desktop_path in sorted(WEBAPPS_DESKTOP_DIR.glob("reyos-webapp-*.desktop")):
             try:
@@ -1151,6 +1255,22 @@ class BrowserBackend(QObject):
     def uninstallWebApp(self, app_id: str) -> bool:
         if not re.fullmatch(r"reyos-webapp-[a-z0-9-]+", app_id or ""):
             return False
+        if IS_WINDOWS:
+            apps = _load_windows_webapps()
+            for entry in apps:
+                if entry["id"] != app_id:
+                    continue
+                for key in ("shortcut", "icon"):
+                    target = Path(entry.get(key) or "")
+                    if target.is_file() and target != APP_ICON_ICO and target.parent in (WEBAPPS_SHORTCUT_DIR, WEBAPPS_ICON_DIR):
+                        try:
+                            target.unlink()
+                        except OSError:
+                            pass
+            _save_windows_webapps([entry for entry in apps if entry["id"] != app_id])
+            self.installedWebAppsChanged.emit()
+            self.notify("App removed", "The installed app was removed from the Start menu.")
+            return True
         desktop_path = WEBAPPS_DESKTOP_DIR / f"{app_id}.desktop"
         icon_path = None
         if desktop_path.is_file():
@@ -1391,6 +1511,22 @@ def _enable_page_gc_flag():
     os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = flags
 
 
+def _app_icon() -> QIcon:
+    if IS_WINDOWS:
+        return QIcon(str(APP_ICON_ICO))
+    return QIcon.fromTheme("reyos-browser", QIcon(str(APP_DIR / "assets" / "reyos-r-penguin.png")))
+
+
+def _set_windows_app_id(app_id: str) -> None:
+    # Without an explicit AppUserModelID the taskbar groups every window under
+    # the launching exe, so installed web apps would stack onto the browser.
+    try:
+        import ctypes
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(app_id)
+    except (AttributeError, OSError):
+        pass
+
+
 def main():
     _enable_page_gc_flag()
     # Under Plasma, Qt picks KDE's org.kde.desktop controls style, which looks
@@ -1415,6 +1551,16 @@ def main():
         elif arg.startswith("--app-icon="):
             app_icon = arg.split("=", 1)[1]
 
+    if setproctitle is not None:
+        # ps/top/htop/GNOME System Monitor all read the OS-level process name
+        # (/proc/PID/comm and argv[0]), not any Qt-side applicationName -- with
+        # every reyos-browser process launched as plain "python3 main.py",
+        # they were all indistinguishable from each other (and from unrelated
+        # reyos-* apps) in every system resource monitor. Confirmed live via
+        # `ps aux` before this fix: reyos-browser, every installed web app, and
+        # even unrelated reyos-reader all showed up as just "python3"/"python".
+        setproctitle.setproctitle(f"reyos-browser: {app_title}" if app_title else "reyos-browser")
+
     interceptor = ShieldsInterceptor(load_blocked_domains())
     backend = BrowserBackend(interceptor, PasswordVault(), load_password_script_source())
     engine = QQmlApplicationEngine()
@@ -1422,6 +1568,8 @@ def main():
 
     if app_url:
         app_id = _webapp_id(app_url, app_title)
+        if IS_WINDOWS:
+            _set_windows_app_id(f"ReyOS.Browser.{app_id}")
         app.setApplicationName(app_title or "ReyOS Web App")
         app.setDesktopFileName(app_id)
         engine.rootContext().setContextProperty("appUrl", app_url)
@@ -1434,7 +1582,7 @@ def main():
         profile = window.findChild(QQuickWebEngineProfile, "appProfile")
         if profile is not None:
             profile.setUrlRequestInterceptor(interceptor)
-        fallback_icon = QIcon.fromTheme("reyos-browser", QIcon(str(APP_DIR / "assets" / "reyos-r-penguin.png")))
+        fallback_icon = _app_icon()
         active_icon = QIcon(app_icon) if app_icon and Path(app_icon).is_file() else fallback_icon
         inactive_icon = _dimmed_icon(active_icon)
         window.setIcon(active_icon)
@@ -1443,6 +1591,8 @@ def main():
 
     app.setApplicationName("ReyOS Browser")
     app.setDesktopFileName("reyos-browser")
+    if IS_WINDOWS:
+        _set_windows_app_id("ReyOS.Browser")
     app.aboutToQuit.connect(backend.persistShieldsStats)
     engine.rootContext().setContextProperty("passwordBridge", backend.passwordBridge)
     engine.load(QUrl.fromLocalFile(str(APP_DIR / "qml" / "Main.qml")))
@@ -1454,7 +1604,7 @@ def main():
         return 1
     profile.setUrlRequestInterceptor(interceptor)
     window.initializeFirstTab()
-    window.setIcon(QIcon.fromTheme("reyos-browser", QIcon(str(APP_DIR / "assets" / "reyos-r-penguin.png"))))
+    window.setIcon(_app_icon())
     return app.exec()
 
 
