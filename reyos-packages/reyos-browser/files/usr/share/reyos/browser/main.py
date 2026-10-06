@@ -1359,7 +1359,16 @@ class BrowserBackend(QObject):
                     icon_path.unlink()
                 except OSError:
                     pass
-            if error != "cancelled":
+            if "icon failed validation" in error.lower():
+                # Ubuntu 24.04's AppArmor default stops xdg-desktop-portal's
+                # sandboxed icon check, so every Flatpak launcher is refused.
+                self.notify(
+                    "Couldn't install app",
+                    "Your system's app launcher service couldn't check the icon. This is a known "
+                    "Ubuntu 24.04 issue that affects all Flatpak apps. On Ubuntu, use the Reyva .deb "
+                    "to install sites as apps.",
+                )
+            elif error != "cancelled":
                 self.notify("Couldn't install app", error)
             return
         apps = [entry for entry in _load_webapp_index() if entry.get("id") != app_id]
