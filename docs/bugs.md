@@ -4,9 +4,13 @@ Bugs that are confirmed real but not yet fixed. See `fixes.md` for the ones that
 
 This file was rewritten from scratch on 2026-08-18 after a full audit of the working tree (most of the source had drifted weeks ahead of the previous version of this doc, which still described things that were already fixed or no longer applied). Anything not carried forward from the previous version was either confirmed resolved (moved to `fixes.md`) or could no longer be confirmed as still true and was dropped rather than carried forward as stale guesswork.
 
-## Reyva: address bar blank when started with a URL that has a `#fragment`
+## Reyva: first page opened at startup can load half-styled (CSS/images/fonts missing)
 
-Seen 2026-10-05 on the Dev VM (Arch `reyos-browser` 0.1.0-105): `reyos-browser https://reyos.reyapps.com/#browser-windows` loaded the page and scrolled to the anchor, tab title "ReyOS", but the address bar showed its placeholder ("Search privately or enter an address") instead of the URL. `reyos-browser https://example.com` (no fragment) shows the URL normally. Not root-caused; likely the address text is set from the first URL change and the in-page anchor jump emits a change the bar ignores or clears. Only the command-line path was tried, not typing a `#` URL or clicking an anchor link.
+Seen 2026-10-05 and 2026-10-06 on the Dev VM. `reyos-browser https://kde.org` (or the Flatpak with the same URL) right after starting showed kde.org with no CSS (plain blue links, raw lists), or with CSS but no banner image and no Inter webfont. Hit in the Flatpak on its first launch after a fresh install (twice) **and in the native build** run from source (2026-10-06), so it is not Flatpak-specific. A DevTools reload of the same tab loaded all 62 requests with 0 failures, and later launches usually render fine, so it looks like something about the very first load at startup (start URL loaded before the profile/interceptor/scripts are fully set up?). Not root-caused. Matters because links opened from other apps take exactly this path.
+
+## Reyva: address bar blank when started with a URL
+
+Seen 2026-10-05/06 on the Dev VM: started with `https://reyos.reyapps.com/#browser-windows` and with `https://example.com/a%20b?x=1&y=2`, the page loaded (tab title right) but the address bar showed its placeholder. Plain `https://example.com` and `https://kde.org/` showed the URL. Not root-caused; first guess was `#fragment` URLs, but the second case has none.
 
 ## ReyOS Reader: PDF viewer header toolbar becomes nearly invisible after clicking into page content
 
