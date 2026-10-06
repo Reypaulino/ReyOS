@@ -67,6 +67,11 @@
   </requires>
 
   <releases>
+    <release version="0.1.1" date="2026-10-06">
+      <description>
+        <p>Install any site as an app: it gets its own window and its own entry in your app menu, through your desktop's own confirmation dialog.</p>
+      </description>
+    </release>
     <release version="0.1.0" date="2026-10-05">
       <description>
         <p>First Flathub release.</p>

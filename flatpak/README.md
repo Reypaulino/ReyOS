@@ -11,9 +11,14 @@ Python deps bundled by the manifest:
 - `setproctitle` (built from sdist) — process name in system monitors.
 
 Sandbox differences from the Arch/.deb builds (`browserBackend.sandboxed`):
-- "Install This Site as an App" and "Manage Web Apps" are hidden: the sandbox
-  can't write launchers to the host. The proper fix is the
-  `org.freedesktop.portal.DynamicLauncher` portal — not built yet.
+- "Install This Site as an App" goes through the `org.freedesktop.portal.DynamicLauncher`
+  portal (since 0.1.1): the desktop shows its own confirmation, then writes the
+  launcher to `~/.local/share/xdg-desktop-portal/applications/`. Reyva keeps its
+  list in `webapps/index.json` in its data dir. Hidden if the desktop has no such
+  portal. Tested on KDE Plasma. **Fails on stock Ubuntu 24.04**: its AppArmor
+  default (`kernel.apparmor_restrict_unprivileged_userns=1`) stops the portal's
+  bwrap-sandboxed icon check ("Dynamic launcher icon failed validation") for every
+  Flatpak; Reyva says so and points to the `.deb`.
 - "System Password Manager" button is hidden (can't start host apps).
 - Notifications go over D-Bus directly (`notify-send` isn't in the runtime).
 - State lives in `~/.var/app/com.reyapps.Reyva/data/reyos-browser/`
