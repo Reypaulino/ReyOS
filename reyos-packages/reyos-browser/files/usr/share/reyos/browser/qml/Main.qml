@@ -1658,7 +1658,7 @@ ApplicationWindow {
                 }
                 MenuRow {
                     text: "Install This Site as an App"
-                    visible: !browserBackend.sandboxed
+                    visible: browserBackend.webAppsSupported
                     iconSource: Qt.resolvedUrl("../icons/reyos-webapp.svg")
                     hoverColor: accentSurfaceHover
                     enabled: !window.currentIsHome
@@ -1666,7 +1666,7 @@ ApplicationWindow {
                 }
                 MenuRow {
                     text: "Manage Web Apps"
-                    visible: !browserBackend.sandboxed
+                    visible: browserBackend.webAppsSupported
                     iconSource: Qt.resolvedUrl("../icons/reyos-webapp.svg")
                     hoverColor: accentSurfaceHover
                     onClicked: { browserMenu.close(); manageAppsDialog.open() }

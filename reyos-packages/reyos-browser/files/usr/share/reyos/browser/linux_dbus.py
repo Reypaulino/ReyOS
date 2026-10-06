@@ -5,7 +5,12 @@ aren't available -- in practice, the Flatpak build. Exposes the small subset of
 secretstorage's API that PasswordVault uses, over a "plain" Secret Service
 session: the secret travels unencrypted, but only over the local session bus,
 the same channel the D-Bus daemon already trusts.
+
+Also wraps the DynamicLauncher portal, which is how the Flatpak adds web-app
+launchers to the host's app menu.
 """
+
+import os
 
 from jeepney import DBusAddress, MatchRule, message_bus, new_method_call
 from jeepney.io.blocking import Proxy, open_dbus_connection
@@ -133,10 +138,80 @@ def notify(app_name: str, icon: str, title: str, message: str) -> None:
     ))
 
 
+PORTAL_BUS = "org.freedesktop.portal.Desktop"
+PORTAL_PATH = "/org/freedesktop/portal/desktop"
+DYNAMIC_LAUNCHER = "org.freedesktop.portal.DynamicLauncher"
+PORTAL_REQUEST = "org.freedesktop.portal.Request"
+LAUNCHER_TYPE_WEBAPP = 2
+INSTALL_DIALOG_TIMEOUT = 600
+
+
+def _portal_call(connection, method: str, signature: str, body: tuple):
+    address = DBusAddress(PORTAL_PATH, bus_name=PORTAL_BUS, interface=DYNAMIC_LAUNCHER)
+    return unwrap_msg(connection.send_and_get_reply(new_method_call(address, method, signature, body)))
+
+
+def dynamic_launcher_version() -> int:
+    """Version of the DynamicLauncher portal, 0 if the desktop doesn't offer it."""
+    address = DBusAddress(PORTAL_PATH, bus_name=PORTAL_BUS, interface=PROPS)
+    try:
+        reply = _bus().send_and_get_reply(new_method_call(address, "Get", "ss", (DYNAMIC_LAUNCHER, "version")))
+        return int(unwrap_msg(reply)[0][1])
+    except (DBusErrorResponse, OSError, ValueError, TypeError, IndexError):
+        return 0
+
+
+def install_launcher(name: str, png_icon: bytes, desktop_file_id: str, build_entry, url: str) -> str | None:
+    """Ask the desktop to add a web-app launcher. Blocks while its confirmation
+    dialog is up, so call it off the UI thread. Returns the name the user
+    confirmed, or None if they cancelled. `build_entry(name)` gives the
+    .desktop contents; the portal rewrites Exec to run inside this Flatpak."""
+    connection = open_dbus_connection(bus="SESSION")
+    try:
+        token = "reyva" + os.urandom(8).hex()
+        sender = connection.unique_name.lstrip(":").replace(".", "_")
+        request_path = f"{PORTAL_PATH}/request/{sender}/{token}"
+        rule = MatchRule(type="signal", interface=PORTAL_REQUEST, member="Response", path=request_path)
+        Proxy(message_bus, connection).AddMatch(rule)
+        icon = ("(sv)", ("bytes", ("ay", png_icon)))
+        options = {
+            "handle_token": ("s", token),
+            "launcher_type": ("u", LAUNCHER_TYPE_WEBAPP),
+            "target": ("s", url),
+            "modal": ("b", True),
+        }
+        with connection.filter(rule) as queue:
+            _portal_call(connection, "PrepareInstall", "ssva{sv}", ("", name, icon, options))
+            response, results = connection.recv_until_filtered(queue, timeout=INSTALL_DIALOG_TIMEOUT).body
+        if response != 0:
+            return None
+        chosen = results.get("name", ("s", name))[1] or name
+        _portal_call(connection, "Install", "sssa{sv}", (results["token"][1], desktop_file_id, build_entry(chosen), {}))
+        return chosen
+    finally:
+        connection.close()
+
+
+def uninstall_launcher(desktop_file_id: str) -> None:
+    _portal_call(_bus(), "Uninstall", "sa{sv}", (desktop_file_id, {}))
+
+
+def launcher_exists(desktop_file_id: str) -> bool:
+    try:
+        _portal_call(_bus(), "GetDesktopEntry", "s", (desktop_file_id,))
+    except DBusErrorResponse:
+        return False
+    return True
+
+
 __all__ = [
     "DBusErrorResponse",
     "check_service_availability",
     "dbus_init",
+    "dynamic_launcher_version",
     "get_default_collection",
+    "install_launcher",
+    "launcher_exists",
     "notify",
+    "uninstall_launcher",
 ]

@@ -8,6 +8,7 @@ import secrets
 import shutil
 import subprocess
 import sys
+import threading
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
@@ -39,7 +40,7 @@ try:
 except ModuleNotFoundError:
     setproctitle = None
 
-from PySide6.QtCore import QFile, QIODevice, QObject, Property, Qt, QThread, QTimer, QUrl, QUrlQuery, Signal, Slot
+from PySide6.QtCore import QBuffer, QByteArray, QFile, QIODevice, QObject, Property, Qt, QThread, QTimer, QUrl, QUrlQuery, Signal, Slot
 from PySide6.QtGui import QIcon, QImage, QPainter, QPixmap
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtWebEngineCore import QWebEngineUrlRequestInfo, QWebEngineUrlRequestInterceptor
@@ -58,9 +59,13 @@ PASSWORD_AUTOFILL_SCRIPT_PATH = APP_DIR / "password-autofill.js"
 FINGERPRINT_PROTECTION_SCRIPT_PATH = APP_DIR / "fingerprint-protection.js"
 WEBAPPS_DESKTOP_DIR = Path.home() / ".local" / "share" / "applications"
 WEBAPPS_ICON_DIR = Path.home() / ".local" / "share" / "icons" / "hicolor" / "256x256" / "apps"
-if IS_WINDOWS:
+if IS_WINDOWS or IS_FLATPAK:
+    # No writable launcher dir here: Windows uses Start menu shortcuts, the
+    # Flatpak asks the DynamicLauncher portal. Either way Reyva keeps its own
+    # list of what it installed.
     WEBAPPS_ICON_DIR = BROWSER_STATE_DIR / "webapps"
     WEBAPPS_INDEX_PATH = WEBAPPS_ICON_DIR / "index.json"
+if IS_WINDOWS:
     WEBAPPS_SHORTCUT_DIR = (
         Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
         / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Reyva Web Apps"
@@ -409,6 +414,37 @@ def _webapp_id(url: str, title: str) -> str:
     return f"reyos-webapp-{base[:40]}-{digest}"
 
 
+def _portal_launcher_id(app_id: str) -> str:
+    """Desktop file ID for a web app installed through the portal: it must start
+    with the Flatpak's own app ID. Also the web app window's Wayland app_id, so
+    the dock shows the launcher's icon for it."""
+    return "com.reyapps.Reyva." + app_id.replace("-", "_")
+
+
+def _desktop_exec_safe(value: str) -> str:
+    """Drop characters that need escaping in a desktop entry Exec line (the
+    portal re-parses it); a literal % must be written as %%."""
+    return re.sub(r'[\\"`$]', "", value).replace("%", "%%")
+
+
+def _square_png_bytes(image: QImage, size: int = 256) -> bytes:
+    """PNG bytes of an image centred on a transparent square, as the portal
+    only accepts square icons of at most 512 px."""
+    canvas = QImage(size, size, QImage.Format.Format_ARGB32)
+    canvas.fill(Qt.GlobalColor.transparent)
+    if not image.isNull():
+        scaled = image.scaled(size, size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        painter = QPainter(canvas)
+        painter.drawImage((size - scaled.width()) // 2, (size - scaled.height()) // 2, scaled)
+        painter.end()
+    data = QByteArray()
+    buffer = QBuffer(data)
+    buffer.open(QIODevice.WriteOnly)
+    canvas.save(buffer, "PNG")
+    buffer.close()
+    return bytes(data)
+
+
 def _browser_launch_command() -> list[str]:
     """The command that starts this browser: the installed exe on Windows, the
     reyos-browser wrapper on Linux, or python + main.py when run from source."""
@@ -419,7 +455,7 @@ def _browser_launch_command() -> list[str]:
     return ["reyos-browser"]
 
 
-def _load_windows_webapps() -> list[dict]:
+def _load_webapp_index() -> list[dict]:
     try:
         data = json.loads(WEBAPPS_INDEX_PATH.read_text(encoding="utf-8"))
         return [entry for entry in data if isinstance(entry, dict) and isinstance(entry.get("id"), str)]
@@ -427,7 +463,7 @@ def _load_windows_webapps() -> list[dict]:
         return []
 
 
-def _save_windows_webapps(apps: list[dict]) -> None:
+def _save_webapp_index(apps: list[dict]) -> None:
     WEBAPPS_INDEX_PATH.parent.mkdir(parents=True, exist_ok=True)
     temp_path = WEBAPPS_INDEX_PATH.with_suffix(".tmp")
     temp_path.write_text(json.dumps(apps, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -541,6 +577,7 @@ class BrowserBackend(QObject):
     bookmarksChanged = Signal()
     shortcutsChanged = Signal()
     installedWebAppsChanged = Signal()
+    portalInstallFinished = Signal(str, str, str)
     passwordsChanged = Signal()
     bookmarkImportFinished = Signal(int, str)
     passwordImportFinished = Signal(int, str)
@@ -573,6 +610,9 @@ class BrowserBackend(QObject):
         self._shields_update_worker = None
         self._shields_updating = False
         self._shields_meta = load_shields_meta()
+        self._web_apps_supported = not IS_FLATPAK or (linux_dbus is not None and linux_dbus.dynamic_launcher_version() >= 1)
+        self._pending_portal_installs = {}
+        self.portalInstallFinished.connect(self._finish_portal_install)
 
     @Property(QObject, constant=True)
     def passwordBridge(self) -> QObject:
@@ -1075,6 +1115,12 @@ class BrowserBackend(QObject):
         and host apps (KWallet Manager) can't be started."""
         return IS_FLATPAK
 
+    @Property(bool, constant=True)
+    def webAppsSupported(self) -> bool:
+        """Install as App works everywhere except a Flatpak on a desktop
+        without the DynamicLauncher portal."""
+        return self._web_apps_supported
+
     @Property(bool, notify=lowMemoryChanged)
     def lowMemoryMode(self) -> bool:
         return self._low_memory_mode
@@ -1155,7 +1201,7 @@ class BrowserBackend(QObject):
         app_id = _webapp_id(clean_url, display_title)
         icon_value = str(APP_DIR / "assets" / "reyos-browser-logo.png")
         try:
-            if not IS_WINDOWS:
+            if not IS_WINDOWS and not IS_FLATPAK:
                 WEBAPPS_DESKTOP_DIR.mkdir(parents=True, exist_ok=True)
             fetched_icon = self._fetch_icon_image(icon_url) if icon_url else None
             if fetched_icon is not None:
@@ -1176,6 +1222,8 @@ class BrowserBackend(QObject):
                     pass
             if IS_WINDOWS:
                 return self._install_windows_webapp(app_id, clean_url, display_title, normalized, icon_value)
+            if IS_FLATPAK:
+                return self._install_portal_webapp(app_id, clean_url, display_title, normalized, icon_value)
             exec_value = " ".join(
                 _quote_desktop_exec_arg(part)
                 for part in (
@@ -1231,7 +1279,7 @@ class BrowserBackend(QObject):
         try:
             WEBAPPS_SHORTCUT_DIR.mkdir(parents=True, exist_ok=True)
             _create_windows_shortcut(link_path, command[0], arguments, str(ico_path), f"Installed from {origin} with Reyva")
-            apps = [entry for entry in _load_windows_webapps() if entry["id"] != app_id]
+            apps = [entry for entry in _load_webapp_index() if entry["id"] != app_id]
             apps.append({
                 "id": app_id,
                 "name": title,
@@ -1239,13 +1287,89 @@ class BrowserBackend(QObject):
                 "comment": f"Installed from {origin} with Reyva",
                 "shortcut": str(link_path),
             })
-            _save_windows_webapps(apps)
+            _save_webapp_index(apps)
         except (OSError, subprocess.SubprocessError) as error:
             self.notify("Couldn't install app", f"{title}: {error}")
             return False
         self.notify("App installed", f"{title} was added to the Start menu under Reyva Web Apps.")
         self.installedWebAppsChanged.emit()
         return True
+
+    def _install_portal_webapp(self, app_id: str, url: str, title: str, origin: str, png_icon: str) -> bool:
+        if not self._web_apps_supported:
+            self.notify("Can't install app", "This desktop doesn't support adding apps from Flatpak apps.")
+            return False
+        if app_id in self._pending_portal_installs:
+            return False
+        launcher_id = _portal_launcher_id(app_id)
+        # QML hands over a display URL (%20 shown as a space); the launcher
+        # needs the exact encoded form.
+        url = QUrl(url).toString(QUrl.ComponentFormattingOption.FullyEncoded)
+        icon = _square_png_bytes(QImage(png_icon))
+        exec_value = " ".join(
+            f'"{_desktop_exec_safe(part)}"'
+            for part in (
+                "com.reyapps.Reyva",
+                f"--app-url={url}",
+                f"--app-title={title}",
+                f"--app-icon={png_icon}",
+            )
+        )
+
+        def build_entry(name: str) -> str:
+            safe_name = re.sub(r"[\r\n]+", " ", name)
+            return (
+                "[Desktop Entry]\n"
+                "Version=1.0\n"
+                "Type=Application\n"
+                f"Name={safe_name}\n"
+                f"Comment=Installed from {origin} with Reyva\n"
+                f"Exec={exec_value}\n"
+                "Terminal=false\n"
+                "Categories=Network;WebBrowser;\n"
+                "StartupNotify=true\n"
+                f"StartupWMClass={launcher_id}\n"
+            )
+
+        def worker() -> None:
+            try:
+                chosen = linux_dbus.install_launcher(title, icon, f"{launcher_id}.desktop", build_entry, url)
+            except Exception as error:  # surfaced to the user, never fatal
+                self.portalInstallFinished.emit(app_id, "", str(error) or error.__class__.__name__)
+                return
+            self.portalInstallFinished.emit(app_id, chosen or "", "" if chosen else "cancelled")
+
+        self._pending_portal_installs[app_id] = {
+            "launcher": launcher_id,
+            "icon": png_icon,
+            "comment": f"Installed from {origin} with Reyva",
+        }
+        threading.Thread(target=worker, daemon=True).start()
+        return True
+
+    @Slot(str, str, str)
+    def _finish_portal_install(self, app_id: str, name: str, error: str) -> None:
+        pending = self._pending_portal_installs.pop(app_id, None)
+        if pending is None:
+            return
+        if error:
+            icon_path = Path(pending["icon"])
+            if icon_path.parent == WEBAPPS_ICON_DIR and icon_path.is_file():
+                try:
+                    icon_path.unlink()
+                except OSError:
+                    pass
+            if error != "cancelled":
+                self.notify("Couldn't install app", error)
+            return
+        apps = [entry for entry in _load_webapp_index() if entry.get("id") != app_id]
+        apps.append({"id": app_id, "name": name, **pending})
+        try:
+            _save_webapp_index(apps)
+        except OSError:
+            pass
+        self.notify("App installed", f"{name} was added to your app launcher.")
+        self.installedWebAppsChanged.emit()
 
     @staticmethod
     def _read_desktop_field(text: str, field: str) -> str:
@@ -1258,7 +1382,15 @@ class BrowserBackend(QObject):
     @Property("QVariantList", notify=installedWebAppsChanged)
     def installedWebApps(self):
         if IS_WINDOWS:
-            return [{key: entry.get(key, "") for key in ("id", "name", "icon", "comment")} for entry in _load_windows_webapps()]
+            return [{key: entry.get(key, "") for key in ("id", "name", "icon", "comment")} for entry in _load_webapp_index()]
+        if IS_FLATPAK:
+            # Launchers removed from the desktop side (e.g. GNOME's app grid)
+            # drop out of the list too.
+            return [
+                {key: entry.get(key, "") for key in ("id", "name", "icon", "comment")}
+                for entry in _load_webapp_index()
+                if linux_dbus is not None and linux_dbus.launcher_exists(f"{entry.get('launcher', '')}.desktop")
+            ]
         apps = []
         if not WEBAPPS_DESKTOP_DIR.is_dir():
             return apps
@@ -1282,7 +1414,7 @@ class BrowserBackend(QObject):
         if not re.fullmatch(r"reyos-webapp-[a-z0-9-]+", app_id or ""):
             return False
         if IS_WINDOWS:
-            apps = _load_windows_webapps()
+            apps = _load_webapp_index()
             for entry in apps:
                 if entry["id"] != app_id:
                     continue
@@ -1293,9 +1425,31 @@ class BrowserBackend(QObject):
                             target.unlink()
                         except OSError:
                             pass
-            _save_windows_webapps([entry for entry in apps if entry["id"] != app_id])
+            _save_webapp_index([entry for entry in apps if entry["id"] != app_id])
             self.installedWebAppsChanged.emit()
             self.notify("App removed", "The installed app was removed from the Start menu.")
+            return True
+        if IS_FLATPAK:
+            apps = _load_webapp_index()
+            for entry in apps:
+                if entry.get("id") != app_id:
+                    continue
+                try:
+                    linux_dbus.uninstall_launcher(f"{entry.get('launcher', '')}.desktop")
+                except linux_dbus.DBusErrorResponse:
+                    pass  # already gone on the desktop side
+                except OSError as error:
+                    self.notify("Couldn't remove app", str(error))
+                    return False
+                icon_path = Path(entry.get("icon") or "")
+                if icon_path.parent == WEBAPPS_ICON_DIR and icon_path.is_file():
+                    try:
+                        icon_path.unlink()
+                    except OSError:
+                        pass
+            _save_webapp_index([entry for entry in apps if entry.get("id") != app_id])
+            self.installedWebAppsChanged.emit()
+            self.notify("App removed", "The installed app was removed from your app launcher.")
             return True
         desktop_path = WEBAPPS_DESKTOP_DIR / f"{app_id}.desktop"
         icon_path = None
@@ -1603,7 +1757,7 @@ def main():
         if IS_WINDOWS:
             _set_windows_app_id(f"ReyApps.Reyva.{app_id}")
         app.setApplicationName(app_title or "ReyOS Web App")
-        app.setDesktopFileName(app_id)
+        app.setDesktopFileName(_portal_launcher_id(app_id) if IS_FLATPAK else app_id)
         engine.rootContext().setContextProperty("appUrl", app_url)
         engine.rootContext().setContextProperty("appTitle", app_title or app_url)
         engine.rootContext().setContextProperty("appStorageName", app_id)
