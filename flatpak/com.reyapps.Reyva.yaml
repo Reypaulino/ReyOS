@@ -58,4 +58,4 @@ modules:
     sources:
       - type: git
         url: https://github.com/Reypaulino/ReyOS.git
-        commit: c497db866a94725ebbd1dd82d9aa05a063a43543
+        commit: a8d28c58e033c7fdc78395bc35fc82ac2b325c94
