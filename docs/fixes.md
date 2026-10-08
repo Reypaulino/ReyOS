@@ -2,6 +2,10 @@
 
 Real bugs found and fixed, with root cause. Newest first. See `bugs.md` for what's still open.
 
+## 2026-10-08 — Looks no longer recolor app icons (control-center-gui 1.0.0-113)
+
+User's decision: app icons keep their own colors; a Look changes only the theme (color scheme, wallpaper, panel, window-border rim, settings gear/Dolphin icons, Reyva's accent). Removed the `app_icons` recolor step from `looks.py`'s `_recolor_look_assets` (it only still changed Reader and Distrobox GUI; the launcher, Control Center and Reyva icons are PNG-wrapped and were already skipped). `reyos-apply-look-icons.sh` still has `copy_if_present` lines for those icons; with nothing staged in /tmp they do nothing. Checked on the Dev VM: switching to Slate turned the window rim `#409cc4` and back to copper, and `reyos-reader.svg` stayed `#FF9A3C` throughout. An install that applied a Look with 112 keeps a recolored Reader/Distrobox icon until those packages are next reinstalled or updated.
+
 ## 2026-10-08 — Top bar system menu logo: copper instead of blue (reyos-kde-customization 1.0.0-22)
 
 User's request: replace the round blue badge (`reyos-systemmenu`, added 2026-10-01) with the copper R. All eight `hicolor/*/apps/reyos-systemmenu.png` sizes (16–256) are now cut from Welcome's `reyos-r-penguin-hq.png` (transparent copper ring, R and penguin), cropped to its edges and centred. Checked on the Dev VM after a plasmashell restart: the top bar shows the copper R. Installed systems see it after a reboot or logout.

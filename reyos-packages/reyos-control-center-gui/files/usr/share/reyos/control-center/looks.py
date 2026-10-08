@@ -297,62 +297,6 @@ def _recolor_look_assets(look_id):
                 Path("/tmp/reyos-look-decoration.svg").write_text(new_text)
                 any_staged = True
 
-        # The Kickoff/taskbar app-launcher badge and every branded
-        # app icon (Control Center, Browser, Reader, Distrobox GUI)
-        # share the exact same two-stop-gradient badge template
-        # (only the inner glyph and, for the launcher/browser, the
-        # gradient's own <id> differ -- irrelevant here since the
-        # regex below matches the <stop> elements directly, not the
-        # id). All bake copper in as literal hex. Light stop uses
-        # the same +39/+59/+56 lightening already applied to
-        # reyos-system-menu.sh's YLW and reyos-terminal's Konsole
-        # Color3Intense, so this stays visually consistent with the
-        # rest of the accent family.
-        light_hex = "#" + "".join(
-            f"{min(255, c + d):02x}" for c, d in zip((accent_r, accent_g, accent_b), (39, 59, 56))
-        )
-        # (svg_path, tmp_stem, also_render_png) -- only reyos-launcher
-        # also ships a competing fixed-size 256x256 PNG under the same
-        # icon name (confirmed live 2026-09-25: KDE's icon-theme
-        # resolution can prefer that PNG over this same-named
-        # scalable SVG for panel/taskbar contexts, so the SVG alone
-        # updating on disk didn't change the visible taskbar icon
-        # until a matching PNG was regenerated too). The other four
-        # ship SVG-only, so there's no competing raster to keep in
-        # sync -- rendering one for them would just add a fallback
-        # that never existed before, so they stay SVG-only.
-        app_icons = [
-            ("/usr/share/icons/hicolor/scalable/apps/reyos-launcher.svg", "launcher", True),
-            ("/usr/share/icons/hicolor/scalable/apps/reyos-control-center.svg", "control-center", False),
-            ("/usr/share/icons/hicolor/scalable/apps/reyos-browser.svg", "browser", False),
-            ("/usr/share/icons/hicolor/scalable/apps/reyos-reader.svg", "reader", False),
-            ("/usr/share/icons/hicolor/scalable/apps/reyos-distrobox-gui.svg", "distrobox-gui", False),
-        ]
-        for svg_path, tmp_stem, also_render_png in app_icons:
-            svg_file = Path(svg_path)
-            if not svg_file.is_file():
-                continue
-            text = svg_file.read_text()
-            new_text = re.sub(
-                r'(?<=<stop stop-color=")#[0-9A-Fa-f]{6}(?=")', light_hex, text, count=1,
-            )
-            new_text = re.sub(
-                r'(?<=<stop offset="1" stop-color=")#[0-9A-Fa-f]{6}(?=")', accent_hex, new_text, count=1,
-            )
-            if new_text == text:
-                continue
-            svg_tmp = Path(f"/tmp/reyos-look-{tmp_stem}.svg")
-            svg_tmp.write_text(new_text)
-            any_staged = True
-            if also_render_png:
-                # rsvg-convert needs no root, so it runs here rather
-                # than in the sudo helper script.
-                subprocess.run(
-                    ["rsvg-convert", "-w", "256", "-h", "256",
-                     "-o", f"/tmp/reyos-look-{tmp_stem}.png", str(svg_tmp)],
-                    capture_output=True,
-                )
-
         # reyos-browser's accent palette used to be scattered as
         # literal hex through ~180 places across two files, patched
         # by scanning for whatever the *previous* accent's shades
