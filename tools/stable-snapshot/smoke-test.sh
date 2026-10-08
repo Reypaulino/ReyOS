@@ -20,6 +20,8 @@ ParallelDownloads = 5
 SigLevel = Required DatabaseOptional
 LocalFileSigLevel = Optional
 NoExtract = usr/share/help/* usr/share/doc/* usr/share/man/*
+# Docker creates these itself; the import checks don't need reyos-base's copies.
+NoExtract = etc/hostname etc/os-release
 
 [reyos-local]
 SigLevel = Required
