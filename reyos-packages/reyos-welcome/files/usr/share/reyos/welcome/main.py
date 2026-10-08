@@ -33,6 +33,7 @@ def _reyos_accent_color():
 # exactly one of these, not a whole bundle. IDs here must match the "id"
 # fields in SoftwarePage.qml's groups model.
 APP_PACMAN = {
+    "reyos-reader": "reyos-reader",
     "steam": "steam",
     "lutris": "lutris",
     "retroarch": "retroarch",

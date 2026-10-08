@@ -10,6 +10,12 @@ Kirigami.Page {
     property bool allowPanelEditing: false
     property var groups: [
         {
+            label: "ReyOS Apps",
+            apps: [
+                { id: "reyos-reader", label: "ReyOS Reader", desc: "PDF & document viewer", checked: true },
+            ]
+        },
+        {
             label: "Gaming",
             apps: [
                 { id: "steam", label: "Steam", desc: "Game store & launcher", checked: false },

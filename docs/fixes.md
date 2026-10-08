@@ -2,6 +2,15 @@
 
 Real bugs found and fixed, with root cause. Newest first. See `bugs.md` for what's still open.
 
+## 2026-10-08 — master → main content sync: Reader search, Welcome's Reader option, ISO key (reyos-reader 40, reyos-welcome 30, reyos-calamares 47)
+
+`master` (private history) and `origin/main` (squashed public history) share no commits; their trees differed in 21 files. Every product difference was a `master` change that never reached `main`, so packages built from `main` silently lost it:
+- **Reader search was broken** in 38/39: `main.py` (on main) calls `Library.search(query, fmt_filter)` and the QML calls a two-argument slot, but main's `library.py`/`LibraryPage.qml` were the pre-2026-09-12 versions (one argument). Took master's (`4ee6a60`, search keeps the active format filter). Checked on the Dev VM: `search(query, fmt_filter=None)`, slot and caller match.
+- **Welcome's software picker** lost its pre-checked "ReyOS Reader" option (`7fd754b`) in 26–29. Restored (`SoftwarePage.qml`, `main.py`), with its exact sudoers line `pacman -S --needed --noconfirm reyos-reader` in Calamares (generated file passes `visudo -c`). Master's second line, `pacman -S --needed --noconfirm reyos-*`, is **not** taken: it's a wildcard (RB-1). Without it, Control Center's "Install ReyOS updates and apps" has no rule for its install step on installs from Calamares 46/47; fixed with RB-1.
+- ISO: `airootfs/usr/share/reyos/reyos-signing-key.asc` (public key the live system trusts, same as `tools/stable-snapshot/`) and `reyos-looks` in `packages.x86_64` were missing from main.
+- Source only (already published from master): the rest of `reyos-looks` (Copper/Slate colors and wallpaper, `shortcuts.conf`, `ReyOSSlate.colors`; matches published 1.0.0-13) and `reyos-update-notifier` 1.0.0-2 (2 min/30 min check interval).
+- Private docs (`AGENTS.md`, `CURRENT_STATUS.md`, handoffs, audits, mockup) stay local-only.
+
 ## 2026-10-08 — Looks no longer recolor app icons (control-center-gui 1.0.0-113)
 
 User's decision: app icons keep their own colors; a Look changes only the theme (color scheme, wallpaper, panel, window-border rim, settings gear/Dolphin icons, Reyva's accent). Removed the `app_icons` recolor step from `looks.py`'s `_recolor_look_assets` (it only still changed Reader and Distrobox GUI; the launcher, Control Center and Reyva icons are PNG-wrapped and were already skipped). `reyos-apply-look-icons.sh` still has `copy_if_present` lines for those icons; with nothing staged in /tmp they do nothing. Checked on the Dev VM: switching to Slate turned the window rim `#409cc4` and back to copper, and `reyos-reader.svg` stayed `#FF9A3C` throughout. An install that applied a Look with 112 keeps a recolored Reader/Distrobox icon until those packages are next reinstalled or updated.

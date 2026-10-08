@@ -22,7 +22,7 @@ Kirigami.ScrollablePage {
         } else if (page.section === "recent") {
             json = backend.getRecentlyAdded()
         } else if (page.searchText.length > 0) {
-            json = backend.search(page.searchText)
+            json = backend.search(page.searchText, page.filter)
         } else {
             json = backend.getLibrary(page.filter)
         }

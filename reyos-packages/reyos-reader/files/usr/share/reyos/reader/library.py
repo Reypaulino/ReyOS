@@ -120,24 +120,29 @@ class Library:
         row = self._conn.execute("SELECT * FROM items WHERE path = ?", (str(path),)).fetchone()
         return dict(row) if row else None
 
+    @staticmethod
+    def _format_clause(fmt_filter):
+        """The WHERE-clause fragment for a Library page filter chip, or None
+        for "all"/unrecognized. Shared by list_items() and search() so
+        searching while a format filter is active narrows by both instead
+        of the format filter being silently dropped."""
+        if fmt_filter == "manga":
+            return "format IN ('cbz','cbr','images') AND reading_direction='rtl'"
+        if fmt_filter == "comics":
+            return "format IN ('cbz','cbr','images') AND reading_direction='ltr'"
+        if fmt_filter == "books":
+            return "format='epub'"
+        if fmt_filter == "pdfs":
+            return "format='pdf'"
+        return None
+
     def list_items(self, fmt_filter=None):
-        if fmt_filter and fmt_filter != "all":
-            if fmt_filter == "manga":
-                rows = self._conn.execute(
-                    "SELECT * FROM items WHERE format IN ('cbz','cbr','images') AND reading_direction='rtl' ORDER BY title"
-                )
-            elif fmt_filter == "comics":
-                rows = self._conn.execute(
-                    "SELECT * FROM items WHERE format IN ('cbz','cbr','images') AND reading_direction='ltr' ORDER BY title"
-                )
-            elif fmt_filter == "books":
-                rows = self._conn.execute("SELECT * FROM items WHERE format='epub' ORDER BY title")
-            elif fmt_filter == "pdfs":
-                rows = self._conn.execute("SELECT * FROM items WHERE format='pdf' ORDER BY title")
-            else:
-                rows = self._conn.execute("SELECT * FROM items ORDER BY title")
-        else:
-            rows = self._conn.execute("SELECT * FROM items ORDER BY title")
+        clause = self._format_clause(fmt_filter) if fmt_filter and fmt_filter != "all" else None
+        sql = "SELECT * FROM items"
+        if clause:
+            sql += " WHERE " + clause
+        sql += " ORDER BY title"
+        rows = self._conn.execute(sql)
         return [dict(r) for r in rows]
 
     def list_continue_reading(self, limit=10):
@@ -156,12 +161,14 @@ class Library:
         rows = self._conn.execute("SELECT * FROM items WHERE favorite = 1 ORDER BY title")
         return [dict(r) for r in rows]
 
-    def search(self, query):
+    def search(self, query, fmt_filter=None):
         like = f"%{query.lower()}%"
-        rows = self._conn.execute(
-            "SELECT * FROM items WHERE lower(title) LIKE ? OR lower(author) LIKE ? ORDER BY title",
-            (like, like),
-        )
+        sql = "SELECT * FROM items WHERE (lower(title) LIKE ? OR lower(author) LIKE ?)"
+        clause = self._format_clause(fmt_filter) if fmt_filter and fmt_filter != "all" else None
+        if clause:
+            sql += " AND " + clause
+        sql += " ORDER BY title"
+        rows = self._conn.execute(sql, (like, like))
         return [dict(r) for r in rows]
 
     def set_favorite(self, item_id, favorite):

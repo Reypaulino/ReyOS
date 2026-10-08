@@ -1,7 +1,7 @@
 # Maintainer: Rey Paulino
 pkgname=reyos-update-notifier
 pkgver=1.0.0
-pkgrel=1
+pkgrel=2
 pkgdesc="ReyOS update notifier — periodically checks reyos-local for newer reyos-* app versions and sends a desktop notification"
 arch=('any')
 license=('MIT')

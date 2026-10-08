@@ -2,8 +2,8 @@
 Description=Periodically check for ReyOS app updates
 
 [Timer]
-OnBootSec=5min
-OnUnitActiveSec=6h
+OnBootSec=2min
+OnUnitActiveSec=30min
 Persistent=true
 
 [Install]
