@@ -80,6 +80,7 @@ Kirigami.ScrollablePage {
             logArea.append(line)
             if (line.length > 0 && line.charAt(0) !== "$") statusText = line
         }
+        function onBiosChanged() { bios = backend.biosReport() }
         function onGamingFinished(ok, message) {
             busy = false
             statusOk = ok
@@ -565,7 +566,7 @@ Kirigami.ScrollablePage {
                     Controls.Label {
                         Layout.fillWidth: true
                         wrapMode: Text.Wrap
-                        text: "Some systems need files from the real console. Put them in ~/Games/BIOS — ReyOS checks each one and recognises the right file even under a different name."
+                        text: "Some systems need files from the real console. Press Import BIOS… and pick your own dumped files — ReyOS recognises each one and puts it where its emulator looks. Keep a backup of them somewhere private: ReyOS can't download them for you."
                     }
                     Repeater {
                         model: bios
@@ -613,6 +614,11 @@ Kirigami.ScrollablePage {
                     }
                     RowLayout {
                         spacing: Kirigami.Units.largeSpacing
+                        Controls.Button {
+                            text: "Import BIOS…"
+                            icon.name: "document-import"
+                            onClicked: backend.importBios()
+                        }
                         Controls.Button {
                             text: "Open BIOS folder"
                             icon.name: "folder-open"

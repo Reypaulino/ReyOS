@@ -751,6 +751,7 @@ class Backend(QObject):
     controllerSetupStep = Signal(int, int, str, str, str, str)
     controllerSetupDone = Signal(bool, str)
     imageSelected = Signal(str)
+    biosChanged = Signal()
     pathBrowsed = Signal(str, str)
     networkInfoReady = Signal("QVariantMap")
     diskInfoReady = Signal("QVariantMap")
@@ -1117,7 +1118,9 @@ class Backend(QObject):
 
     @Slot(result="QVariantList")
     def biosReport(self):
-        installed = {s["id"] for s in EMU_SYSTEMS if emulation.core_path(s).is_file()}  # GameCube listed even without its data files
+        # GameCube listed even without its data files; PS2 is a Flatpak, not a core
+        installed = {s["id"] for s in EMU_SYSTEMS
+                     if emulation.core_path(s).is_file() or emulation.system_installed(s)}
         return emulation.bios_report(installed)
 
     @Slot(str, str)
@@ -1126,6 +1129,29 @@ class Backend(QObject):
             self.actionFinished.emit(True, f"Copied {source} to {name}.")
         else:
             self.actionFinished.emit(False, f"Couldn't copy {source} to {name}.")
+
+    @Slot()
+    def importBios(self):
+        def task(emit):
+            result = subprocess.run(
+                ["kdialog", "--title", "Import BIOS Files", "--getopenfilename", str(Path.home()),
+                 "BIOS files (*.bin *.BIN *.rom *.ROM *.rom0 *.ROM0);;All files (*)",
+                 "--multiple", "--separate-output"],
+                capture_output=True, text=True,
+            )
+            paths = [p for p in result.stdout.splitlines() if p.strip()]
+            if not paths:  # Cancel
+                return True, ""
+            imported, messages = emulation.bios_import(paths)
+            return imported > 0 or all("already there" in m for m in messages), " ".join(messages)
+        self._bios_worker = ActionWorker(task)
+        self._bios_worker.finished_ok.connect(self._bios_imported)
+        self._bios_worker.start()
+
+    def _bios_imported(self, ok, message):
+        if message:
+            self.actionFinished.emit(ok, message)
+        self.biosChanged.emit()
 
     @Slot(result="QVariantList")
     def gameControllers(self):

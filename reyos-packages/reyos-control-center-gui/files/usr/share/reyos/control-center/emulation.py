@@ -424,6 +424,56 @@ def bios_fix_name(source, name):
     return True
 
 
+def _is_ps2_bios(data):
+    # Every PS2 BIOS starts with a ROMDIR table whose first entry is "RESET";
+    # PCSX2 looks for the same marker.
+    return len(data) == BIOS_TABLE["ps2"]["size"] and b"RESET\0" in data[:0x10000]
+
+
+def bios_import(paths):
+    """Copy BIOS files the user picked into ~/Games/BIOS under the name and
+    folder each emulator expects. Files are recognised by checksum (or, for
+    the PS2, by size and ROMDIR marker); anything else is left alone.
+    Returns (imported, messages)."""
+    known = {md5: name for spec in BIOS_TABLE.values() for name, md5, _ in spec["files"] if md5}
+    imported, messages = 0, []
+    for raw in paths:
+        src = Path(raw)
+        label = src.name
+        try:
+            if not src.is_file() or src.stat().st_size > _BIOS_MAX_SIZE:
+                messages.append(f"{label}: not a BIOS file.")
+                continue
+            data = src.read_bytes()
+        except OSError as e:
+            messages.append(f"{label}: couldn't read it ({e.strerror}).")
+            continue
+        md5 = hashlib.md5(data).hexdigest()
+        if md5 in known:
+            dst, kind = BIOS_DIR / known[md5], known[md5]
+        elif _is_ps2_bios(data):
+            dst, kind = BIOS_DIR / "ps2" / src.name, "PS2 BIOS"
+        elif src.name == "firmware.bin":
+            dst, kind = BIOS_DIR / "firmware.bin", "DS firmware"
+        else:
+            messages.append(f"{label}: not a BIOS ReyOS recognises.")
+            continue
+        try:
+            if dst.is_file() and dst.read_bytes() == data:
+                messages.append(f"{label}: already there.")
+                continue
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            tmp = dst.with_name(dst.name + ".part")
+            tmp.write_bytes(data)
+            tmp.replace(dst)
+        except OSError as e:
+            messages.append(f"{label}: couldn't copy it ({e.strerror}).")
+            continue
+        imported += 1
+        messages.append(f"{label}: imported as {kind}.")
+    return imported, messages
+
+
 # ---- Controllers (evdev) ----------------------------------------------------
 EV_KEY, EV_ABS = 0x01, 0x03
 KEY_UP, KEY_DOWN, BTN_MISC, KEY_MAX = 103, 108, 0x100, 0x2FF

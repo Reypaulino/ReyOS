@@ -2,6 +2,12 @@
 
 Real bugs found and fixed, with root cause. Newest first. See `bugs.md` for what's still open.
 
+## 2026-10-08 — Import BIOS button; PS2 missing from the BIOS checker (control-center-gui 1.0.0-116)
+
+**Bug:** the Gaming page's BIOS checker never listed PlayStation 2, so a missing PS2 BIOS was never reported. `biosReport()` decided which systems were installed with `core_path(s).is_file()`, which only fits RetroArch cores; PS2 (PCSX2) is a Flatpak. It now also accepts `emulation.system_installed()`, which checks the Flatpak.
+
+**New:** an **Import BIOS…** button next to "Open BIOS folder". It opens a kdialog multi-file picker, and `emulation.bios_import()` copies each file to the name and folder its emulator expects: PS1/GBA/DS/Dreamcast by the checksums already in `BIOS_TABLE`, a PS2 BIOS by its 4 MiB size plus the `RESET` ROMDIR entry PCSX2 also looks for (saved under its own name in `BIOS/ps2/`), and `firmware.bin` by name. Anything else is refused, files over 4 MiB aren't read, an identical file already in place is reported as "already there", and writes go through a `.part` file. ReyOS still ships and downloads no BIOS files; the page text now says to keep a private backup. Checked on the Dev VM through the real UI: PS2 now shows ✗, Import BIOS… → picked a test 4 MiB file with a ROMDIR marker → "imported as PS2 BIOS", PS2 turned ✓. Unit-checked: a 4 MiB file without the marker, a junk file, a 5 MiB file and a missing path are all refused.
+
 ## 2026-10-08 — "Refresh desktop" after updates (control-center-gui 1.0.0-115)
 
 New icons (and other theme files) only showed after a reboot, because plasmashell keeps the icons it loaded at login; on the laptop that looked like the update hadn't worked. The "Restart to finish updating" dialog now has a third button, **Refresh desktop** (`Backend.refreshDesktop()` → the existing `_restart_plasmashell_and_wait()`), and says that apps pick up new versions when they're next opened. Checked on the Dev VM through the real UI: with `reyos-control-center` downgraded to 24, "Update ReyOS Apps only" upgraded it to 25 (through `reyos-admin install-reyos`), the dialog showed the three buttons, and Refresh desktop restarted plasmashell (start time 14:53 → 15:57).
