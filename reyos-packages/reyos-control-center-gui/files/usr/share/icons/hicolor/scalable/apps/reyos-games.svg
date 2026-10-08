@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#34363b"/>
+      <stop offset="1" stop-color="#1b1c1f"/>
+    </linearGradient>
+    <linearGradient id="pad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ff9a3c"/>
+      <stop offset="1" stop-color="#ef5a1e"/>
+    </linearGradient>
+    <linearGradient id="btn" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#c9cbd0"/>
+    </linearGradient>
+    <filter id="sh" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="4" stdDeviation="5" flood-color="#000" flood-opacity="0.45"/>
+    </filter>
+  </defs>
+  <rect x="12" y="12" width="232" height="232" rx="52" fill="url(#tile)"/>
+  <rect x="12.5" y="12.5" width="231" height="231" rx="51.5" fill="none" stroke="#ffffff" stroke-opacity="0.08"/>
+  <g transform="translate(0 -14)">
+  <path filter="url(#sh)" fill="url(#pad)" d="M84 78h88c26 0 42 16 49 44l12 50c5 22-6 38-24 38-12 0-20-7-28-18l-10-14H85l-10 14c-8 11-16 18-28 18-18 0-29-16-24-38l12-50c7-28 23-44 49-44z"/>
+  <g fill="url(#btn)">
+    <rect x="70" y="113" width="14" height="44" rx="5"/>
+    <rect x="55" y="128" width="44" height="14" rx="5"/>
+    <circle cx="174" cy="118" r="10"/>
+    <circle cx="194" cy="138" r="10"/>
+    <circle cx="154" cy="138" r="10"/>
+    <circle cx="174" cy="158" r="10"/>
+  </g>
+  </g>
+</svg>

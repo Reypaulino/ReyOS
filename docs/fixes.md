@@ -2,6 +2,13 @@
 
 Real bugs found and fixed, with root cause. Newest first. See `bugs.md` for what's still open.
 
+## 2026-10-08 — New app icons: ReyOS Games, Reader, Distrobox GUI (control-center-gui 112, reyos-reader 39, reyos-distrobox-gui 6)
+
+- **ReyOS Games had no icon of its own.** Its launcher entry used the stock `applications-games`, which Breeze only has in `categories/` at 22–32 px (the user saw no icon on the real install). New `reyos-games.svg` (hicolor/scalable): dark rounded tile with an orange gamepad, matching the Control Center icon. `reyos-games.desktop` → `Icon=reyos-games`, and `games.py` uses it as its window icon (falls back to `applications-games`). It keeps its colors on every Look, like the Control Center/launcher/Reyva icons. It isn't in `looks.py`'s `app_icons`.
+- **Reader and Distrobox GUI icons redrawn** in the same tile style (copper disc → dark tile with an accent glyph and light details). They still follow the Look: the accent gradient is the first `<stop stop-color=…>` / `<stop offset="1" …>` pair in the file, which is what `looks.py` rewrites, and the other gradients use `offset="0"`/`offset="1.0"` so the regex can't hit them.
+- Checked on the Dev VM (Forest Look): after `looks.py --reapply-look` (what login runs) and a plasmashell restart, the launcher shows the gamepad under Games and the new Reader icon in Forest green.
+- Installed systems see new icons after plasmashell restarts (reboot or logout), same as the launcher icon.
+
 ## 2026-10-08 — Control Center 1.0.0-111: Looks page back (lost in 109/110)
 
 Found on the real install after the stable-channel update. Control Center 109 and 110 were built from `origin/main`, which never had `LooksPage.qml` or the sidebar fix from `7fd754b` (that commit only reached local `master`). So 109/110 had no Looks page, and five sidebar entries were back on the `preferences-*` icon names that show a generic gear. 111 takes `qml/LooksPage.qml` and `qml/Main.qml` from `master` (the only Control Center files that differed). Checked on the Dev VM: LooksPage loads with the real backend and lists the Looks, no QML warnings.

@@ -157,7 +157,7 @@ def main():
     app = QGuiApplication(sys.argv)
     app.setApplicationName("ReyOS Games")
     app.setDesktopFileName("reyos-games")
-    app.setWindowIcon(QIcon.fromTheme("applications-games"))
+    app.setWindowIcon(QIcon.fromTheme("reyos-games", QIcon.fromTheme("applications-games")))
     engine = QQmlApplicationEngine()
     backend = GamesBackend()
     app.aboutToQuit.connect(backend.stop)
