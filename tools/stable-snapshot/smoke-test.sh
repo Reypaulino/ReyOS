@@ -48,7 +48,7 @@ echo "::endgroup::"
 
 mapfile -t PKGS < <(pacman -Slq reyos-local)
 echo "::group::Install ${#PKGS[@]} reyos-* packages"
-pacman -S --needed --noconfirm "${PKGS[@]}"
+pacman -S --needed --noconfirm --overwrite /etc/hostname --overwrite /etc/os-release "${PKGS[@]}"
 echo "::endgroup::"
 
 export QT_QPA_PLATFORM=offscreen
