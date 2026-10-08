@@ -79,7 +79,7 @@ The Dev VM runs the stable channel too, so packages are built and tested against
 3. Install or update the timer: `tools/stable-snapshot/install-promote-timer.sh`. By hand: `promote.sh --dry-run` (no workflow, no push), `promote.sh --force --date YYYY/MM/DD` (promote a passed date now).
 4. The Dev VM doesn't follow automatically: `sudo reyos-channel upgrade --yes` there after a promotion.
 
-The smoke test itself needs ~4 GB of disk while it runs, so it stays on GitHub; promote.sh only needs the ~600 MB `archlinux` image.
+The smoke test itself needs ~4 GB of disk while it runs, so it stays on GitHub. On Arch (ReyOS) promote.sh builds with the system's own `makepkg`/`repo-add` (needs `fakeroot` and `binutils`); elsewhere it uses the ~600 MB `archlinux` Docker image.
 
 Before building a package that needs newer Arch libraries than the current snapshot, promote first; otherwise users on stable can't install it.
 

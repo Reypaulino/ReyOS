@@ -131,7 +131,13 @@ mkdir -p "$WORK/out"
 [ "$DRY_RUN" = 1 ] || trap cleanup EXIT
 git -C "$REPO" worktree add -q --detach "$WORK/main" origin/main
 git -C "$REPO" worktree add -q --detach "$WORK/pages" origin/reyos-pages
-docker pull -q "$IMAGE" >/dev/null
+# On Arch (ReyOS) build directly; elsewhere (Ubuntu) inside an Arch container.
+if [ -f /etc/arch-release ] && command -v makepkg >/dev/null && command -v repo-add >/dev/null; then
+    NATIVE=1
+else
+    NATIVE=0
+    docker pull -q "$IMAGE" >/dev/null || fail "can't pull the $IMAGE Docker image"
+fi
 
 pkgver=${CANDIDATE//\//.}
 echo "$CANDIDATE" > "$WORK/main/$SNAPFILE"
@@ -139,6 +145,12 @@ sed -i "s/^pkgver=.*/pkgver=$pkgver/; s/^pkgrel=.*/pkgrel=1/" "$WORK/main/$PKGDI
 pkg=reyos-update-channel-$pkgver-1-any.pkg.tar.zst
 
 echo "--- build $pkg"
+if [ "$NATIVE" = 1 ]; then
+    cp -r "$WORK/main/$PKGDIR" "$WORK/build"
+    { cat /etc/makepkg.conf; echo "OPTIONS=(!strip !debug emptydirs purge)"; } > "$WORK/makepkg.conf"
+    (cd "$WORK/build" && PACKAGER="ReyOS <packages@reyapps.com>" PKGDEST="$WORK/out" \
+        makepkg -f --noconfirm --nodeps --config "$WORK/makepkg.conf" >/dev/null) || fail "building $pkg failed"
+else
 docker run --rm \
     -v "$WORK/main/$PKGDIR:/src:ro" -v "$WORK/out:/out" \
     -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
@@ -150,6 +162,7 @@ docker run --rm \
         su builder -c "cd /home/builder/pkg && PACKAGER=\"ReyOS <packages@reyapps.com>\" makepkg -f --noconfirm --nodeps" >/dev/null
         cp /home/builder/pkg/*.pkg.tar.zst /out/
         chown "$HOST_UID:$HOST_GID" /out/*' || fail "building $pkg failed"
+fi
 [ -f "$WORK/out/$pkg" ] || fail "build produced no $pkg"
 [ "$(tar -xOf "$WORK/out/$pkg" usr/share/reyos/stable-snapshot)" = "$CANDIDATE" ] \
     || fail "built package carries the wrong snapshot date"
@@ -162,8 +175,12 @@ sign() {
 echo "--- sign and add to the repo database"
 cp "$WORK/out/$pkg" "$WORK/pages/"
 sign "$WORK/pages/$pkg"
-docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$WORK/pages:/repo" -w /repo \
-    "$IMAGE" repo-add -q reyos-local.db.tar.gz "$pkg" || fail "repo-add failed"
+if [ "$NATIVE" = 1 ]; then
+    (cd "$WORK/pages" && repo-add -q reyos-local.db.tar.gz "$pkg") || fail "repo-add failed"
+else
+    docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$WORK/pages:/repo" -w /repo \
+        "$IMAGE" repo-add -q reyos-local.db.tar.gz "$pkg" || fail "repo-add failed"
+fi
 sign "$WORK/pages/reyos-local.db.tar.gz"
 sign "$WORK/pages/reyos-local.files.tar.gz"
 tar -tzf "$WORK/pages/reyos-local.db.tar.gz" | grep -q "^reyos-update-channel-$pkgver-1/" \
