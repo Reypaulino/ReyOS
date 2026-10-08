@@ -1,0 +1,162 @@
+#!/usr/bin/env bash
+# ReyOS update channels.
+#   stable  (default) Arch's repos come from one Arch Linux Archive snapshot,
+#           /usr/share/reyos/stable-snapshot. ReyOS moves that date forward in
+#           a package update only after the snapshot passed testing, so a
+#           half-finished Arch rebuild (Qt 6.12, 2026-10-08) never arrives.
+#   rolling Arch's live mirrors from /etc/pacman.d/mirrorlist.
+# /etc/pacman.conf points core/extra/multilib at /etc/pacman.d/reyos-mirrorlist,
+# which this script writes.
+set -euo pipefail
+
+CHANNEL_FILE=/etc/reyos/update-channel
+SNAPSHOT_FILE=/usr/share/reyos/stable-snapshot
+MIRRORLIST=/etc/pacman.d/reyos-mirrorlist
+ARCH_MIRRORLIST=/etc/pacman.d/mirrorlist
+PACMAN_CONF=/etc/pacman.conf
+SYNC_DIR=/var/lib/pacman/sync
+FALLBACK_MIRROR='https://geo.mirror.pkgbuild.com/$repo/os/$arch'
+
+usage() {
+    cat <<'EOF'
+Usage: reyos-channel [status]
+       reyos-channel stable [--yes]    switch to the tested Arch snapshot (default)
+       reyos-channel rolling [--yes]   switch to Arch's live mirrors
+       reyos-channel upgrade [--yes]   install updates for the current channel
+       reyos-channel regenerate        rewrite /etc/pacman.d/reyos-mirrorlist
+EOF
+}
+
+channel() {
+    if [ "$(cat "$CHANNEL_FILE" 2>/dev/null)" = rolling ]; then echo rolling; else echo stable; fi
+}
+
+snapshot() {
+    tr -d '[:space:]' < "$SNAPSHOT_FILE"
+}
+
+need_root() {
+    if [ "$(id -u)" -ne 0 ]; then
+        echo "reyos-channel: this needs root (try: sudo reyos-channel $*)" >&2
+        exit 1
+    fi
+}
+
+regenerate() {
+    need_root regenerate
+    local tmp
+    tmp=$(mktemp "$MIRRORLIST.XXXXXX")
+    {
+        echo "# Written by reyos-channel. Don't edit; switch with: sudo reyos-channel stable|rolling"
+        if [ "$(channel)" = stable ]; then
+            echo "# Channel: stable (Arch Linux Archive snapshot $(snapshot))"
+            echo "Server = https://archive.archlinux.org/repos/$(snapshot)/\$repo/os/\$arch"
+        else
+            echo "# Channel: rolling (servers from $ARCH_MIRRORLIST)"
+            if grep -qE '^[[:space:]]*Server[[:space:]]*=' "$ARCH_MIRRORLIST" 2>/dev/null; then
+                grep -E '^[[:space:]]*Server[[:space:]]*=' "$ARCH_MIRRORLIST"
+            else
+                echo "Server = $FALLBACK_MIRROR"
+            fi
+        fi
+    } > "$tmp"
+    chmod 644 "$tmp"
+    if cmp -s "$tmp" "$MIRRORLIST"; then
+        rm -f "$tmp"
+        return
+    fi
+    mv -f "$tmp" "$MIRRORLIST"
+    # A switch can go to an older snapshot whose databases look older than the
+    # cached ones, and `pacman -Sy` would keep the cached ones and then ask the
+    # new server for files it doesn't have. Make the cache look stale instead.
+    for db in "$SYNC_DIR"/*.db; do
+        [ -e "$db" ] && touch -d '2000-01-01' "$db"
+    done
+    return 0
+}
+
+migrate_conf() {
+    need_root migrate-conf
+    [ -f "$PACMAN_CONF" ] || return 0
+    sed -i -E "s|^([[:space:]]*#?[[:space:]]*Include[[:space:]]*=[[:space:]]*)/etc/pacman\.d/mirrorlist[[:space:]]*$|\1$MIRRORLIST|" "$PACMAN_CONF"
+}
+
+restore_conf() {
+    need_root restore-conf
+    [ -f "$PACMAN_CONF" ] || return 0
+    sed -i -E "s|^([[:space:]]*#?[[:space:]]*Include[[:space:]]*=[[:space:]]*)/etc/pacman\.d/reyos-mirrorlist[[:space:]]*$|\1$ARCH_MIRRORLIST|" "$PACMAN_CONF"
+}
+
+# Arch packages installed at a newer version than the snapshot has, as repo/name.
+newer_than_snapshot() {
+    local repo name ver rest inst
+    for repo in core extra multilib; do
+        pacman -Sl "$repo" 2>/dev/null | while read -r repo name ver rest; do
+            case "$rest" in
+                "[installed: "*)
+                    inst=${rest#"[installed: "}
+                    inst=${inst%"]"}
+                    if [ "$(vercmp "$inst" "$ver")" -gt 0 ]; then echo "$repo/$name"; fi ;;
+            esac
+        done
+    done
+}
+
+pacman_upgrade() {
+    local yes=$1 opts=() back=()
+    if [ "$yes" = 1 ]; then opts=(--noconfirm); fi
+    pacman -Sy "${opts[@]}"
+    # On stable, Arch packages newer than the snapshot go back to its versions
+    # in the same transaction, so the system is the tested set. Not -uu: that
+    # would also downgrade reyos-* packages newer than the published ones.
+    if [ "$(channel)" = stable ]; then
+        mapfile -t back < <(newer_than_snapshot)
+        if [ ${#back[@]} -gt 0 ]; then
+            echo ":: Moving ${#back[@]} package(s) back to the tested snapshot versions"
+        fi
+    fi
+    pacman -Su "${opts[@]}" "${back[@]}"
+}
+
+switch_to() {
+    local target=$1 yes=$2
+    need_root "$target"
+    mkdir -p "$(dirname "$CHANNEL_FILE")"
+    echo "$target" > "$CHANNEL_FILE"
+    migrate_conf
+    regenerate
+    if [ "$target" = stable ]; then
+        echo ":: Channel: stable (Arch snapshot $(snapshot))"
+    else
+        echo ":: Channel: rolling (Arch's live mirrors)"
+    fi
+    pacman_upgrade "$yes"
+}
+
+upgrade() {
+    local yes=$1 before after
+    need_root upgrade
+    before=$(cat "$MIRRORLIST" 2>/dev/null || true)
+    pacman_upgrade "$yes"
+    after=$(cat "$MIRRORLIST" 2>/dev/null || true)
+    # The update itself may have moved the stable snapshot forward.
+    if [ "$before" != "$after" ]; then
+        echo ":: The stable snapshot moved forward to $(snapshot); updating from it..."
+        pacman_upgrade "$yes"
+    fi
+}
+
+yes=0
+if [ "${2:-}" = "--yes" ]; then yes=1; fi
+
+case "${1:-status}" in
+    status)
+        if [ "$(channel)" = stable ]; then echo "stable $(snapshot)"; else echo rolling; fi ;;
+    stable|rolling) switch_to "$1" "$yes" ;;
+    upgrade) upgrade "$yes" ;;
+    regenerate) regenerate ;;
+    migrate-conf) migrate_conf ;;
+    restore-conf) restore_conf ;;
+    -h|--help|help) usage ;;
+    *) usage >&2; exit 2 ;;
+esac

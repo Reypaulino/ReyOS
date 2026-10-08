@@ -1,0 +1,11 @@
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Path
+Target = usr/share/reyos/stable-snapshot
+Target = etc/pacman.d/mirrorlist
+
+[Action]
+Description = Updating the ReyOS update channel mirror list...
+When = PostTransaction
+Exec = /usr/bin/reyos-channel regenerate

@@ -21,6 +21,7 @@ Kirigami.ScrollablePage {
         }
         function onPkgFinished(ok, message) {
             running = false
+            channelInfo = backend.updateChannel()
             appendLog(ok ? "\n✓ " + message : "\n✗ " + message)
         }
         function onOrphansListed(list) {
@@ -51,6 +52,7 @@ Kirigami.ScrollablePage {
     }
 
     property bool securityChecked: false
+    property var channelInfo: backend.updateChannel()
 
     ListModel { id: pkgModel }
     ListModel { id: secUpdatesModel }
@@ -86,6 +88,24 @@ Kirigami.ScrollablePage {
     Connections {
         target: backend
         function onRestartRecommended() { restartDialog.open() }
+    }
+
+    Controls.Dialog {
+        id: confirmChannel
+        title: target === "stable" ? "Switch to the Stable channel" : "Switch to the Rolling channel"
+        modal: true
+        anchors.centerIn: Controls.Overlay.overlay
+        width: 480
+        standardButtons: Controls.Dialog.Yes | Controls.Dialog.No
+        property string target: ""
+        onAccepted: { running = true; logText = ""; backend.runPkgAction("channel-" + target) }
+        Controls.Label {
+            width: confirmChannel.availableWidth
+            wrapMode: Text.Wrap
+            text: confirmChannel.target === "stable"
+                ? "Your system will update from the tested snapshot. Packages that are newer than the snapshot go back to the tested versions. This can take a while; restart afterwards."
+                : "Your system will update to the newest Arch Linux packages right away. Newer apps and drivers sooner, but an update can occasionally break things until Arch finishes a rebuild."
+        }
     }
 
     Controls.Dialog {
@@ -183,6 +203,32 @@ Kirigami.ScrollablePage {
                 wrapMode: Text.Wrap
                 opacity: 0.7
                 text: "Updates only reyos-* apps (Browser, Reader, Control Center, etc.) without touching the rest of the system."
+            }
+        }
+
+        Kirigami.AbstractCard {
+            Layout.fillWidth: true
+            padding: Kirigami.Units.gridUnit
+            visible: channelInfo.available === true
+            contentItem: ColumnLayout {
+                spacing: Kirigami.Units.smallSpacing
+                Kirigami.Heading { text: "Update channel"; level: 3 }
+                Controls.Label {
+                    Layout.fillWidth: true
+                    wrapMode: Text.Wrap
+                    text: channelInfo.channel === "rolling"
+                        ? "Rolling: the newest Arch Linux packages as soon as they are released. An update can occasionally break apps until Arch finishes a rebuild."
+                        : "Stable (recommended): updates come from a snapshot of Arch Linux that ReyOS has tested, currently from " + channelInfo.snapshot + ". It moves forward about once a week."
+                }
+                Controls.Button {
+                    text: channelInfo.channel === "rolling" ? "Switch to Stable" : "Switch to Rolling"
+                    enabled: !running
+                    Layout.alignment: Qt.AlignLeft
+                    onClicked: {
+                        confirmChannel.target = channelInfo.channel === "rolling" ? "stable" : "rolling"
+                        confirmChannel.open()
+                    }
+                }
             }
         }
 

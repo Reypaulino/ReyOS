@@ -499,6 +499,28 @@ class StatsWorker(QThread):
 _PKG_CHANGED_RE = re.compile(r"^(?:\(\s*\d+/\d+\)\s*)?(?:upgrading|installing|reinstalling) \S")
 
 
+REYOS_CHANNEL = "/usr/bin/reyos-channel"
+
+
+def _upgrade_cmd():
+    # reyos-update-channel installs updates from the chosen channel (and
+    # re-syncs when the update itself moved the stable snapshot forward).
+    if Path(REYOS_CHANNEL).exists():
+        return [REYOS_CHANNEL, "upgrade", "--yes"]
+    return ["pacman", "-Syu", "--noconfirm"]
+
+
+def _update_channel():
+    try:
+        out = subprocess.run([REYOS_CHANNEL, "status"], capture_output=True, text=True, timeout=5).stdout.split()
+    except (OSError, subprocess.TimeoutExpired):
+        return {"available": False, "channel": "", "snapshot": ""}
+    if not out:
+        return {"available": False, "channel": "", "snapshot": ""}
+    snapshot = out[1].replace("/", "-") if len(out) > 1 else ""
+    return {"available": True, "channel": out[0], "snapshot": snapshot}
+
+
 class PkgWorker(_Worker):
     progress = Signal(str)
     finished_ok = Signal(bool, str)
@@ -536,7 +558,7 @@ class PkgWorker(_Worker):
     def _run_action(self):
         try:
             emit = self._emit
-            if self.action in ("upgrade", "full", "clean", "reyos") and _is_live_session():
+            if self.action in ("upgrade", "full", "clean", "reyos", "channel-stable", "channel-rolling") and _is_live_session():
                 self.finished_ok.emit(False, "Updates and cleanup are disabled in the live session. Install ReyOS first, then update the installed system.")
                 return
             if self.action == "check":
@@ -550,15 +572,15 @@ class PkgWorker(_Worker):
                     self.finished_ok.emit(False, "Could not check updates. Verify your network connection.")
             elif self.action == "upgrade":
                 _wait_for_pacman_lock(emit)
-                emit("$ sudo pacman -Syu --noconfirm")
-                rc = _run(["sudo", "-n", "pacman", "-Syu", "--noconfirm"], emit)
+                emit("$ sudo " + " ".join(_upgrade_cmd()))
+                rc = _run(["sudo", "-n"] + _upgrade_cmd(), emit)
                 if rc == 0:
                     _record_successful_update(emit)
                 self.finished_ok.emit(rc == 0, "Updates installed." if rc == 0 else "Update failed.")
             elif self.action == "full":
                 _wait_for_pacman_lock(emit)
                 emit("[1/3] Syncing + upgrading...")
-                rc = _run(["sudo", "-n", "pacman", "-Syu", "--noconfirm"], emit)
+                rc = _run(["sudo", "-n"] + _upgrade_cmd(), emit)
                 if rc != 0:
                     self.finished_ok.emit(False, "Full update failed.")
                     return
@@ -611,6 +633,15 @@ class PkgWorker(_Worker):
                 _wait_for_pacman_lock(emit)
                 rc = _run(["sudo", "-n", "pacman", "-S", "--needed", "--noconfirm"] + to_install, emit)
                 self.finished_ok.emit(rc == 0, f"Updated {len(to_install)} ReyOS app(s)." if rc == 0 else "Update failed.")
+            elif self.action in ("channel-stable", "channel-rolling"):
+                target = self.action.split("-", 1)[1]
+                _wait_for_pacman_lock(emit)
+                emit(f"$ sudo {REYOS_CHANNEL} {target} --yes")
+                rc = _run(["sudo", "-n", REYOS_CHANNEL, target, "--yes"], emit)
+                if rc == 0:
+                    _record_successful_update(emit)
+                label = "Stable" if target == "stable" else "Rolling"
+                self.finished_ok.emit(rc == 0, f"Switched to the {label} channel." if rc == 0 else f"Switching to the {label} channel failed.")
             elif self.action == "clean":
                 orphans = subprocess.run(
                     ["pacman", "-Qtdq"], capture_output=True, text=True
@@ -830,6 +861,10 @@ class Backend(QObject):
     def stopStatsWorker(self):
         self._stats_worker.stop()
         self._stats_worker.wait(1000)
+
+    @Slot(result="QVariantMap")
+    def updateChannel(self):
+        return _update_channel()
 
     @Slot(result=bool)
     def pkgActionRunning(self):

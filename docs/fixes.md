@@ -2,6 +2,23 @@
 
 Real bugs found and fixed, with root cause. Newest first. See `bugs.md` for what's still open.
 
+## 2026-10-08 — Stable update channel: ReyOS takes Arch from a tested snapshot (`reyos-update-channel` 2026.10.07, published)
+
+Follow-up to the entry below. The user wants a stable daily driver (gaming, coding) that still suits older hardware. Rebasing on Fedora was looked at and not chosen: same x86-64 floor, Fedora also has no Qt LTS (the Qt/PySide match problem just moves to each 6-month release), gaming needs RPM Fusion, and a port would replace every PKGBUILD, the signed repo, mkarchiso, Calamares integration and add SELinux policy work. The actual problem is untested Arch updates reaching users, so that is what changed.
+
+**New package `reyos-update-channel`** (dependency of `reyos-base` 1.1.0-6, so every install gets it on its next update; also in `packages.x86_64`):
+- `/etc/pacman.conf`'s `core`/`extra`/`multilib` (enabled or commented) `Include` lines point at `/etc/pacman.d/reyos-mirrorlist` (post_install edits existing systems; both `reyos-iso` pacman.conf copies changed; pre_remove puts them back).
+- `reyos-channel` writes that file: **stable** (default) = `archive.archlinux.org/repos/<date>/`, date from `/usr/share/reyos/stable-snapshot` (first date 2026/10/07, the last snapshot before Arch's half-finished Qt 6.12 rebuild); **rolling** = the `Server` lines of `/etc/pacman.d/mirrorlist`. A pacman hook rewrites it when the snapshot file or Arch's mirrorlist changes.
+- Moving the mirror list to an older snapshot makes the cached sync dbs look newer than the server's, so `pacman -Sy` would keep them and then 404. `regenerate` back-dates `/var/lib/pacman/sync/*.db` whenever the list changes.
+- `reyos-channel upgrade`: on stable, Arch packages (core/extra/multilib only) newer than the snapshot go back to its versions in the same transaction. Not `pacman -Syuu`: the first version did that and it downgraded the Dev VM's unpublished `reyos-*` builds to the published ones (caught by clicking Install updates in Control Center). Syncs again if the update itself moved the snapshot.
+- Ships `/etc/sudoers.d/reyos-update-channel`: `%wheel` NOPASSWD for exactly `reyos-channel stable --yes`, `rolling --yes`, `upgrade --yes` (no wildcards; shipped by the package, so older installs get it too, unlike the Calamares-written rules, audit B-9).
+
+**Control Center 1.0.0-110**: Updates page "Update channel" card (current channel and snapshot date, switch with a confirmation dialog, runs through the existing package worker/log/restart prompt). Install updates and Full update call `reyos-channel upgrade --yes` when it is installed.
+
+**Weekly check**: `.github/workflows/stable-snapshot-check.yml` (Mondays, or manual with a date) installs every `reyos-*` package on the candidate snapshot in an `archlinux` container and runs `tools/stable-snapshot/check-imports.py`: every Python import and QML module used under `/usr/share/reyos`, plus `ldd -r` over PySide6 and Qt's QML/plugin libraries. Opens a GitHub issue (passed / FAILED). Promotion stays a local signed release (user's choice: no signing key in CI). Steps in `docs/DEVELOPER.md` → Update channels. `tools/stable-snapshot/reyos-signing-key.asc` is the public key (it was not in git before).
+
+**Verified on the Dev VM**: install migrated pacman.conf (incl. commented multilib) and wrote the stable list; `reyos-channel stable --yes` re-downloaded all dbs from the snapshot and lined up 55 packages; rolling → stable round trip took Qt from the broken 6.12.0/pyside6 6.11.2-3/webengine 6.11.2-2 mix back to the 6.11.2 set (58 packages moved back), `reyos-*` builds untouched, no errors; Control Center card renders and Install updates ran through `sudo -n reyos-channel upgrade --yes`. Checker: passes on stable; on the rolling mix exits 1 with the Reyva `QtWebEngineCore` error **and a second break nobody had reported: `PySide6.QtPdf` (ReyOS Reader's PDF view) has an undefined `QPdfDocument::render` symbol**, so Reader was broken by the same Arch update.
+
 ## 2026-10-08 — Arch Qt 6.12 rollout broke native Reyva; Arch `reyos-browser` now runs the Flatpak (0.1.0-106), new icons shipped (published)
 
 User's real ReyOS install (laptop): Reyva wouldn't open, and Control Center/app launcher didn't show the new icons.

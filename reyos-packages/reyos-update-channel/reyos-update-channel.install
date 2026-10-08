@@ -1,0 +1,24 @@
+post_install() {
+    if [ ! -f /etc/reyos/update-channel ]; then
+        mkdir -p /etc/reyos
+        echo stable > /etc/reyos/update-channel
+    fi
+    /usr/bin/reyos-channel migrate-conf
+    /usr/bin/reyos-channel regenerate
+    echo ":: ReyOS now updates from a tested snapshot of Arch (stable channel)."
+    echo "   Packages newer than the snapshot stay until it catches up; to line"
+    echo "   everything up now run: sudo reyos-channel stable"
+}
+
+post_upgrade() {
+    /usr/bin/reyos-channel migrate-conf
+    /usr/bin/reyos-channel regenerate
+}
+
+pre_remove() {
+    /usr/bin/reyos-channel restore-conf
+}
+
+post_remove() {
+    rm -f /etc/pacman.d/reyos-mirrorlist
+}

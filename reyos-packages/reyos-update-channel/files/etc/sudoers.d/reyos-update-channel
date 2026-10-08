@@ -1,0 +1,5 @@
+# Control Center's Updates page: switch channel and install updates without a
+# password prompt. Exact commands only -- reyos-channel accepts no other input.
+%wheel ALL=(root) NOPASSWD: /usr/bin/reyos-channel stable --yes, \
+                            /usr/bin/reyos-channel rolling --yes, \
+                            /usr/bin/reyos-channel upgrade --yes

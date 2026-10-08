@@ -1,0 +1,70 @@
+name: Stable snapshot check
+
+# Weekly: install every reyos-* package on a candidate Arch Linux Archive
+# snapshot and check that the apps' imports and QML modules load. A pass means
+# the snapshot can be promoted to the stable channel (reyos-update-channel);
+# promotion itself is a signed package release, done locally.
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "Snapshot date YYYY/MM/DD (default: yesterday, UTC)"
+        required: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    outputs:
+      date: ${{ steps.pick.outputs.date }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: pick
+        name: Pick snapshot date
+        env:
+          INPUT_DATE: ${{ github.event.inputs.date }}
+        run: |
+          d="${INPUT_DATE:-$(date -u -d yesterday +%Y/%m/%d)}"
+          echo "date=$d" >> "$GITHUB_OUTPUT"
+          echo "Snapshot: $d"
+      - name: Smoke test
+        run: bash tools/stable-snapshot/smoke-test.sh "${{ steps.pick.outputs.date }}" 2>&1 | tee smoke.log
+        shell: bash -o pipefail {0}
+      - name: Upload log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-log
+          path: smoke.log
+
+  report:
+    needs: smoke
+    if: always() && needs.smoke.outputs.date != ''
+    runs-on: ubuntu-latest
+    steps:
+      - name: Open an issue with the result
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DATE: ${{ needs.smoke.outputs.date }}
+          RESULT: ${{ needs.smoke.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ "$RESULT" = success ]; then
+            title="Stable snapshot $DATE passed: ready to promote"
+            body="All reyos-* packages installed on Arch snapshot \`$DATE\` and their imports and QML modules loaded.
+
+          To promote: set \`files/usr/share/reyos/stable-snapshot\` to \`$DATE\` and \`pkgver\` to \`${DATE//\//.}\` in \`reyos-packages/reyos-update-channel\`, then build, sign and publish it.
+
+          Run: $RUN_URL"
+          else
+            title="Stable snapshot $DATE FAILED: keep the current date"
+            body="The smoke test failed on Arch snapshot \`$DATE\`. Don't promote it; the stable channel stays on its current date. See the log: $RUN_URL"
+          fi
+          gh issue create --repo "${{ github.repository }}" --title "$title" --body "$body"

@@ -62,6 +62,24 @@ host-spawn bash -c 'sshpass -p "<dev-vm-password>" ssh -o StrictHostKeyChecking=
 
 Never hand-edit files live on the VM via SSH heredocs except for the build/test commands themselves — this repo is the source of truth.
 
+## Update channels (stable snapshot)
+
+Installed systems don't take Arch's live mirrors by default. `reyos-update-channel` (pulled in by `reyos-base`) points `core`/`extra`/`multilib` in `/etc/pacman.conf` at `/etc/pacman.d/reyos-mirrorlist`, which `reyos-channel` writes:
+
+- **stable** (default): one Arch Linux Archive snapshot, `https://archive.archlinux.org/repos/<date>/...`, date from `/usr/share/reyos/stable-snapshot`.
+- **rolling**: the servers in `/etc/pacman.d/mirrorlist`.
+
+`reyos-local` (ReyOS's own packages) is always current on both. Users switch in Control Center → Updates → Update channel, or `sudo reyos-channel stable|rolling`. Control Center's Install/Full update run `reyos-channel upgrade`, which on stable also moves Arch packages newer than the snapshot back to it (never `reyos-*` ones), and syncs a second time when the update itself moved the snapshot forward.
+
+The Dev VM runs the stable channel too, so packages are built and tested against the same Arch set users get. `reyos-iso/pacman.conf` includes `/etc/pacman.d/reyos-mirrorlist`, so the ISO is built from that snapshot as well.
+
+**Weekly promotion:**
+1. Every Monday `.github/workflows/stable-snapshot-check.yml` installs all `reyos-*` packages on the previous day's snapshot in an Arch container and runs `tools/stable-snapshot/check-imports.py` (every Python import and QML module the apps use, plus `ldd -r` on PySide6 and Qt's QML/plugin libraries). It opens a GitHub issue: passed or FAILED. Run it for any date with *Actions → Stable snapshot check → Run workflow*.
+2. If it passed: in `reyos-packages/reyos-update-channel`, set `files/usr/share/reyos/stable-snapshot` to the date (`YYYY/MM/DD`) and `pkgver` to `YYYY.MM.DD`, then build, sign and publish it like any package. If it failed: do nothing; users stay on the last good date.
+3. Run `sudo reyos-channel upgrade --yes` on the Dev VM to move it to the new date.
+
+Before building a package that needs newer Arch libraries than the current snapshot, promote first; otherwise users on stable can't install it.
+
 ## Known gotchas (read before debugging something that looks like this)
 
 - **Plasma 6 autostart doesn't shell-expand `$HOME`.** `systemd-xdg-autostart-generator` runs `.desktop` `Exec=` lines literally — `$HOME/script.sh` fails with status 127. Fix: install scripts to a fixed absolute path (`/usr/share/reyos/bin/...`), point `Exec=` directly at that path, no `sh -c` wrapper.

@@ -206,6 +206,7 @@ arch-audit
 zram-generator
 bluez-utils
 reyos-base
+reyos-update-channel
 reyos-wallpapers
 reyos-kde-customization
 reyos-icons
