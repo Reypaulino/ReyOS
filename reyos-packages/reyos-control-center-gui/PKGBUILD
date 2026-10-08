@@ -1,7 +1,7 @@
 # Maintainer: Rey Paulino
 pkgname=reyos-control-center-gui
 pkgver=1.0.0
-pkgrel=113
+pkgrel=114
 pkgdesc="ReyOS Control Center — Kirigami/QML GUI for updates, performance, network, disk and permissions"
 arch=('any')
 license=('MIT')
@@ -24,7 +24,7 @@ package() {
     chmod 644 "$pkgdir/usr/share/applications/reyos-control-center.desktop"
     # Never ship the dev tree's compiled caches (they were for another Python version).
     find "$pkgdir" -name __pycache__ -prune -exec rm -rf {} +
-    chmod 755 "$pkgdir/usr/share/reyos/bin/reyos-apply-look-icons.sh"
+    chmod 755 "$pkgdir/usr/share/reyos/bin/reyos-admin"
     chmod 755 "$pkgdir/usr/share/reyos/control-center/reyos-fix-permissions.sh"
     chmod 755 "$pkgdir/usr/share/reyos/control-center/reyos-manage-users.sh"
     chmod 755 "$pkgdir/usr/share/reyos/control-center/reyos-install-emulators.sh"

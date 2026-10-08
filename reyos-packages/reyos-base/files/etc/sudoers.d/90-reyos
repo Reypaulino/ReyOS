@@ -1,0 +1,40 @@
+# ReyOS desktop apps (Control Center, Welcome, Connect): commands they may run as root
+# without a password. Only exact commands, plus reyos-admin, which validates its own
+# arguments. Shipped by reyos-base so every install gets the same, current rules.
+Cmnd_Alias REYOS_PACMAN = /usr/bin/pacman -Sy, \
+                          /usr/bin/pacman -Sy --noconfirm, \
+                          /usr/bin/pacman -Su --noconfirm, \
+                          /usr/bin/pacman -Syu --noconfirm, \
+                          /usr/bin/pacman -Sc --noconfirm
+
+Cmnd_Alias REYOS_APPS = /usr/bin/pacman -S --needed --noconfirm reyos-reader, \
+                        /usr/bin/pacman -S --needed --noconfirm steam, \
+                        /usr/bin/pacman -S --needed --noconfirm lutris, \
+                        /usr/bin/pacman -S --needed --noconfirm retroarch, \
+                        /usr/bin/pacman -S --needed --noconfirm gamemode lib32-gamemode mangohud lib32-mangohud, \
+                        /usr/bin/pacman -S --needed --noconfirm wine wine-mono wine-gecko winetricks, \
+                        /usr/bin/pacman -S --needed --noconfirm docker, \
+                        /usr/bin/pacman -S --needed --noconfirm neovim, \
+                        /usr/bin/pacman -S --needed --noconfirm base-devel, \
+                        /usr/bin/pacman -S --needed --noconfirm chromium, \
+                        /usr/bin/pacman -S --needed --noconfirm gimp, \
+                        /usr/bin/pacman -S --needed --noconfirm krita, \
+                        /usr/bin/pacman -S --needed --noconfirm obs-studio, \
+                        /usr/bin/pacman -S --needed --noconfirm libreoffice-fresh, \
+                        /usr/bin/pacman -S --needed --noconfirm btop, \
+                        /usr/bin/pacman -S --needed --noconfirm partitionmanager, \
+                        /usr/bin/pacman -S --needed --noconfirm fwupd, \
+                        /usr/bin/pacman -S --needed --noconfirm filelight, \
+                        /usr/bin/pacman -S --needed --noconfirm bleachbit, \
+                        /usr/bin/pacman -S --noconfirm --needed nvidia-open-dkms nvidia-utils, \
+                        /usr/bin/pacman -S --needed --noconfirm lib32-vulkan-intel, \
+                        /usr/bin/pacman -S --needed --noconfirm lib32-vulkan-radeon, \
+                        /usr/bin/pacman -S --needed --noconfirm lib32-vulkan-nouveau, \
+                        /usr/bin/pacman -S --needed --noconfirm lib32-nvidia-utils
+
+Cmnd_Alias REYOS_TOOLS = /usr/share/reyos/bin/reyos-admin, \
+                         /usr/share/reyos/welcome/enable-multilib.sh "", \
+                         /usr/bin/systemctl restart systemd-binfmt, \
+                         /usr/bin/reboot ""
+
+%wheel ALL=(root) NOPASSWD: REYOS_PACMAN, REYOS_APPS, REYOS_TOOLS

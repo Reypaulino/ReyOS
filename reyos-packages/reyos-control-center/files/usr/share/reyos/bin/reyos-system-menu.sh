@@ -879,7 +879,7 @@ while true; do
        ensure_sudo || { read -rp "  Press Enter to return to menu..."; continue; }
        printf "  ${YLW}Dropping caches...${RST}\n"
        sync
-       sudo bash -c 'echo 3 > /proc/sys/vm/drop_caches'
+       sudo /usr/share/reyos/bin/reyos-admin drop-caches
        read -r _ _ MEM_FREE _ < <(free -m | grep '^Mem:')
        printf "  ${GRN}Done. Free RAM: ${MEM_FREE} MB${RST}\n"
        read -rp "  Press Enter to return to menu..." ;;

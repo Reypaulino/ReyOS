@@ -171,7 +171,7 @@ class Backend(QObject):
             fw_detail = "Could not check firewall status."
             try:
                 result = subprocess.run(
-                    ["sudo", "-n", "ufw", "status"], capture_output=True, text=True, timeout=10,
+                    ["sudo", "-n", "/usr/share/reyos/bin/reyos-admin", "firewall", "status"], capture_output=True, text=True, timeout=10,
                 )
                 if result.returncode == 0:
                     out = result.stdout
@@ -201,7 +201,7 @@ class Backend(QObject):
     def openFirewallForKdeConnect(self):
         def task():
             result = subprocess.run(
-                ["sudo", "ufw", "allow", "KDEConnect"], capture_output=True, text=True, timeout=15,
+                ["sudo", "-n", "/usr/share/reyos/bin/reyos-admin", "firewall", "allow", "KDEConnect"], capture_output=True, text=True, timeout=15,
             )
             if result.returncode == 0:
                 return True, "KDE Connect's ports (1714-1764) are now allowed through the firewall."
@@ -586,7 +586,7 @@ class Backend(QObject):
 
             fw_open = None
             try:
-                fw_result = subprocess.run(["sudo", "-n", "ufw", "status"], capture_output=True, text=True, timeout=10)
+                fw_result = subprocess.run(["sudo", "-n", "/usr/share/reyos/bin/reyos-admin", "firewall", "status"], capture_output=True, text=True, timeout=10)
                 if fw_result.returncode == 0:
                     out = fw_result.stdout
                     if "inactive" in out.lower():

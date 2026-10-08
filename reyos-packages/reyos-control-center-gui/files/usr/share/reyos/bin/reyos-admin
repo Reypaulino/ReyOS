@@ -1,0 +1,387 @@
+#!/usr/bin/python3 -I
+# Root helper for ReyOS's desktop apps (sudoers.d/90-reyos or pkexec); it validates every argument itself.
+import os
+import re
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+# Admin actions that always need the user's password: run via pkexec.
+PASSWORD_REQUIRED = {"service"}
+
+UNIT_RE = re.compile(r"[A-Za-z0-9@_.:\\-]+\.(service|socket|timer|target|path|mount)")
+SWAP_UNIT_RE = re.compile(r"[A-Za-z0-9@_.:\\-]+\.swap")
+WG_NAME_RE = re.compile(r"[A-Za-z0-9_=+.-]{1,15}")
+PORT_RE = re.compile(r"[0-9]{1,5}(:[0-9]{1,5})?(/(tcp|udp))?")
+UFW_APP_RE = re.compile(r"[A-Za-z][A-Za-z0-9_.-]{0,39}")
+PKG_RE = re.compile(r"[a-z0-9@_+][a-z0-9@._+-]*")
+PRINTER_RE = re.compile(r"[A-Za-z0-9_-]{1,127}")
+PRINTER_URI_RE = re.compile(r"(ipp|ipps|http|https|socket|lpd|dnssd|usb)://[^\s'\"\\]+")
+DATETIME_RE = re.compile(r"\d{4}-\d{2}-\d{2}( \d{2}:\d{2}(:\d{2})?)?|\d{2}:\d{2}(:\d{2})?")
+WG_HOOK_RE = re.compile(r"^\s*(PreUp|PostUp|PreDown|PostDown)\s*=", re.IGNORECASE | re.MULTILINE)
+PROTECTED_PKGS = {
+    "base", "linux", "linux-lts", "linux-zen", "linux-hardened", "linux-firmware", "systemd",
+    "pacman", "sudo", "glibc", "filesystem", "grub", "efibootmgr", "sddm", "plasma-workspace",
+    "kwin", "networkmanager", "python", "pyside6",
+}
+
+
+class Refused(Exception):
+    pass
+
+
+def need(cond, msg):
+    if not cond:
+        raise Refused(msg)
+
+
+def match(regex, value, what):
+    need(isinstance(value, str) and regex.fullmatch(value) is not None and not value.startswith("-"),
+         f"invalid {what}: {value!r}")
+    return value
+
+
+def run(*cmd, stdin=None):
+    return subprocess.run(list(cmd), input=stdin, text=True).returncode
+
+
+def caller_uid():
+    for var in ("SUDO_UID", "PKEXEC_UID"):
+        if os.environ.get(var, "").isdigit():
+            return int(os.environ[var])
+    return os.getuid()
+
+
+def read_user_file(path, suffix):
+    p = Path(path)
+    need(p.is_absolute() and p.suffix == suffix, f"expected an absolute path to a {suffix} file")
+    try:
+        fd = os.open(p, os.O_RDONLY | os.O_NOFOLLOW)
+    except OSError as e:
+        raise Refused(f"can't open {path}: {e.strerror} (symlinks aren't accepted)")
+    with os.fdopen(fd, errors="replace") as f:
+        st = os.fstat(f.fileno())
+        need(st.st_uid == caller_uid() and (st.st_mode & 0o170000) == 0o100000,
+             "the file must be a regular file that belongs to you")
+        need(st.st_size < 64 * 1024, "file too large")
+        return p.stem, f.read()
+
+
+# --- performance --------------------------------------------------------------
+
+def governor(args):
+    need(len(args) == 1, "usage: governor NAME")
+    gov = args[0]
+    paths = sorted(Path("/sys/devices/system/cpu").glob("cpu[0-9]*/cpufreq/scaling_governor"))
+    need(paths, "this CPU has no frequency governors")
+    available = (paths[0].parent / "scaling_available_governors").read_text().split()
+    need(gov in available, f"unknown governor {gov!r} (available: {', '.join(available)})")
+    for p in paths:
+        p.write_text(gov)
+    return 0
+
+
+def swappiness(args):
+    need(len(args) == 1 and args[0].isdigit() and 0 <= int(args[0]) <= 200, "usage: swappiness 0-200")
+    value = int(args[0])
+    rc = run("sysctl", "-w", f"vm.swappiness={value}")
+    Path("/etc/sysctl.d/99-reyos-swappiness.conf").write_text(f"vm.swappiness={value}\n")
+    return rc
+
+
+def drop_caches(args):
+    need(not args, "usage: drop-caches")
+    Path("/proc/sys/vm/drop_caches").write_text("3\n")
+    return 0
+
+
+def swap(args):
+    need(len(args) >= 1 and args[0] in ("on", "off"), "usage: swap on|off [UNIT.swap...]")
+    units = [match(SWAP_UNIT_RE, u, "swap unit") for u in args[1:]]
+    if args[0] == "off":
+        rc = run("swapoff", "-a")
+        for u in units:
+            run("systemctl", "mask", u)
+        return rc
+    for u in units:
+        run("systemctl", "unmask", u)
+    for u in units:
+        run("systemctl", "start", u)
+    return run("swapon", "-a")
+
+
+# --- packages -----------------------------------------------------------------
+
+def reyos_repo_packages():
+    out = subprocess.run(["pacman", "-Slq", "reyos-local"], capture_output=True, text=True).stdout
+    return set(out.split())
+
+
+def install_reyos(args):
+    need(args, "usage: install-reyos PKG...")
+    pkgs = [match(PKG_RE, p, "package name") for p in args]
+    available = reyos_repo_packages()
+    bad = [p for p in pkgs if p not in available]
+    need(not bad, "not ReyOS packages: " + ", ".join(bad))
+    return run("pacman", "-S", "--needed", "--noconfirm", "--", *pkgs)
+
+
+def remove_package(args):
+    need(len(args) == 1, "usage: remove-package NAME")
+    pkg = match(PKG_RE, args[0], "package name")
+    need(pkg not in PROTECTED_PKGS and not pkg.startswith("reyos-"),
+         f"{pkg} is part of the system and can't be removed here")
+    return run("pacman", "-Rns", "--noconfirm", "--", pkg)
+
+
+def remove_orphans(args):
+    need(not args, "usage: remove-orphans")
+    orphans = subprocess.run(["pacman", "-Qtdq"], capture_output=True, text=True).stdout.split()
+    if not orphans:
+        print("No orphaned packages.")
+        return 0
+    print("Removing: " + " ".join(orphans), flush=True)
+    return run("pacman", "-Rns", "--noconfirm", "--", *orphans)
+
+
+def clean_cache(args):
+    need(not args, "usage: clean-cache")
+    # An interrupted download leaves download-* sandbox dirs that make -Sc fail noisily.
+    for d in Path("/var/cache/pacman/pkg").glob("download-*"):
+        if d.is_dir() and not d.is_symlink():
+            subprocess.run(["rm", "-rf", "--", str(d)])
+    return run("pacman", "-Sc", "--noconfirm")
+
+
+# --- firewall -----------------------------------------------------------------
+
+def firewall(args):
+    need(args, "usage: firewall status|enable|disable|allow|deny|delete ...")
+    verb, rest = args[0], args[1:]
+    if verb == "status":
+        need(rest in ([], ["verbose"], ["numbered"]), "usage: firewall status [verbose|numbered]")
+        return run("ufw", "status", *rest)
+    if verb in ("enable", "disable"):
+        need(not rest, f"usage: firewall {verb}")
+        return run("ufw", "--force", "enable") if verb == "enable" else run("ufw", "disable")
+    if verb in ("allow", "deny"):
+        need(len(rest) == 1, f"usage: firewall {verb} PORT[/tcp|udp]|APP")
+        target = rest[0]
+        need(PORT_RE.fullmatch(target) or UFW_APP_RE.fullmatch(target), f"invalid port or app: {target!r}")
+        return run("ufw", verb, target)
+    if verb == "delete":
+        need(len(rest) == 1 and rest[0].isdigit(), "usage: firewall delete RULE_NUMBER")
+        return run("ufw", "--force", "delete", rest[0])
+    raise Refused(f"unknown firewall action: {verb}")
+
+
+# --- VPN ------------------------------------------------------------------------
+
+def vpn(args):
+    need(args, "usage: vpn interfaces|list|import|up|down|delete ...")
+    verb, rest = args[0], args[1:]
+    if verb == "interfaces":
+        return run("wg", "show", "interfaces")
+    if verb == "list":
+        for p in sorted(Path("/etc/wireguard").glob("*.conf")):
+            print(p.stem)
+        return 0
+    if verb == "import":
+        need(len(rest) == 1, "usage: vpn import /path/to/name.conf")
+        stem, text = read_user_file(rest[0], ".conf")
+        name = match(WG_NAME_RE, stem, "VPN name (letters, digits, _=+.-, at most 15)")
+        check_wireguard(text)
+        Path("/etc/wireguard").mkdir(mode=0o700, exist_ok=True)
+        fd = os.open(f"/etc/wireguard/{name}.conf", os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(fd, "w") as f:
+            f.write(text)
+        os.chmod(f"/etc/wireguard/{name}.conf", 0o600)
+        return 0
+    if verb in ("up", "down", "delete"):
+        need(len(rest) == 1, f"usage: vpn {verb} NAME")
+        name = match(WG_NAME_RE, rest[0], "VPN name")
+        if verb == "up":
+            need(Path(f"/etc/wireguard/{name}.conf").is_file(), f"no VPN profile named {name}")
+            return run("systemctl", "start", f"wg-quick@{name}")
+        if verb == "down":
+            return run("systemctl", "stop", f"wg-quick@{name}")
+        run("systemctl", "stop", f"wg-quick@{name}")
+        Path(f"/etc/wireguard/{name}.conf").unlink(missing_ok=True)
+        return 0
+    raise Refused(f"unknown vpn action: {verb}")
+
+
+def check_wireguard(text):
+    need("[Interface]" in text, "not a WireGuard config (no [Interface] section)")
+    need(not WG_HOOK_RE.search(text),
+         "this config runs commands (PreUp/PostUp/PreDown/PostDown); remove those lines to import it")
+
+
+def nm_import_wireguard(args):
+    need(len(args) == 1, "usage: nm-import-wireguard /path/to/name.conf")
+    stem, text = read_user_file(args[0], ".conf")
+    match(WG_NAME_RE, stem, "VPN name (letters, digits, _=+.-, at most 15)")
+    check_wireguard(text)
+    with tempfile.TemporaryDirectory(prefix="reyos-admin-") as tmp:
+        copy = Path(tmp) / f"{stem}.conf"
+        copy.write_text(text)
+        copy.chmod(0o600)
+        return run("nmcli", "connection", "import", "type", "wireguard", "file", str(copy))
+
+
+# --- security -------------------------------------------------------------------
+
+def usbguard(args):
+    need(args in (["enable"], ["disable"]), "usage: usbguard enable|disable")
+    if args[0] == "disable":
+        return run("systemctl", "disable", "--now", "usbguard")
+    # Allow what's plugged in now before enforcing, or a USB keyboard/mouse could lock out.
+    policy = subprocess.run(["usbguard", "generate-policy"], capture_output=True, text=True)
+    if policy.returncode != 0:
+        print("Failed to generate a USB device policy.", file=sys.stderr)
+        return policy.returncode
+    rules = Path("/etc/usbguard/rules.conf")
+    rules.write_text(policy.stdout)
+    rules.chmod(0o600)
+    return run("systemctl", "enable", "--now", "usbguard")
+
+
+# --- date and time ----------------------------------------------------------------
+
+def time_(args):
+    need(len(args) == 2, "usage: time zone TZ | time ntp true|false | time set 'YYYY-MM-DD HH:MM:SS'")
+    verb, value = args
+    if verb == "zone":
+        zones = subprocess.run(["timedatectl", "list-timezones"], capture_output=True, text=True).stdout.split()
+        need(value in zones, f"unknown timezone: {value!r}")
+        return run("timedatectl", "set-timezone", value)
+    if verb == "ntp":
+        need(value in ("true", "false"), "usage: time ntp true|false")
+        return run("timedatectl", "set-ntp", value)
+    if verb == "set":
+        need(DATETIME_RE.fullmatch(value) is not None, f"invalid date/time: {value!r}")
+        return run("timedatectl", "set-time", value)
+    raise Refused(f"unknown time action: {verb}")
+
+
+# --- printers ---------------------------------------------------------------------
+
+def printer(args):
+    need(args, "usage: printer add NAME URI | printer remove NAME | printer default NAME")
+    verb, rest = args[0], args[1:]
+    if verb == "add":
+        need(len(rest) == 2, "usage: printer add NAME URI")
+        name = match(PRINTER_RE, rest[0], "printer name")
+        uri = match(PRINTER_URI_RE, rest[1], "printer address")
+        return run("lpadmin", "-p", name, "-E", "-v", uri, "-m", "everywhere")
+    if verb in ("remove", "default"):
+        need(len(rest) == 1, f"usage: printer {verb} NAME")
+        name = match(PRINTER_RE, rest[0], "printer name")
+        return run("lpadmin", "-x" if verb == "remove" else "-d", name)
+    raise Refused(f"unknown printer action: {verb}")
+
+
+# --- Looks ----------------------------------------------------------------------------
+
+# Control Center stages recolored copies in /tmp; only these exact targets can be replaced.
+LOOK_TARGETS = {
+    "gear-16.svg": "/usr/share/icons/ReyOS/apps/16/preferences-system.svg",
+    "gear-32.svg": "/usr/share/icons/ReyOS/apps/32/preferences-system.svg",
+    "gear-48.svg": "/usr/share/icons/ReyOS/apps/48/preferences-system.svg",
+    "dolphin-48.svg": "/usr/share/icons/ReyOS/apps/48/org.kde.dolphin.svg",
+    "browser-Main.qml": "/usr/share/reyos/browser/qml/Main.qml",
+    "browser-home.html": "/usr/share/reyos/browser/home.html",
+    "decoration.svg": "/usr/share/aurorae/themes/ReyOS/decoration.svg",
+    "sddm.conf": "/usr/share/sddm/themes/reyos-silent/configs/reyos.conf",
+}
+
+
+def apply_look(args):
+    need(not args, "usage: apply-look")
+    uid = caller_uid()
+    for stem, target in LOOK_TARGETS.items():
+        staged = f"/tmp/reyos-look-{stem}"
+        try:
+            fd = os.open(staged, os.O_RDONLY | os.O_NOFOLLOW)
+        except FileNotFoundError:
+            continue
+        except OSError as e:
+            print(f"skipped {staged}: {e.strerror}", file=sys.stderr)
+            continue
+        with os.fdopen(fd, "rb") as f:
+            st = os.fstat(f.fileno())
+            data = f.read(4 * 1024 * 1024 + 1)
+        os.unlink(staged)
+        if st.st_uid != uid or (st.st_mode & 0o170000) != 0o100000 or len(data) > 4 * 1024 * 1024:
+            print(f"skipped {staged}: not a regular file of yours, or too large", file=sys.stderr)
+            continue
+        try:
+            text = data.decode("utf-8")
+        except UnicodeDecodeError:
+            print(f"skipped {staged}: not text", file=sys.stderr)
+            continue
+        if stem.endswith(".svg") and "<svg" not in text:
+            print(f"skipped {staged}: not an SVG", file=sys.stderr)
+            continue
+        if not Path(target).parent.is_dir():
+            continue
+        tmp = f"{target}.reyos-new"
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o644)
+        with os.fdopen(fd, "w") as out:
+            out.write(text)
+        os.chmod(tmp, 0o644)
+        os.replace(tmp, target)
+    return 0
+
+
+# --- services (password required) ----------------------------------------------------
+
+def service(args):
+    need(len(args) == 2 and args[0] in ("start", "stop", "enable", "disable"),
+         "usage: service start|stop|enable|disable UNIT")
+    unit = match(UNIT_RE, args[1], "unit name")
+    return run("systemctl", args[0], unit)
+
+
+ACTIONS = {
+    "governor": governor,
+    "swappiness": swappiness,
+    "drop-caches": drop_caches,
+    "swap": swap,
+    "install-reyos": install_reyos,
+    "remove-package": remove_package,
+    "remove-orphans": remove_orphans,
+    "clean-cache": clean_cache,
+    "firewall": firewall,
+    "vpn": vpn,
+    "nm-import-wireguard": nm_import_wireguard,
+    "usbguard": usbguard,
+    "time": time_,
+    "printer": printer,
+    "service": service,
+    "apply-look": apply_look,
+}
+
+
+def main(argv):
+    if os.geteuid() != 0:
+        print("reyos-admin must run as root (sudo -n or pkexec)", file=sys.stderr)
+        return 1
+    if not argv or argv[0] not in ACTIONS:
+        print("usage: reyos-admin " + "|".join(sorted(ACTIONS)) + " ...", file=sys.stderr)
+        return 2
+    action, args = argv[0], argv[1:]
+    if action in PASSWORD_REQUIRED and "PKEXEC_UID" not in os.environ:
+        print(f"reyos-admin {action} needs your password: run it with pkexec", file=sys.stderr)
+        return 1
+    os.environ["PATH"] = "/usr/local/sbin:/usr/local/bin:/usr/bin"
+    try:
+        return ACTIONS[action](args)
+    except Refused as e:
+        print(f"reyos-admin: {e}", file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

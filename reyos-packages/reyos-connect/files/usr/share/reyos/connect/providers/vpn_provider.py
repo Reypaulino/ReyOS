@@ -183,7 +183,7 @@ def wireguard_connect(name, source):
     if source == "networkmanager":
         result = _run(["nmcli", "connection", "up", name], timeout=15)
     else:
-        result = _run(["sudo", "systemctl", "start", f"wg-quick@{name}"], timeout=15)
+        result = _run(["sudo", "-n", "/usr/share/reyos/bin/reyos-admin", "vpn", "up", name], timeout=15)
     if result is None:
         return False, "Timed out."
     ok = result.returncode == 0
@@ -194,7 +194,7 @@ def wireguard_disconnect(name, source):
     if source == "networkmanager":
         result = _run(["nmcli", "connection", "down", name], timeout=15)
     else:
-        result = _run(["sudo", "systemctl", "stop", f"wg-quick@{name}"], timeout=15)
+        result = _run(["sudo", "-n", "/usr/share/reyos/bin/reyos-admin", "vpn", "down", name], timeout=15)
     if result is None:
         return False, "Timed out."
     ok = result.returncode == 0

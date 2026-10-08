@@ -1,0 +1,8 @@
+# Rules now ship in /etc/sudoers.d/90-reyos; drop the wildcard file Calamares used to write (RB-1).
+post_install() {
+    rm -f /etc/sudoers.d/99-reyos-system-menu
+}
+
+post_upgrade() {
+    post_install
+}

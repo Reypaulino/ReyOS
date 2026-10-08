@@ -227,7 +227,7 @@ def _recolor_look_assets(look_id):
         # root-owned -- writing there directly (this process runs
         # unprivileged) fails with EACCES. Every patch in this
         # section only stages its recolored file under /tmp; a
-        # single sudo call to the fixed reyos-apply-look-icons.sh
+        # single sudo call to reyos-admin apply-look
         # helper (below, after all staging is done) moves everything
         # into place in one privileged step. A raw "sudo cp"/"sudo
         # bash -c <built string>" was tried first and silently did
@@ -430,7 +430,7 @@ def _recolor_look_assets(look_id):
                 any_staged = True
 
         if any_staged:
-            subprocess.run(["sudo", "-n", "/usr/share/reyos/bin/reyos-apply-look-icons.sh"])
+            subprocess.run(["sudo", "-n", "/usr/share/reyos/bin/reyos-admin", "apply-look"])
             # Only when something changed -- this also runs at every login
             # (--reapply-look), where a full rebuild each time would just
             # slow the session start down for nothing.

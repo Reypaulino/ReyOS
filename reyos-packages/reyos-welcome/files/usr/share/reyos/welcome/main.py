@@ -124,7 +124,7 @@ class InstallWorker(QThread):
                 # outright (even for an already-installed package) until
                 # this runs at least once.
                 self.progress.emit("Syncing package databases...")
-                self._run(["sudo", "pacman", "-Sy", "--noconfirm"])
+                self._run(["sudo", "-n", "pacman", "-Sy", "--noconfirm"])
                 # One `pacman -S` call per selected app, not all combined into
                 # one -- each call's argv then matches a fixed, individually
                 # listed NOPASSWD sudoers line (see
@@ -139,14 +139,14 @@ class InstallWorker(QThread):
                                             capture_output=True, text=True).stdout.strip()
                         if vk:
                             self.progress.emit(f"Installing: {vk}")
-                            self._run(["sudo", "pacman", "-S", "--needed", "--noconfirm", vk])
+                            self._run(["sudo", "-n", "pacman", "-S", "--needed", "--noconfirm", vk])
                     self.progress.emit(f"Installing: {group}")
-                    rc = self._run(["sudo", "pacman", "-S", "--needed", "--noconfirm"] + group.split())
+                    rc = self._run(["sudo", "-n", "pacman", "-S", "--needed", "--noconfirm"] + group.split())
                     if rc != 0:
                         self.finished_ok.emit(False, f"Package install failed ({group}) — see log.")
                         return
                 if "wine" in joined:
-                    self._run(["sudo", "systemctl", "restart", "systemd-binfmt"])
+                    self._run(["sudo", "-n", "systemctl", "restart", "systemd-binfmt"])
 
             if self.flatpak_ids:
                 # A fresh user has no --user-scoped flathub remote yet, even
@@ -177,7 +177,7 @@ class InstallWorker(QThread):
             # right blind -- a wrong rule here breaks `visudo -c` for the
             # whole sudoers file, not just this one line.
             subprocess.run(
-                ["sudo", "/usr/share/reyos/welcome/enable-multilib.sh"],
+                ["sudo", "-n", "/usr/share/reyos/welcome/enable-multilib.sh"],
                 check=False,
             )
             # The unconditional -Sy right after this call in run() picks up
