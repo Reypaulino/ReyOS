@@ -2,6 +2,10 @@
 
 Real bugs found and fixed, with root cause. Newest first. See `bugs.md` for what's still open.
 
+## 2026-10-08 — Top bar system menu logo: copper instead of blue (reyos-kde-customization 1.0.0-22)
+
+User's request: replace the round blue badge (`reyos-systemmenu`, added 2026-10-01) with the copper R. All eight `hicolor/*/apps/reyos-systemmenu.png` sizes (16–256) are now cut from Welcome's `reyos-r-penguin-hq.png` (transparent copper ring, R and penguin), cropped to its edges and centred. Checked on the Dev VM after a plasmashell restart: the top bar shows the copper R. Installed systems see it after a reboot or logout.
+
 ## 2026-10-08 — ReyOS Welcome 3.3.3-29: new icon, named correctly in the top bar
 
 - Welcome's icon (penguin on the old copper disc) redrawn in the tile style of the Control Center/Games/Reader icons: orange waving penguin on a dark tile. Not in `looks.py`'s `app_icons`, so it keeps its colors on every Look, as before. The window/taskbar icon now uses it too (`reyos-welcome`, falls back to `reyos-logo`).
