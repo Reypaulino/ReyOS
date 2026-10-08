@@ -2,6 +2,12 @@
 
 Real bugs found and fixed, with root cause. Newest first. See `bugs.md` for what's still open.
 
+## 2026-10-08 — Control Center 1.0.0-111: Looks page back (lost in 109/110)
+
+Found on the real install after the stable-channel update. Control Center 109 and 110 were built from `origin/main`, which never had `LooksPage.qml` or the sidebar fix from `7fd754b` (that commit only reached local `master`). So 109/110 had no Looks page, and five sidebar entries were back on the `preferences-*` icon names that show a generic gear. 111 takes `qml/LooksPage.qml` and `qml/Main.qml` from `master` (the only Control Center files that differed). Checked on the Dev VM: LooksPage loads with the real backend and lists the Looks, no QML warnings.
+
+Same report, not code bugs: the new `reyos-launcher` panel icon shows only after plasmashell restarts (reboot, logout, or applying a Look); and the old Control Center's "Install updates" ran a full `pacman -Syu` from live Arch in the same run that installed `reyos-update-channel`. That can't be fixed for the old version. The next "Install updates" (now `reyos-channel upgrade`) moved those packages back, 59 in total. Results in the user's `~/reyos-update-handoff.md` on the ReyOS install: the stable channel worked, Reader's PDF works again.
+
 ## 2026-10-08 — Stable update channel: ReyOS takes Arch from a tested snapshot (`reyos-update-channel` 2026.10.07, published)
 
 Follow-up to the entry below. The user wants a stable daily driver (gaming, coding) that still suits older hardware. Rebasing on Fedora was looked at and not chosen: same x86-64 floor, Fedora also has no Qt LTS (the Qt/PySide match problem just moves to each 6-month release), gaming needs RPM Fusion, and a port would replace every PKGBUILD, the signed repo, mkarchiso, Calamares integration and add SELinux policy work. The actual problem is untested Arch updates reaching users, so that is what changed.

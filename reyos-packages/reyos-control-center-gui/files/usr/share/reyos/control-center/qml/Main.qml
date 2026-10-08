@@ -64,8 +64,9 @@ Kirigami.ApplicationWindow {
             { group: "Essentials", items: [
                 { text: "Updates", icon: "system-software-update", page: "UpdatesPage.qml" },
                 { text: "Security", icon: "security-high", page: "SecurityPage.qml" },
-                { text: "Appearance", icon: "preferences-desktop-theme", page: "AppearancePage.qml" },
-                { text: "Default Apps", icon: "preferences-desktop-default-applications", page: "DefaultAppsPage.qml" },
+                { text: "Appearance", icon: "applications-graphics", page: "AppearancePage.qml" },
+                { text: "Looks", icon: "games-config-tiles", page: "LooksPage.qml" },
+                { text: "Default Apps", icon: "configure", page: "DefaultAppsPage.qml" },
                 { text: "Backup", icon: "document-save", page: "BackupPage.qml" },
                 { text: "Gaming", icon: "input-gaming", page: "GamingPage.qml" },
                 { text: "Wi-Fi", icon: "network-wireless", page: "WifiPage.qml" },
@@ -77,16 +78,16 @@ Kirigami.ApplicationWindow {
             ]},
             { group: "Advanced", items: [
                 { text: "Flatpak", icon: "package-x-generic", page: "FlatpakPage.qml" },
-                { text: "Bluetooth", icon: "preferences-system-bluetooth", page: "BluetoothPage.qml" },
+                { text: "Bluetooth", icon: "network-bluetooth", page: "BluetoothPage.qml" },
                 { text: "Mouse", icon: "input-mouse", page: "MousePage.qml" },
                 { text: "Keyboard", icon: "input-keyboard", page: "KeyboardPage.qml" },
-                { text: "Performance", icon: "preferences-system-performance", page: "PerformancePage.qml" },
+                { text: "Performance", icon: "speedometer", page: "PerformancePage.qml" },
                 { text: "Drivers", icon: "video-display", page: "DriversPage.qml" },
                 { text: "Firewall", icon: "security-medium", page: "FirewallPage.qml" },
                 { text: "Disk", icon: "drive-harddisk", page: "DiskPage.qml" },
-                { text: "Date · Time", icon: "preferences-system-time", page: "DateTimePage.qml" },
+                { text: "Date · Time", icon: "chronometer", page: "DateTimePage.qml" },
                 { text: "Services", icon: "system-run", page: "ServicesPage.qml" },
-                { text: "Startup Apps", icon: "preferences-system-login", page: "StartupPage.qml" },
+                { text: "Startup Apps", icon: "system-run-symbolic", page: "StartupPage.qml" },
                 { text: "Permissions", icon: "object-locked", page: "PermissionsPage.qml" }
             ]}
         ]
