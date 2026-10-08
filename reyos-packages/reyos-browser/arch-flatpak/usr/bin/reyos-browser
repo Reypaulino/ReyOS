@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+# Reyva on ReyOS runs as the com.reyapps.Reyva Flatpak, which bundles its own
+# Qt WebEngine. This keeps the reyos-browser command, menu entry, taskbar pin,
+# default-browser setting and installed web apps pointing at it.
+APP=com.reyapps.Reyva
+REF=https://reypaulino.github.io/reyva-flatpak/com.reyapps.Reyva.flatpakref
+OLD_DATA="${XDG_DATA_HOME:-$HOME/.local/share}"
+NEW_DATA="$HOME/.var/app/$APP/data"
+
+installed() { flatpak info "$APP" >/dev/null 2>&1; }
+
+install_flatpak() {
+    kdialog --title "Reyva" --yesno "Reyva now runs as a Flatpak on ReyOS, so system updates can't break it.
+
+Download and install it now? This needs an internet connection and can take a few minutes the first time." || exit 0
+
+    local log bar
+    log=$(mktemp)
+    bar=$(kdialog --title "Reyva" --progressbar "Installing Reyva…" 0 2>/dev/null)
+    flatpak install --user -y --noninteractive "$REF" >"$log" 2>&1
+    local rc=$?
+    [ -n "$bar" ] && qdbus6 $bar close >/dev/null 2>&1
+    if [ $rc -ne 0 ] || ! installed; then
+        kdialog --title "Reyva" --error "Reyva couldn't be installed.
+
+$(tail -n 8 "$log")
+
+You can try again from a terminal:
+flatpak install --user $REF"
+        rm -f "$log"
+        exit 1
+    fi
+    rm -f "$log"
+}
+
+migrate_data() {
+    local marker="$NEW_DATA/reyos-browser/.migrated-from-native"
+    [ -e "$marker" ] && return
+    mkdir -p "$NEW_DATA/reyos-browser"
+    if [ -d "$OLD_DATA/reyos-browser" ]; then
+        cp -a -n "$OLD_DATA/reyos-browser/." "$NEW_DATA/reyos-browser/" 2>/dev/null
+        rm -rf "$NEW_DATA/reyos-browser/venv"
+    fi
+    # Installed web apps keep their logins in per-app profiles under ReyOS/<title>.
+    if [ -d "$OLD_DATA/ReyOS" ]; then
+        local d
+        for d in "$OLD_DATA/ReyOS"/*/; do
+            [ -d "$d/QtWebEngine" ] || continue
+            mkdir -p "$NEW_DATA/ReyOS"
+            cp -a -n "${d%/}" "$NEW_DATA/ReyOS/" 2>/dev/null
+        done
+    fi
+    touch "$marker"
+}
+
+hide_duplicate_entry() {
+    local apps="$OLD_DATA/applications" f
+    f="$apps/$APP.desktop"
+    [ -e "$f" ] && return
+    mkdir -p "$apps"
+    cat >"$f" <<EOF
+[Desktop Entry]
+Type=Application
+Name=Reyva
+Exec=reyos-browser %U
+Icon=/usr/share/icons/hicolor/scalable/apps/reyos-browser.svg
+NoDisplay=true
+X-ReyOS-Hides-Flatpak-Duplicate=true
+EOF
+}
+
+installed || install_flatpak
+migrate_data
+hide_duplicate_entry
+
+# Web apps installed by the native build point their icon at the old data dir.
+args=()
+for a in "$@"; do
+    case "$a" in
+        --app-icon="$OLD_DATA/reyos-browser/"*) a="--app-icon=$NEW_DATA/reyos-browser/${a#--app-icon=$OLD_DATA/reyos-browser/}" ;;
+    esac
+    args+=("$a")
+done
+exec flatpak run "$APP" "${args[@]}"

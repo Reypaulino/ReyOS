@@ -1,0 +1,8 @@
+post_upgrade() {
+    echo ":: Reyva now runs as a Flatpak. The next time you open Reyva it offers"
+    echo "   to download it, then carries over your bookmarks and settings."
+}
+
+post_install() {
+    post_upgrade
+}

@@ -1,19 +1,22 @@
 # Maintainer: Rey Paulino
 pkgname=reyos-browser
 pkgver=0.1.0
-pkgrel=105
-pkgdesc="Reyva — the private-by-default web browser from ReyOS"
+pkgrel=106
+pkgdesc="Reyva — the private-by-default web browser from ReyOS (runs the com.reyapps.Reyva Flatpak)"
 arch=('any')
 license=('MPL-2.0')
-# kirigami removed 2026-09-10: the QML has never actually imported it
-# (confirmed via grep), a stale dependency carried over from an earlier draft.
-depends=('pyside6' 'qt6-webengine' 'qt6-webchannel' 'libnotify' 'kdialog' 'python-secretstorage' 'python-setproctitle')
+# Since 106 the Arch package no longer runs the browser on the system Qt: an
+# Arch Qt 6.12 rollout (2026-10-08) shipped a pyside6 needing qt6-webengine
+# 6.12 symbols that weren't released yet, so it crashed on launch. Reyva now
+# runs as the Flatpak (its own Qt); files/ still holds the browser source the
+# Flatpak, .deb and Windows builds use.
+depends=('flatpak' 'kdialog' 'qt6-tools')
+install=reyos-browser.install
 source=()
 sha256sums=()
 
 package() {
-    cp -a "$startdir/files/usr" "$pkgdir/"
-    chmod 755 "$pkgdir/usr/bin/reyos-browser"
-    chmod 755 "$pkgdir/usr/share/reyos/browser/main.py"
-    find "$pkgdir/usr/share" -type f -exec chmod 644 {} \;
+    install -Dm755 "$startdir/arch-flatpak/usr/bin/reyos-browser" "$pkgdir/usr/bin/reyos-browser"
+    install -Dm644 "$startdir/files/usr/share/applications/reyos-browser.desktop" "$pkgdir/usr/share/applications/reyos-browser.desktop"
+    install -Dm644 "$startdir/files/usr/share/icons/hicolor/scalable/apps/reyos-browser.svg" "$pkgdir/usr/share/icons/hicolor/scalable/apps/reyos-browser.svg"
 }
