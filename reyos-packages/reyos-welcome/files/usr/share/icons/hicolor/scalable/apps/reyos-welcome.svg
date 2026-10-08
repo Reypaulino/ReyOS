@@ -1,16 +1,30 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
   <defs>
-    <linearGradient id="copper" x1="20" y1="14" x2="108" y2="116" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#F0B46A"/>
-      <stop offset="1" stop-color="#C97932"/>
+    <linearGradient id="accent" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#FF9A3C"/>
+      <stop offset="1" stop-color="#EF5A1E"/>
     </linearGradient>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#34363b"/>
+      <stop offset="1.0" stop-color="#1b1c1f"/>
+    </linearGradient>
+    <linearGradient id="light" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1.0" stop-color="#c9cbd0"/>
+    </linearGradient>
+    <filter id="sh" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="4" stdDeviation="5" flood-color="#000" flood-opacity="0.45"/>
+    </filter>
   </defs>
-  <circle cx="64" cy="64" r="58" fill="#15110E"/>
-  <circle cx="64" cy="64" r="48" fill="url(#copper)"/>
-  <ellipse cx="64" cy="80" rx="24" ry="26" fill="#FFF3E6"/>
-  <circle cx="64" cy="44" r="15" fill="#FFF3E6"/>
-  <ellipse cx="64" cy="84" rx="13" ry="17" fill="#15110E"/>
-  <path d="M75 44 87 40 75 37Z" fill="#15110E"/>
-  <circle cx="69" cy="41" r="2.5" fill="#15110E"/>
-  <circle cx="64" cy="64" r="58" fill="none" stroke="#F4D5A8" stroke-width="4"/>
+  <rect x="12" y="12" width="232" height="232" rx="52" fill="url(#tile)"/>
+  <rect x="12.5" y="12.5" width="231" height="231" rx="51.5" fill="none" stroke="#ffffff" stroke-opacity="0.08"/>
+  <g filter="url(#sh)">
+    <path fill="url(#accent)" d="M168 116c14-10 30-26 36-40 3-7-4-12-10-8-10 7-22 20-30 30z"/>
+    <path fill="url(#accent)" d="M128 46c-30 0-48 24-48 54v52c0 32 20 52 48 52s48-20 48-52v-52c0-30-18-54-48-54z"/>
+  </g>
+  <path fill="url(#light)" d="M128 100c-20 0-30 18-30 40v14c0 22 12 36 30 36s30-14 30-36v-14c0-22-10-40-30-40z"/>
+  <circle cx="112" cy="80" r="7" fill="#1b1c1f"/>
+  <circle cx="144" cy="80" r="7" fill="#1b1c1f"/>
+  <path fill="url(#light)" d="M118 92h20l-10 12z"/>
+  <path fill="url(#accent)" d="M96 204c0-8 8-12 18-12h6v12zM160 204c0-8-8-12-18-12h-6v12z"/>
 </svg>

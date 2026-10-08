@@ -2,6 +2,13 @@
 
 Real bugs found and fixed, with root cause. Newest first. See `bugs.md` for what's still open.
 
+## 2026-10-08 — ReyOS Welcome 3.3.3-29: new icon, named correctly in the top bar
+
+- Welcome's icon (penguin on the old copper disc) redrawn in the tile style of the Control Center/Games/Reader icons: orange waving penguin on a dark tile. Not in `looks.py`'s `app_icons`, so it keeps its colors on every Look, as before. The window/taskbar icon now uses it too (`reyos-welcome`, falls back to `reyos-logo`).
+- The top bar's window-title applet showed Welcome as "python3": `main.py` never called `setDesktopFileName`, so on Wayland the window had no app id matching `reyos-welcome.desktop`. Added `app.setDesktopFileName("reyos-welcome")` (Control Center already does the same).
+- Checked on the Dev VM: the top bar shows "ReyOS Welcome" with the penguin, and so do the window and taskbar.
+- About the user's "Control Center on top has the old icon": on the Dev VM the top bar, title bar and header all show the new icon. The round "R" at the far left of the top bar is the ReyOS system menu (`org.reyos.systemmenu`, icon `reyos-systemmenu`), not Control Center. On the laptop, plasmashell still had the old icons cached before the reboot.
+
 ## 2026-10-08 — New app icons: ReyOS Games, Reader, Distrobox GUI (control-center-gui 112, reyos-reader 39, reyos-distrobox-gui 6)
 
 - **ReyOS Games had no icon of its own.** Its launcher entry used the stock `applications-games`, which Breeze only has in `categories/` at 22–32 px (the user saw no icon on the real install). New `reyos-games.svg` (hicolor/scalable): dark rounded tile with an orange gamepad, matching the Control Center icon. `reyos-games.desktop` → `Icon=reyos-games`, and `games.py` uses it as its window icon (falls back to `applications-games`). It keeps its colors on every Look, like the Control Center/launcher/Reyva icons. It isn't in `looks.py`'s `app_icons`.

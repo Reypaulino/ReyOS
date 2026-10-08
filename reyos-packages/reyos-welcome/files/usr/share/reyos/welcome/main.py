@@ -323,6 +323,7 @@ def main():
 
     app = QGuiApplication(sys.argv)
     app.setApplicationName("ReyOS Welcome")
+    app.setDesktopFileName("reyos-welcome")
     engine = QQmlApplicationEngine()
 
     backend = Backend()
@@ -356,7 +357,7 @@ def main():
     # Kirigami.ApplicationWindow has no assignable "icon" property in QML
     # (confirmed: "Cannot assign to non-existent property" at load time) --
     # setting it via the underlying QWindow API works instead.
-    window.setIcon(QIcon.fromTheme("reyos-logo"))
+    window.setIcon(QIcon.fromTheme("reyos-welcome", QIcon.fromTheme("reyos-logo")))
 
     def try_activate(remaining=6):
         window.raise_()
