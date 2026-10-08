@@ -2,6 +2,10 @@
 
 Real bugs found and fixed, with root cause. Newest first. See `bugs.md` for what's still open.
 
+## 2026-10-08 — "Refresh desktop" after updates (control-center-gui 1.0.0-115)
+
+New icons (and other theme files) only showed after a reboot, because plasmashell keeps the icons it loaded at login; on the laptop that looked like the update hadn't worked. The "Restart to finish updating" dialog now has a third button, **Refresh desktop** (`Backend.refreshDesktop()` → the existing `_restart_plasmashell_and_wait()`), and says that apps pick up new versions when they're next opened. Checked on the Dev VM through the real UI: with `reyos-control-center` downgraded to 24, "Update ReyOS Apps only" upgraded it to 25 (through `reyos-admin install-reyos`), the dialog showed the three buttons, and Refresh desktop restarted plasmashell (start time 14:53 → 15:57).
+
 ## 2026-10-08 — RB-1 fixed: no more passwordless sudo wildcards (reyos-base 1.1.0-7, control-center-gui 114, connect 17, welcome 31, calamares 48, control-center 25)
 
 The release blocker from `control-center-audit.md`: the sudoers file Calamares wrote once at install (`/etc/sudoers.d/99-reyos-system-menu`) had 21 NOPASSWD rules ending in `*` (`tee …/cpu*/…`, `sysctl -w vm.swappiness=*`, `systemctl start|stop|enable|disable *`, `pacman -Rns *`, `lpadmin … *`, `ufw … *`, `timedatectl … *`, `nmcli … file *`), and sudo wildcards match across arguments, so any program running as the user could become root without a password.

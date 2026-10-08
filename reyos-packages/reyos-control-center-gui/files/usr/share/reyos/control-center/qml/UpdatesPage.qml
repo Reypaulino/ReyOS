@@ -72,6 +72,11 @@ Kirigami.ScrollablePage {
                 onClicked: { restartDialog.close(); backend.restartNow() }
             }
             Controls.Button {
+                text: "Refresh desktop"
+                Controls.DialogButtonBox.buttonRole: Controls.DialogButtonBox.ActionRole
+                onClicked: { restartDialog.close(); backend.refreshDesktop() }
+            }
+            Controls.Button {
                 text: "Later"
                 Controls.DialogButtonBox.buttonRole: Controls.DialogButtonBox.RejectRole
                 onClicked: restartDialog.close()
@@ -80,7 +85,7 @@ Kirigami.ScrollablePage {
 
         Controls.Label {
             width: restartDialog.availableWidth
-            text: "Updates were installed. Restart your computer so the desktop and your apps start using the new versions. Save any open work first."
+            text: "Updates were installed. Restart your computer so the desktop and your apps start using the new versions. Save any open work first.\n\nNo time now? Refresh desktop shows new icons and themes right away; apps update when you next open them."
             wrapMode: Text.Wrap
         }
     }

@@ -871,6 +871,14 @@ class Backend(QObject):
         worker.start()
 
     @Slot()
+    def refreshDesktop(self):
+        # The panel, launcher and taskbar keep the icons they loaded at login.
+        def task(emit):
+            _restart_plasmashell_and_wait()
+            return True, "Desktop refreshed."
+        self._run_action(task)
+
+    @Slot()
     def restartNow(self):
         # Plasma's own logout-and-reboot path: apps get the normal session
         # close (unsaved-work prompts), unlike a bare systemctl reboot, which
