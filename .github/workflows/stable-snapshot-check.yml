@@ -1,13 +1,14 @@
 name: Stable snapshot check
 
-# Weekly: install every reyos-* package on a candidate Arch Linux Archive
-# snapshot and check that the apps' imports and QML modules load. A pass means
-# the snapshot can be promoted to the stable channel (reyos-update-channel);
-# promotion itself is a signed package release, done locally.
+# Weekly (Sunday, testing Saturday's snapshot): install every reyos-* package
+# on a candidate Arch Linux Archive snapshot and check that the apps' imports
+# and QML modules load. tools/stable-snapshot/promote.sh, run daily on the
+# machine with the signing key, promotes a passed snapshot and starts this
+# workflow itself for the next day's snapshot when the last one failed.
 
 on:
   schedule:
-    - cron: "0 6 * * 1"
+    - cron: "0 6 * * 0"
   workflow_dispatch:
     inputs:
       date:
@@ -60,7 +61,7 @@ jobs:
             title="Stable snapshot $DATE passed: ready to promote"
             body="All reyos-* packages installed on Arch snapshot \`$DATE\` and their imports and QML modules loaded.
 
-          To promote: set \`files/usr/share/reyos/stable-snapshot\` to \`$DATE\` and \`pkgver\` to \`${DATE//\//.}\` in \`reyos-packages/reyos-update-channel\`, then build, sign and publish it.
+          \`tools/stable-snapshot/promote.sh\` (daily timer on the signing machine) promotes it and closes this issue. By hand: \`promote.sh --force --date $DATE\`.
 
           Run: $RUN_URL"
           else

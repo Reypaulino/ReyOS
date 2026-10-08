@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily check whether the ReyOS stable channel is due for a newer Arch snapshot
+
+[Timer]
+OnCalendar=*-*-* 18:00:00
+Persistent=true
+RandomizedDelaySec=5min
+
+[Install]
+WantedBy=timers.target

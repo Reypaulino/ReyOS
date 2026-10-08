@@ -1,0 +1,11 @@
+[Unit]
+Description=Promote the ReyOS stable channel to a newer tested Arch snapshot
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=%t/bus
+ExecStart=%h/.local/libexec/reyos/promote.sh
+TimeoutStartSec=45min

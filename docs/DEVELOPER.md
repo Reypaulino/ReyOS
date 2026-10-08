@@ -73,10 +73,13 @@ Installed systems don't take Arch's live mirrors by default. `reyos-update-chann
 
 The Dev VM runs the stable channel too, so packages are built and tested against the same Arch set users get. `reyos-iso/pacman.conf` includes `/etc/pacman.d/reyos-mirrorlist`, so the ISO is built from that snapshot as well.
 
-**Weekly promotion:**
-1. Every Monday `.github/workflows/stable-snapshot-check.yml` installs all `reyos-*` packages on the previous day's snapshot in an Arch container and runs `tools/stable-snapshot/check-imports.py` (every Python import and QML module the apps use, plus `ldd -r` on PySide6 and Qt's QML/plugin libraries). It opens a GitHub issue: passed or FAILED. Run it for any date with *Actions → Stable snapshot check → Run workflow*.
-2. If it passed: in `reyos-packages/reyos-update-channel`, set `files/usr/share/reyos/stable-snapshot` to the date (`YYYY/MM/DD`) and `pkgver` to `YYYY.MM.DD`, then build, sign and publish it like any package. If it failed: do nothing; users stay on the last good date.
-3. Run `sudo reyos-channel upgrade --yes` on the Dev VM to move it to the new date.
+**Weekly promotion (automatic):**
+1. Every Sunday 06:00 UTC `.github/workflows/stable-snapshot-check.yml` installs all `reyos-*` packages on Saturday's snapshot in an Arch container and runs `tools/stable-snapshot/check-imports.py` (every Python import and QML module the apps use, plus `ldd -r` on PySide6 and Qt's QML/plugin libraries). It opens a GitHub issue: passed or FAILED. Run it for any date with *Actions → Stable snapshot check → Run workflow*.
+2. `tools/stable-snapshot/promote.sh` runs daily at 18:00 (systemd user timer, also at the next boot if the PC was off) on the machine with the signing key. When the published stable date is older than the most recent Saturday, it takes the newest passed snapshot, builds `reyos-update-channel` (pkgver = date) in an `archlinux` Docker container, signs it, `repo-add`s it, signs the database, pushes `reyos-pages` and `main`, waits for GitHub Pages and closes the issue. If no newer snapshot passed, it starts the workflow for yesterday's snapshot and waits; a FAILED date is left alone and the next day's is tried. It needs the GitHub login (keyring, so someone logged in) and exits quietly to retry otherwise. Log: `~/.local/state/reyos-promote/promote.log`; desktop notifications on promote/fail.
+3. Install or update the timer: `tools/stable-snapshot/install-promote-timer.sh`. By hand: `promote.sh --dry-run` (no workflow, no push), `promote.sh --force --date YYYY/MM/DD` (promote a passed date now).
+4. The Dev VM doesn't follow automatically: `sudo reyos-channel upgrade --yes` there after a promotion.
+
+The smoke test itself needs ~4 GB of disk while it runs, so it stays on GitHub; promote.sh only needs the ~600 MB `archlinux` image.
 
 Before building a package that needs newer Arch libraries than the current snapshot, promote first; otherwise users on stable can't install it.
 
