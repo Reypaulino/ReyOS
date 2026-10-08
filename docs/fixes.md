@@ -19,6 +19,8 @@ Follow-up to the entry below. The user wants a stable daily driver (gaming, codi
 
 **Verified on the Dev VM**: install migrated pacman.conf (incl. commented multilib) and wrote the stable list; `reyos-channel stable --yes` re-downloaded all dbs from the snapshot and lined up 55 packages; rolling → stable round trip took Qt from the broken 6.12.0/pyside6 6.11.2-3/webengine 6.11.2-2 mix back to the 6.11.2 set (58 packages moved back), `reyos-*` builds untouched, no errors; Control Center card renders and Install updates ran through `sudo -n reyos-channel upgrade --yes`. Checker: passes on stable; on the rolling mix exits 1 with the Reyva `QtWebEngineCore` error **and a second break nobody had reported: `PySide6.QtPdf` (ReyOS Reader's PDF view) has an undefined `QPdfDocument::render` symbol**, so Reader was broken by the same Arch update.
 
+**CI verified** (manual runs of the workflow): 2026/10/07 passed (Python imports, QML modules, library symbols all OK); 2026/10/08 failed with the `QtWebEngineCore` and `QtPdf` undefined symbols. Two smoke-test fixes were needed first: Docker's own `/etc/hostname` and `/etc/os-release` conflicted with `reyos-base` (now `NoExtract` + `--overwrite` for those two paths, container only). The issues from those runs (#1-#6) are closed.
+
 ## 2026-10-08 — Arch Qt 6.12 rollout broke native Reyva; Arch `reyos-browser` now runs the Flatpak (0.1.0-106), new icons shipped (published)
 
 User's real ReyOS install (laptop): Reyva wouldn't open, and Control Center/app launcher didn't show the new icons.
