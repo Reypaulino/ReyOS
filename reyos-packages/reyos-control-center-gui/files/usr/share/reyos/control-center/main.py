@@ -31,6 +31,7 @@ from looks import (  # Qt-free Look / Light-Dark helpers, also run at login
     _recolor_look_assets,
 )
 import emulation  # Qt-free emulation helpers (systems, settings, BIOS, controllers)
+import steam_options  # Qt-free: GameMode/MangoHud in Steam games' launch options
 from emulation import EMU_SYSTEMS, GAMES_DIR, RETROARCH_REYOS_CFG
 
 
@@ -942,6 +943,18 @@ class Backend(QObject):
         def installed(pkg):
             return subprocess.run(["pacman", "-Q", pkg], capture_output=True).returncode == 0
         return {"steamInstalled": installed("steam"), "gamemodeInstalled": installed("gamemode")}
+
+    @Slot()
+    def applySteamLaunchOptions(self):
+        def task(emit):
+            wanted = [w for w in steam_options.WRAPPERS
+                      if shutil.which(w) and (w != "mangohud" or emulation.load_settings()["overlay"])]
+            if "gamemoderun" not in wanted:
+                return False, "GameMode isn't installed yet -- press Install above first."
+            return steam_options.apply(wanted)
+        self._steam_worker = ActionWorker(task)
+        self._steam_worker.finished_ok.connect(self.gamingFinished.emit)
+        self._steam_worker.start()
 
     @Slot()
     def installGaming(self):

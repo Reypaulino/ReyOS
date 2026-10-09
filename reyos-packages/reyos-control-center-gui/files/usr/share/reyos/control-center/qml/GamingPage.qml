@@ -203,6 +203,19 @@ Kirigami.ScrollablePage {
                     enabled: !busy
                     onClicked: { startJob(); backend.installGaming() }
                 }
+                Controls.Label {
+                    Layout.fillWidth: true
+                    wrapMode: Text.Wrap
+                    visible: steamInstalled && gamemodeInstalled
+                    text: "Steam starts its own games, so GameMode and the performance overlay have to be added to each game's launch options. Close Steam, then press the button. Press it again after installing new games. The overlay follows the switch under Emulation > Display."
+                }
+                Controls.Button {
+                    visible: steamInstalled && gamemodeInstalled
+                    text: "Use GameMode in all Steam games"
+                    icon.name: "games-config-options"
+                    enabled: !busy
+                    onClicked: { startJob(); backend.applySteamLaunchOptions() }
+                }
             }
         }
 
