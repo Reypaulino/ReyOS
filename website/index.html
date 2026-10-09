@@ -747,7 +747,7 @@
         <div class="platform-card">
           <div class="platform-icon">🎛️</div>
           <div class="platform-name">Control Center</div>
-          <p class="platform-desc">One settings app instead of a dozen. Updates (atomic, read-only check first, with a pre-update Timeshift snapshot taken automatically), a Backup Center, a unified Security page (firewall, bring-your-own WireGuard VPN, Shields, permissions, opt-in USB device protection), CVE-tracked security updates, one-click NVIDIA driver install, network/Wi-Fi/sound/users, guarded permission repair, and live power &amp; performance tuning — including zram, systemd-oomd protection, and adaptive preload for faster everyday responsiveness and boot-time follow-through — organized as Home, Essentials, and Advanced.</p>
+          <p class="platform-desc">One settings app instead of a dozen. Updates (atomic, read-only check first, with a pre-update Timeshift snapshot taken automatically), a Backup Center, a unified Security page (firewall, bring-your-own WireGuard VPN, Shields, permissions, opt-in USB device protection), CVE-tracked security updates, one-click NVIDIA driver install, network/Wi-Fi/sound/users, guarded permission repair, and live power &amp; performance tuning — including zram, systemd-oomd protection, and adaptive preload for faster everyday responsiveness and boot-time follow-through — organized as Home, Essentials, and Advanced. Updates come from a tested snapshot of Arch (the stable channel), so a half-finished Arch update can't break your apps; a Looks page restyles the whole desktop in one click; and anything that changes the system asks for your password.</p>
         </div>
         <div class="platform-card">
           <div class="platform-icon">🛠️</div>
@@ -763,6 +763,11 @@
           <div class="platform-icon">📚</div>
           <div class="platform-name">Reader</div>
           <p class="platform-desc">ReyOS Reader is a native EPUB, PDF, and comic-book (CBZ/CBR) reader with a Kindle-style layout — for your books and manga without needing a browser tab or a third-party app.</p>
+        </div>
+        <div class="platform-card">
+          <div class="platform-icon">🎮</div>
+          <div class="platform-name">Gaming</div>
+          <p class="platform-desc">Steam, GameMode and the MangoHud performance overlay in one click. Classic consoles from the NES to the PlayStation 2 and 3DS: pick the systems you want and ReyOS installs only those emulators, with a game library, controller setup, and a BIOS checker that puts your own dumped BIOS files where each emulator looks. Every game started from ReyOS runs with GameMode and an optional FPS overlay, and one button adds the same to your Steam games. ReyOS doesn't include any games or BIOS files.</p>
         </div>
       </div>
     </div>
@@ -838,6 +843,14 @@
           <div class="status-row"><span class="status-dot live"></span> Working — live-verified</div>
         </div>
         <div class="status-card">
+          <div class="status-card-title">Stable Update Channel</div>
+          <div class="status-row"><span class="status-dot live"></span> Working — Arch updates come from a tested snapshot, moved forward weekly after an automated check that ReyOS's apps still start</div>
+        </div>
+        <div class="status-card">
+          <div class="status-card-title">Gaming (Steam, emulators, GameMode)</div>
+          <div class="status-row"><span class="status-dot wip"></span> Verified in a virtual machine; first real-hardware run in progress. The Steam button hasn't been tried with a real Steam account yet</div>
+        </div>
+        <div class="status-card">
           <div class="status-card-title">Public ISO Download</div>
           <div class="status-row"><span class="status-dot live"></span> Published (2026.10.01)</div>
         </div>
@@ -850,8 +863,10 @@
       <div class="known-issues">
         <h3>KNOWN LIMITATIONS RIGHT NOW</h3>
         <ul>
+          <li><strong>Security fix, October 8:</strong> our own audit found that the 2026.10.01 ISO and earlier set up passwordless admin rules that a program running as you could misuse to take full control of the system. It's fixed: installed systems get the fix through Control Center → Updates → Install updates, and the next ISO will include it.</li>
           <li>The public ISO is out (2026.10.01) — download and checksums are in the Download section below. New since the last release: the installer no longer fails on computers with a lot of RAM, installed systems no longer keep live-session leftovers (such as a passwordless root login on the console and SSH root login), graphics drivers are chosen by your hardware, and the Control Center gained Screen &amp; Sleep settings and a fixed Bluetooth pairing flow. These installer changes have been checked piece by piece but not yet through a full install on real hardware, and installing next to an existing, nearly full system has only been tested in a virtual machine so far — back up your data first. Remote Desktop's video/input hasn't been verified end-to-end on real hardware yet.</li>
           <li>Reyva for Windows is out (0.1.0.105). It was tested on a clean Windows machine (install, start-up, real sites, saved passwords, uninstall), but not yet used day-to-day by a person on a real PC, and the installer isn't code-signed, so SmartScreen warns on first run.</li>
+          <li>Reyva can't save passwords on at least one fresh install until a KDE Wallet exists (open KWallet Manager and create a wallet named <code>kdewallet</code>). A proper fix is being worked on.</li>
           <li>Not recommended as a daily-driver machine yet — best tried on spare hardware or a virtual machine.</li>
           <li><a href="#wsl" style="color:var(--copper-light);">ReyOS WSL</a> — a separate, terminal-only build for Windows Subsystem for Linux — is downloadable now, but was only built and verified on Linux (a real Dev VM build run). It hasn't been installed on a real Windows 11 + WSL2 machine yet.</li>
         </ul>
