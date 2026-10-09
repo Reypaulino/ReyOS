@@ -6,10 +6,6 @@ This file was rewritten from scratch on 2026-08-18 after a full audit of the wor
 
 **2026-10-08 verification pass:** see `BUG_VERIFICATION_REPORT.md` for what was re-tested and how. Entries below carry a "Status 2026-10-08" line where they were checked; resolved entries moved to the "Resolved" section at the end.
 
-## Published ISO 2026.10.01: install stops with "Missing variables are: PK"
-
-Added 2026-10-08. The ISO on the GitHub Release (sha256 matches) contains `reyos-calamares` 1.3.6-44, whose `shellprocess_hw_drivers.conf` (`$PK`) and `shellprocess_live_cleanup.conf` (`$T`) use bare shell variables; Calamares substitutes those before bash runs and aborts on unknown ones. Both modules are in the exec sequence. Seen on real hardware on 2026-10-01 (`fixes.md`). Fixed in source by `f8e3530` (1.3.6-45, current 1.3.6-48 scans clean), but the ISO was uploaded ~2 hours before the fix and never rebuilt. Needs a new ISO; the release notes and website don't mention it.
-
 ## Bottom panel stays light after switching Light → Dark
 
 Added 2026-10-08, Dev VM only. Driving `applyLookAndFeel()` Light → Dark → Light → Dark: after each Dark step the bottom panel stayed light (still light 60 s later with a freshly restarted plasmashell), while `kdeglobals` held the dark `ReyOS` scheme and the Plasma theme was `ReyOS` (panel transparency 85%). It was dark before the test. Not root-caused; check on real hardware first (the VM renders in software).
@@ -116,6 +112,15 @@ Right-click desktop → Configure Desktop and Wallpaper opens Folder View's own 
 ## Resolved
 
 Moved out of the open list after the 2026-10-08 verification; original text kept for history.
+
+### Published ISO 2026.10.01: install stopped with "Missing variables are: PK" — resolved by ISO 2026.10.08
+
+Resolved 2026-10-08 (Verified Fixed in a VM): ISO `reyos-2026.10.08` (sha256 `a10737519802269985914f470c4b9707f8ffd26f855a722997e3a37ed78eadb7`, reyos-calamares 1.3.6-48) installed to completion ("All done.") with Erase disk in a UEFI VM (Secure Boot off, 4 GB RAM, 30 GB disk); first boot, Welcome "Skip for now", desktop, Control Center → Install updates ("there is nothing to do ✓ Updates installed") and a restart all worked. The installed disk had no live-session leftovers, the stable channel (2026/10/07) and today's package versions. Not yet installed on real hardware. 2026.10.01 stays published but is no longer the latest release.
+
+Original entry:
+
+
+Added 2026-10-08. The ISO on the GitHub Release (sha256 matches) contains `reyos-calamares` 1.3.6-44, whose `shellprocess_hw_drivers.conf` (`$PK`) and `shellprocess_live_cleanup.conf` (`$T`) use bare shell variables; Calamares substitutes those before bash runs and aborts on unknown ones. Both modules are in the exec sequence. Seen on real hardware on 2026-10-01 (`fixes.md`). Fixed in source by `f8e3530` (1.3.6-45, current 1.3.6-48 scans clean), but the ISO was uploaded ~2 hours before the fix and never rebuilt. Needs a new ISO; the release notes and website don't mention it.
 
 ### Installer's "available only from the live session" error dialog on installed systems — resolved (`5ec0b31`)
 

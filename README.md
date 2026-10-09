@@ -26,7 +26,7 @@ See [docs/vision-roadmap.md](docs/vision-roadmap.md) for the full product direct
 
 ## Status
 
-ReyOS is in active development. Core install → boot → login → desktop flow is verified on real hardware and VMs; see [docs/bugs.md](docs/bugs.md) and [docs/fixes.md](docs/fixes.md) for the current known-issues and fix log. The latest ISO is [2026.10.01](https://github.com/Reypaulino/ReyOS/releases/tag/reyos-2026.10.01) (known issue: its installer can stop at the graphics-driver step with "Missing variables are: PK"; fixed in the packages, a new ISO is needed); after installing, run Control Center → Updates → **Install updates** and restart: that brings in the latest bug and security fixes and takes care of most known issues. See [reyos.reyapps.com](https://reyos.reyapps.com) for downloads and the current state.
+ReyOS is in active development. Core install → boot → login → desktop flow is verified on real hardware and VMs; see [docs/bugs.md](docs/bugs.md) and [docs/fixes.md](docs/fixes.md) for the current known-issues and fix log. The latest ISO is [2026.10.08](https://github.com/Reypaulino/ReyOS/releases/tag/reyos-2026.10.08) (fixes the 2026.10.01 installer stopping at the graphics-driver step); after installing, run Control Center → Updates → **Install updates** and restart: that brings in the latest bug and security fixes and takes care of most known issues. See [reyos.reyapps.com](https://reyos.reyapps.com) for downloads and the current state.
 
 ## Repository layout
 

@@ -852,7 +852,7 @@
         </div>
         <div class="status-card">
           <div class="status-card-title">Public ISO Download</div>
-          <div class="status-row"><span class="status-dot live"></span> Published (2026.10.01)</div>
+          <div class="status-row"><span class="status-dot live"></span> Published (2026.10.08)</div>
         </div>
         <div class="status-card">
           <div class="status-card-title">ReyOS WSL</div>
@@ -864,7 +864,7 @@
         <h3>KNOWN LIMITATIONS RIGHT NOW</h3>
         <ul>
           <li><strong>After installing, update first:</strong> open Control Center → Updates → <strong>Install updates</strong>, then restart the computer. Fixes keep arriving between ISO releases, so this brings in the latest bug and security fixes and takes care of most known issues.</li>
-          <li>The public ISO is out (2026.10.01) — download and checksums are in the Download section below. New since the last release: the installer no longer fails on computers with a lot of RAM, installed systems no longer keep live-session leftovers (such as a passwordless root login on the console and SSH root login), graphics drivers are chosen by your hardware, and the Control Center gained Screen &amp; Sleep settings and a fixed Bluetooth pairing flow. These installer changes have been checked piece by piece but not yet through a full install on real hardware, and installing next to an existing, nearly full system has only been tested in a virtual machine so far — back up your data first. Remote Desktop's video/input hasn't been verified end-to-end on real hardware yet.</li>
+          <li>The public ISO is out (2026.10.08) — download and checksums are in the Download section below. It fixes the 2026.10.01 installer stopping at the graphics-driver step ("Missing variables are: PK") and brings stable updates, the security fix and the new Control Center features. A full install of this ISO was checked in a virtual machine (install, first boot, Install updates, restart), not yet on real hardware, and installing next to an existing system shrinks its partition — back up your data first. Remote Desktop's video/input hasn't been verified end-to-end on real hardware yet.</li>
           <li>Reyva for Windows is out (0.1.0.105). It was tested on a clean Windows machine (install, start-up, real sites, saved passwords, uninstall), but not yet used day-to-day by a person on a real PC, and the installer isn't code-signed, so SmartScreen warns on first run.</li>
           <li>Reyva can't save passwords on at least one fresh install until a KDE Wallet exists (open KWallet Manager and create a wallet named <code>kdewallet</code>). A proper fix is being worked on.</li>
           <li><a href="#wsl" style="color:var(--copper-light);">ReyOS WSL</a> — a separate, terminal-only build for Windows Subsystem for Linux — is downloadable now, but was only built and verified on Linux (a real Dev VM build run). It hasn't been installed on a real Windows 11 + WSL2 machine yet.</li>
@@ -885,17 +885,17 @@
       <div class="cards-grid">
         <div class="platform-card">
           <div class="platform-icon">💿</div>
-          <div class="platform-name">ReyOS ISO (2026.10.01)</div>
+          <div class="platform-name">ReyOS ISO (2026.10.08)</div>
           <p class="platform-desc">x86_64, KDE Plasma, Calamares installer, Midnight Copper theme. Try it from the live desktop, or install it next to another system.</p>
-          <a href="https://github.com/Reypaulino/ReyOS/releases/download/reyos-2026.10.01/reyos-2026.10.01-x86_64.iso.part1" class="btn btn-ghost" target="_blank" rel="noopener">Download Part 1 (2.0GB)</a>
-          <a href="https://github.com/Reypaulino/ReyOS/releases/download/reyos-2026.10.01/reyos-2026.10.01-x86_64.iso.part2" class="btn btn-ghost" target="_blank" rel="noopener">Download Part 2 (1.0GB)</a>
-          <p class="platform-subnote"><a href="https://github.com/Reypaulino/ReyOS/releases/tag/reyos-2026.10.01" target="_blank" rel="noopener">Release notes on GitHub</a> · <a href="#install-guide">See how installing works ↓</a></p>
+          <a href="https://github.com/Reypaulino/ReyOS/releases/download/reyos-2026.10.08/reyos-2026.10.08-x86_64.iso.part1" class="btn btn-ghost" target="_blank" rel="noopener">Download Part 1 (2.0GB)</a>
+          <a href="https://github.com/Reypaulino/ReyOS/releases/download/reyos-2026.10.08/reyos-2026.10.08-x86_64.iso.part2" class="btn btn-ghost" target="_blank" rel="noopener">Download Part 2 (1.0GB)</a>
+          <p class="platform-subnote"><a href="https://github.com/Reypaulino/ReyOS/releases/tag/reyos-2026.10.08" target="_blank" rel="noopener">Release notes on GitHub</a> · <a href="#install-guide">See how installing works ↓</a></p>
           <div class="install-note" style="margin-top:16px; text-align:left;">
             <p style="margin-top:0;"><strong>After downloading both parts, join them into one file:</strong></p>
             <p style="margin-bottom:4px;">Linux / macOS:</p>
-            <pre><code>cat reyos-2026.10.01-x86_64.iso.part1 reyos-2026.10.01-x86_64.iso.part2 > reyos-2026.10.01-x86_64.iso</code></pre>
+            <pre><code>cat reyos-2026.10.08-x86_64.iso.part1 reyos-2026.10.08-x86_64.iso.part2 > reyos-2026.10.08-x86_64.iso</code></pre>
             <p style="margin-bottom:4px;">Windows (Command Prompt):</p>
-            <pre><code>copy /b reyos-2026.10.01-x86_64.iso.part1+reyos-2026.10.01-x86_64.iso.part2 reyos-2026.10.01-x86_64.iso</code></pre>
+            <pre><code>copy /b reyos-2026.10.08-x86_64.iso.part1+reyos-2026.10.08-x86_64.iso.part2 reyos-2026.10.08-x86_64.iso</code></pre>
           </div>
         </div>
         <div class="platform-card">
@@ -921,20 +921,20 @@
         <li>
           <div class="install-step-body">
             <h4>Download both parts, join them, and verify the checksum</h4>
-            <p>Download <code>reyos-2026.10.01-x86_64.iso.part1</code> and <code>.part2</code> from the <a href="https://github.com/Reypaulino/ReyOS/releases/tag/reyos-2026.10.01" target="_blank" rel="noopener">GitHub Release</a>, then join them (Linux/macOS):</p>
-            <pre><code>cat reyos-2026.10.01-x86_64.iso.part1 reyos-2026.10.01-x86_64.iso.part2 > reyos-2026.10.01-x86_64.iso</code></pre>
+            <p>Download <code>reyos-2026.10.08-x86_64.iso.part1</code> and <code>.part2</code> from the <a href="https://github.com/Reypaulino/ReyOS/releases/tag/reyos-2026.10.08" target="_blank" rel="noopener">GitHub Release</a>, then join them (Linux/macOS):</p>
+            <pre><code>cat reyos-2026.10.08-x86_64.iso.part1 reyos-2026.10.08-x86_64.iso.part2 > reyos-2026.10.08-x86_64.iso</code></pre>
             <p>On Windows (Command Prompt):</p>
-            <pre><code>copy /b reyos-2026.10.01-x86_64.iso.part1+reyos-2026.10.01-x86_64.iso.part2 reyos-2026.10.01-x86_64.iso</code></pre>
+            <pre><code>copy /b reyos-2026.10.08-x86_64.iso.part1+reyos-2026.10.08-x86_64.iso.part2 reyos-2026.10.08-x86_64.iso</code></pre>
             <p>Then confirm the joined file wasn't corrupted:</p>
-            <pre><code>sha256sum reyos-2026.10.01-x86_64.iso</code></pre>
-            <p>Compare the result against <code>a0230984bcdb461704d580ff774a1e366aa5384605082b82c04e524b440bfbb4</code> (also published with the release).</p>
+            <pre><code>sha256sum reyos-2026.10.08-x86_64.iso</code></pre>
+            <p>Compare the result against <code>a10737519802269985914f470c4b9707f8ffd26f855a722997e3a37ed78eadb7</code> (also published with the release).</p>
           </div>
         </li>
         <li>
           <div class="install-step-body">
             <h4>Write it to a USB drive (8GB or larger)</h4>
             <p>On Linux, find your USB device first with <code>lsblk</code> — getting the device wrong will erase the wrong disk — then write the ISO directly to it:</p>
-            <pre><code>sudo dd if=reyos-2026.10.01-x86_64.iso of=/dev/sdX bs=4M status=progress oflag=sync</code></pre>
+            <pre><code>sudo dd if=reyos-2026.10.08-x86_64.iso of=/dev/sdX bs=4M status=progress oflag=sync</code></pre>
             <p>Replace <code>/dev/sdX</code> with your actual USB device, not a partition like <code>/dev/sdX1</code>. Prefer a GUI? <a href="https://etcher.balena.io/" target="_blank" rel="noopener" style="color:var(--copper-light);">balenaEtcher</a> or <a href="https://www.ventoy.net/" target="_blank" rel="noopener" style="color:var(--copper-light);">Ventoy</a> work the same way on Linux, Windows, or macOS.</p>
           </div>
         </li>
@@ -958,7 +958,7 @@
         </li>
       </ol>
 
-      <p class="install-note">This is the same install flow that's been run and verified on real test hardware for every build — a real Calamares install completing and booting into ReyOS was confirmed again on this exact ISO.</p>
+      <p class="install-note">A complete install of this exact ISO was run in a virtual machine: Calamares finished, ReyOS booted, Welcome set up the desktop, and Control Center's Install updates worked after a restart.</p>
     </div>
   </section>
 
