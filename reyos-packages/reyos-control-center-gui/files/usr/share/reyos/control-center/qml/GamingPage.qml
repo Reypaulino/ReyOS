@@ -354,6 +354,11 @@ Kirigami.ScrollablePage {
                     checked: emuSettings.fullscreen
                     onToggled: saveSettings({ fullscreen: checked })
                 }
+                Controls.Switch {
+                    text: "Show a performance overlay while playing (FPS, CPU and GPU; Shift+F12 hides it in a game)"
+                    checked: emuSettings.overlay !== false
+                    onToggled: saveSettings({ overlay: checked })
+                }
                 GridLayout {
                     Layout.fillWidth: true
                     columns: 2

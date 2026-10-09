@@ -96,7 +96,7 @@ def system_installed(system):
 
 
 # ---- Display settings -----------------------------------------------------
-DEFAULT_SETTINGS = {"fullscreen": True, "picture": "clean", "resolution": 1, "expanded": None, "bios_expanded": False, "boxart": True}
+DEFAULT_SETTINGS = {"fullscreen": True, "overlay": True, "picture": "clean", "resolution": 1, "expanded": None, "bios_expanded": False, "boxart": True}
 
 # 3D internal resolution per core, keyed by ReyOS's 1x / 2x / 4x choice.
 # Option names and values checked against the cores Arch ships.
@@ -266,15 +266,25 @@ def prepare_flatpak(system):
     if new:
         _ini_default(lines, "UI", "SetupWizardIncomplete", "false")
     _ini_default(lines, "Folders", "Bios", str(BIOS_DIR / "ps2"))
+    # After a reset PCSX2 is back on its own empty "bios" folder and runs the
+    # setup wizard; point it at ReyOS's folder again.
+    own_bios = PCSX2_INI.parent.parent / "bios"
+    if _ini_get(lines, "Folders", "Bios") == "bios" and not (own_bios.is_dir() and any(own_bios.iterdir())):
+        _ini_set(lines, "Folders", "Bios", str(BIOS_DIR / "ps2"))
+        _ini_set(lines, "UI", "SetupWizardIncomplete", "false")
     _ini_default(lines, "GameList", "RecursivePaths", str(GAMES_DIR / "ROMs" / "ps2"))
+    # MangoHud can't reach into the Flatpak; PCSX2's own on-screen display
+    # shows the same numbers and follows the overlay switch.
+    overlay = "true" if load_settings()["overlay"] else "false"
+    for key in ("OsdShowFPS", "OsdShowSpeed", "OsdShowCPU", "OsdShowGPU"):
+        _ini_set(lines, "EmuCore/GS", key, overlay)
     if lines != before:
         PCSX2_INI.parent.mkdir(parents=True, exist_ok=True)
         PCSX2_INI.write_text("\n".join(lines) + "\n")
 
 
-def _ini_default(lines, section, key, value):
-    """Add `key = value` to [section] of an INI file's lines unless the key
-    is already there, creating the section if needed."""
+def _ini_find(lines, section, key):
+    """(index of the [section] header or None, index of the key line or None)."""
     header, start = f"[{section}]", None
     for i, line in enumerate(lines):
         if line.strip() == header:
@@ -282,31 +292,58 @@ def _ini_default(lines, section, key, value):
         elif start is not None and line.startswith("["):
             break
         elif start is not None and line.split("=", 1)[0].strip() == key:
-            return
+            return start, i
+    return start, None
+
+
+def _ini_get(lines, section, key):
+    _, i = _ini_find(lines, section, key)
+    return None if i is None else lines[i].split("=", 1)[1].strip()
+
+
+def _ini_set(lines, section, key, value):
+    _, i = _ini_find(lines, section, key)
+    if i is None:
+        _ini_default(lines, section, key, value)
+    else:
+        lines[i] = f"{key} = {value}"
+
+
+def _ini_default(lines, section, key, value):
+    """Add `key = value` to [section] of an INI file's lines unless the key
+    is already there, creating the section if needed."""
+    start, found = _ini_find(lines, section, key)
+    if found is not None:
+        return
     if start is None:
         if lines and lines[-1].strip():
             lines.append("")
-        lines += [header, f"{key} = {value}"]
+        lines += [f"[{section}]", f"{key} = {value}"]
     else:
         lines.insert(start + 1, f"{key} = {value}")
 
 
 def launch_command(system, rom):
     settings = load_settings()
+    # GameMode (installed with Steam on this page) for every game. For the
+    # Flatpaks it registers the `flatpak run` process, which lives as long as
+    # the game does.
+    gamemode = ["gamemoderun"] if shutil.which("gamemoderun") else []
     if system["id"] == "ps2":
-        return ["flatpak", "run", system["flatpak"], "-batch",
-                "-fullscreen" if settings["fullscreen"] else "-nofullscreen", "--", rom]
+        return gamemode + ["flatpak", "run", system["flatpak"], "-batch",
+                           "-fullscreen" if settings["fullscreen"] else "-nofullscreen", "--", rom]
     if system["id"] == "3ds":
-        return ["flatpak", "run", system["flatpak"], "-f" if settings["fullscreen"] else "-w", rom]
+        return gamemode + ["flatpak", "run", system["flatpak"], "-f" if settings["fullscreen"] else "-w", rom]
     cmd = ["retroarch", f"--appendconfig={RETROARCH_REYOS_CFG}", "-L", str(core_path(system)), rom]
     shader = shader_for(system["id"], settings)
     if shader:
         # Only the command line loads a preset at start-up; a video_shader
         # line in the config is ignored.
         cmd.insert(1, f"--set-shader={shader}")
-    # GameMode (installed with Steam on this page) for the RetroArch cores;
-    # the PCSX2/Azahar Flatpaks ask for it themselves through the portal.
-    return (["gamemoderun"] if shutil.which("gamemoderun") else []) + cmd
+    # MangoHud performance overlay (also installed with Steam); Shift+F12
+    # hides it during a game.
+    mangohud = ["mangohud"] if settings["overlay"] and shutil.which("mangohud") else []
+    return gamemode + mangohud + cmd
 
 
 def _launch_failure_reason():
