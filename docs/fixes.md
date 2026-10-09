@@ -2,6 +2,10 @@
 
 Real bugs found and fixed, with root cause. Newest first. See `bugs.md` for what's still open.
 
+## 2026-10-08 — PCSX2 rejected the settings file ReyOS writes (control-center-gui 1.0.0-117)
+
+Opening PCSX2 on a system Control Center had set up showed "Settings failed to load, or are the incorrect version… reset all settings to defaults?". `prepare_flatpak()` wrote a `PCSX2.ini` with no `[UI] SettingsVersion = 1`, which PCSX2 2.x requires. Answering Yes threw away the BIOS folder ReyOS had set, and the setup wizard asked for a BIOS again. `prepare_flatpak()` (run before every PS2 launch and by "Open PCSX2 settings") now adds only the settings that are missing: `SettingsVersion`, `Folders/Bios` = `~/Games/BIOS/ps2`, `GameList/RecursivePaths` = `~/Games/ROMs/ps2` (PCSX2's own game list was empty before), and `SetupWizardIncomplete = false` on a new file. That repairs files written by earlier versions and keeps anything changed in PCSX2. Checked on the Dev VM: restored the old broken file, installed 117, pressed Open PCSX2 settings → no prompt; Settings → BIOS listed both imported BIOS files (USA v1.60 and v2.00); the game list showed the PS2 game in `~/Games/ROMs/ps2`, which booted and ran at 60 FPS.
+
 ## 2026-10-08 — Import BIOS button; PS2 missing from the BIOS checker (control-center-gui 1.0.0-116)
 
 **Bug:** the Gaming page's BIOS checker never listed PlayStation 2, so a missing PS2 BIOS was never reported. `biosReport()` decided which systems were installed with `core_path(s).is_file()`, which only fits RetroArch cores; PS2 (PCSX2) is a Flatpak. It now also accepts `emulation.system_installed()`, which checks the Flatpak.

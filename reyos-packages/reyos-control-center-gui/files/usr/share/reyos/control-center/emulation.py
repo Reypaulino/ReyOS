@@ -249,14 +249,46 @@ def link_system_files():
 def prepare_flatpak(system):
     """PCSX2's Flatpak has no access to your files: give it ~/Games (the BIOS
     folder needs write access, PCSX2 keeps its NVRAM next to the BIOS), and
-    on first use point it at ~/Games/BIOS/ps2 so the setup wizard is skipped."""
+    point it at ~/Games/BIOS/ps2 and ~/Games/ROMs/ps2 so the setup wizard is
+    skipped. Only adds settings that are missing, so changes made in PCSX2
+    itself are kept."""
     if system["id"] != "ps2":
         return
     subprocess.run(["flatpak", "override", "--user", f"--filesystem={GAMES_DIR}", system["flatpak"]],
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
-    if not PCSX2_INI.exists():
+    new = not PCSX2_INI.exists()
+    lines = [] if new else PCSX2_INI.read_text(errors="replace").splitlines()
+    before = list(lines)
+    # Without SettingsVersion PCSX2 calls the file invalid and offers to reset
+    # it, which throws away the BIOS folder (ReyOS wrote files like that
+    # before 1.0.0-117).
+    _ini_default(lines, "UI", "SettingsVersion", "1")
+    if new:
+        _ini_default(lines, "UI", "SetupWizardIncomplete", "false")
+    _ini_default(lines, "Folders", "Bios", str(BIOS_DIR / "ps2"))
+    _ini_default(lines, "GameList", "RecursivePaths", str(GAMES_DIR / "ROMs" / "ps2"))
+    if lines != before:
         PCSX2_INI.parent.mkdir(parents=True, exist_ok=True)
-        PCSX2_INI.write_text(f"[UI]\nSetupWizardIncomplete = false\n\n[Folders]\nBios = {BIOS_DIR / 'ps2'}\n")
+        PCSX2_INI.write_text("\n".join(lines) + "\n")
+
+
+def _ini_default(lines, section, key, value):
+    """Add `key = value` to [section] of an INI file's lines unless the key
+    is already there, creating the section if needed."""
+    header, start = f"[{section}]", None
+    for i, line in enumerate(lines):
+        if line.strip() == header:
+            start = i
+        elif start is not None and line.startswith("["):
+            break
+        elif start is not None and line.split("=", 1)[0].strip() == key:
+            return
+    if start is None:
+        if lines and lines[-1].strip():
+            lines.append("")
+        lines += [header, f"{key} = {value}"]
+    else:
+        lines.insert(start + 1, f"{key} = {value}")
 
 
 def launch_command(system, rom):
