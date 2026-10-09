@@ -4,13 +4,27 @@ Bugs that are confirmed real but not yet fixed. See `fixes.md` for the ones that
 
 This file was rewritten from scratch on 2026-08-18 after a full audit of the working tree (most of the source had drifted weeks ahead of the previous version of this doc, which still described things that were already fixed or no longer applied). Anything not carried forward from the previous version was either confirmed resolved (moved to `fixes.md`) or could no longer be confirmed as still true and was dropped rather than carried forward as stale guesswork.
 
+**2026-10-08 verification pass:** see `BUG_VERIFICATION_REPORT.md` for what was re-tested and how. Entries below carry a "Status 2026-10-08" line where they were checked; resolved entries moved to the "Resolved" section at the end.
+
+## Published ISO 2026.10.01: install stops with "Missing variables are: PK"
+
+Added 2026-10-08. The ISO on the GitHub Release (sha256 matches) contains `reyos-calamares` 1.3.6-44, whose `shellprocess_hw_drivers.conf` (`$PK`) and `shellprocess_live_cleanup.conf` (`$T`) use bare shell variables; Calamares substitutes those before bash runs and aborts on unknown ones. Both modules are in the exec sequence. Seen on real hardware on 2026-10-01 (`fixes.md`). Fixed in source by `f8e3530` (1.3.6-45, current 1.3.6-48 scans clean), but the ISO was uploaded ~2 hours before the fix and never rebuilt. Needs a new ISO; the release notes and website don't mention it.
+
+## Bottom panel stays light after switching Light → Dark
+
+Added 2026-10-08, Dev VM only. Driving `applyLookAndFeel()` Light → Dark → Light → Dark: after each Dark step the bottom panel stayed light (still light 60 s later with a freshly restarted plasmashell), while `kdeglobals` held the dark `ReyOS` scheme and the Plasma theme was `ReyOS` (panel transparency 85%). It was dark before the test. Not root-caused; check on real hardware first (the VM renders in software).
+
 ## Reyva: first page opened at startup can load half-styled (CSS/images/fonts missing)
 
 Seen 2026-10-05 and 2026-10-06 on the Dev VM. `reyos-browser https://kde.org` (or the Flatpak with the same URL) right after starting showed kde.org with no CSS (plain blue links, raw lists), or with CSS but no banner image and no Inter webfont. Hit in the Flatpak on its first launch after a fresh install (twice) **and in the native build** run from source (2026-10-06), so it is not Flatpak-specific. A DevTools reload of the same tab loaded all 62 requests with 0 failures, and later launches usually render fine, so it looks like something about the very first load at startup (start URL loaded before the profile/interceptor/scripts are fully set up?). Not root-caused. Matters because links opened from other apps take exactly this path.
 
+Status 2026-10-08: not reproduced in 3 cold starts with `https://kde.org` on the Dev VM (Flatpak 0.1.1); the original trigger (first launch right after a fresh install) wasn't recreated. No fix exists. Kept open.
+
 ## Reyva: address bar blank when started with a URL
 
 Seen 2026-10-05/06 on the Dev VM: started with `https://reyos.reyapps.com/#browser-windows` and with `https://example.com/a%20b?x=1&y=2`, the page loaded (tab title right) but the address bar showed its placeholder. Plain `https://example.com` and `https://kde.org/` showed the URL. Not root-caused; first guess was `#fragment` URLs, but the second case has none.
+
+Status 2026-10-08: **still reproducible** with Flatpak 0.1.1 (both URLs above; `https://kde.org` is fine). Cause found in `qml/Main.qml`: the address text is only refreshed by `syncCurrentSite()`, called from the view's `onUrlChanged` (when it's the current tab) and from `tabBar.onCurrentIndexChanged`. The first tab's start URL never emits another `urlChanged` once the tab is current, unless the site redirects (kde.org → kde.org/). Proposed fix, not applied: also call `syncCurrentSite()` when the current tab finishes loading.
 
 ## ReyOS Reader: PDF viewer header toolbar becomes nearly invisible after clicking into page content
 
@@ -19,10 +33,6 @@ Found live (2026-09-12) while investigating a different PDF complaint ("also in 
 ## ReyOS Welcome's software install prints "unknown key '%INSTALLED_DB%' in local database" warning spam
 
 Confirmed live (2026-09-09) on a fresh install: installing anything from Welcome's software picker (e.g. `btop`) prints a wall of `warning: <pkgname>: unknown key '%INSTALLED_DB%' in local database` lines, one per already-installed package, before the actual install proceeds and succeeds. Cosmetic — the transaction completes fine — but looks alarming in the log view. Root cause not investigated; likely an unescaped/unresolved format-string token somewhere in the install worker's own pacman invocation or output parsing, unrelated to the real keyring/signing fixes from the same session.
-
-## Installer's "available only from the live session" error dialog still fires on real installed systems (cosmetic, root cause fixed)
-
-Confirmed live (2026-08-31) on a genuine fresh install: `reyos-installer.desktop`'s autostart (`X-KDE-autostart-after=panel`) fires unconditionally on every KDE session start, live or installed. The live-vs-installed *detection* itself is now fixed (see `fixes.md`'s "three live-session detection functions were all silently broken" entry) — the dialog now only appears because the `.desktop` file has no gate of its own and always launches the script, which correctly refuses and reports why. Still a jarring, repeated error dialog on every first login of a real install (twice in one session observed: right after login, and again after Welcome's branding-apply step) — a bad first impression even though nothing harmful happens. Real fix should gate the `.desktop` file itself (`OnlyShowIn`, or a condition keyed off the same cmdline check) so it doesn't autostart at all outside a live session. Not fixed yet.
 
 ## Launched apps sometimes never get a taskbar entry, on a real fresh install
 
@@ -67,6 +77,8 @@ First diagnosis attempt via terminal relay (no working SSH to a real install —
 - **Tried the "next step" from the fourth attempt: switching virtual desktops (`Meta+Ctrl+Right` then `Meta+Ctrl+Left`) while the icon count was in a degraded state — no effect.** Panel looked identical before and after. Either virtual-desktop switching doesn't count as a "damage/repaint" trigger for whatever's actually failing, or the stuck state isn't a one-way thing a simple repaint nudge fixes. Doesn't rule out `kwin --replace` or an output resize, still untried.
 - **Significant refinement to the fourth attempt's "whole surface sometimes not painted" theory**: reopened the Debug Console and specifically inspected all three `KWin::LayerShellV1Window` entries this time (the fourth attempt found the bottom panel one; this session also checked the desktop-background layer and the top panel for comparison). The bottom panel (`bufferGeometry: 0,760 1280x40`, `dock: true`) reported `hidden: false` with fully valid geometry **at the same moment its visible icon count was degraded** — but unlike the fourth attempt's full-panel-disappearance repro, this time the panel *background itself* was clearly still painted (visible in every screenshot), just with fewer than the expected 5 task icons inside it. That's a meaningfully different symptom shape than "the whole surface stops being painted": here the panel container is being painted correctly, but something inside it — the `icontasks` applet's own icon list — isn't consistently rendering all its items. **This points more specifically at `icontasks`' own internal Qt Quick rendering/task-model (a `Repeater`/`ListView`-style delegate population issue, or a race in how it queries the window list it's supposed to reflect) rather than a generic KWin-wide compositor paint bug** — though the fourth attempt's separate full-panel-disappearance repro is still real and may be a related-but-distinct failure mode of the same underlying surface, not necessarily the same root cause as this one.
 
+Status 2026-10-08: no fix exists and it has only ever been seen on VMs with software rendering; no observation from real hardware yet. Kept open.
+
 **Next steps if resumed**: this narrows the search from "KWin compositor" to "the `icontasks` plasmoid's own task-icon rendering" — worth checking `org.kde.plasma.icontasks`' QML source (`plasma-desktop` upstream) for how it populates its icon `Repeater`/model from the window list, and whether there's a known timing/recycling bug in that specific applet on this Plasma/KWin version. Also still untried: `kwin --replace` or an output resize as a repaint trigger (only virtual-desktop-switch was tried this session, and it didn't help); correlating the fluctuation with anything in `journalctl -f` filtered for `plasmashell`/`icontasks` while actively watching the count change (not done this session — was mid-diagnosis when time ran out); and getting a clean read on whether this is `llvmpipe`/software-rendering-specific by testing on real hardware, still not done.
 
 ## Control Center renders without icons/wrong theme if launched while the session is locked
@@ -80,6 +92,8 @@ Launched via autostart with no window focus — the first click on any button ge
 ## Dark→Light theme switch, then Light→Dark again: color scheme stops actually applying to app content (new deeper bug found investigating the entry below)
 
 Found live on the Dev VM (2026-08-27) while verifying the self-relaunch fix directly below. Sequence: Dark → Apply Light (worked correctly, confirmed via screenshot — window decoration *and* full content repainted light immediately) → Apply Dark again (window decoration went dark, but the sidebar/content stayed rendered in light colors). Kept re-checking for 15+ seconds — never self-corrected. Ruled out the relaunch code as the cause: killed the process entirely and cold-launched a brand-new instance (no relaunch chain at all) at the exact same point, and it *still* rendered light content with a dark title bar. `kreadconfig6` confirms `kdeglobals` genuinely says `ColorScheme=ReyOS` (dark) and `Icons/Theme=breeze-dark` at this point — so the config file is correct, but something in how a freshly-started Qt/Kirigami process resolves the actual color palette from that state is stuck on the previous (light) values. Not root-caused. Reproduce by flipping Light→Dark→Light→Dark a few times in one session and screenshotting after each `Apply`; worth checking whether `plasma-apply-colorscheme`'s own return code was actually 0 on the failing call, and whether this is specific to the Light→Dark direction or just whichever direction happens second in a quick sequence.
+
+Status 2026-10-08: **still reproducible** after the 2026-09-29 Light/Dark rework. Real `applyLookAndFeel()` Light → Dark → Light → Dark on the Dev VM: both Dark steps returned success, `kdeglobals` dark (`[Colors:Window] BackgroundNormal=20,16,13`), page says "Active: ReyOS Dark", but the relaunched Control Center draws light content. It's Light → Dark specifically: Dark → Light rendered correctly both times. Control Center was also light all day before the test with the scheme set to Dark.
 
 ## Control Center's own window doesn't pick up a live theme switch — partially fixed 2026-08-27, see `fixes.md`
 
@@ -98,3 +112,16 @@ Confirmed on 2 of 3 fresh `ReyOS-Test` live boots off the 2026-08-20 ISO (2026-0
 ## Desktop Folder Settings dialog shows a stock "About" tab
 
 Right-click desktop → Configure Desktop and Wallpaper opens Folder View's own settings dialog, which always includes a generic plugin "About" tab appended automatically by Plasma's own config-dialog framework — not specific to ReyOS's config, and no kiosk restriction found to suppress it. Purely cosmetic; disproportionate effort to fix (would mean patching Plasma itself). Deprioritized.
+
+## Resolved
+
+Moved out of the open list after the 2026-10-08 verification; original text kept for history.
+
+### Installer's "available only from the live session" error dialog on installed systems — resolved (`5ec0b31`)
+
+Resolved 2026-10-08 (Partially Verified): `reyos-launch-installer --autostart` exits silently when `/proc/cmdline` has no archiso parameters, and the installer's live-cleanup step removes the autostart file. On the real Lenovo install the launcher has the silent exit and its journal has no such dialog; not yet watched on screen. Note: `reyos-calamares` updates reinstall `/etc/xdg/autostart/reyos-installer.desktop` on installed systems, which is harmless because of the silent exit.
+
+Original entry:
+
+
+Confirmed live (2026-08-31) on a genuine fresh install: `reyos-installer.desktop`'s autostart (`X-KDE-autostart-after=panel`) fires unconditionally on every KDE session start, live or installed. The live-vs-installed *detection* itself is now fixed (see `fixes.md`'s "three live-session detection functions were all silently broken" entry) — the dialog now only appears because the `.desktop` file has no gate of its own and always launches the script, which correctly refuses and reports why. Still a jarring, repeated error dialog on every first login of a real install (twice in one session observed: right after login, and again after Welcome's branding-apply step) — a bad first impression even though nothing harmful happens. Real fix should gate the `.desktop` file itself (`OnlyShowIn`, or a condition keyed off the same cmdline check) so it doesn't autostart at all outside a live session. Not fixed yet.
