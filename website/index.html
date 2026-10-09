@@ -865,7 +865,7 @@
         <ul>
           <li><strong>After installing, update first:</strong> open Control Center → Updates → <strong>Install updates</strong>, then restart the computer. Fixes keep arriving between ISO releases, so this brings in the latest bug and security fixes and takes care of most known issues.</li>
           <li>The public ISO is out (2026.10.08) — download and checksums are in the Download section below. It fixes the 2026.10.01 installer stopping at the graphics-driver step ("Missing variables are: PK") and brings stable updates, the security fix and the new Control Center features. A full install of this ISO was checked in a virtual machine (install, first boot, Install updates, restart), not yet on real hardware, and installing next to an existing system shrinks its partition — back up your data first. Remote Desktop's video/input hasn't been verified end-to-end on real hardware yet.</li>
-          <li>Reyva for Windows is out (0.1.0.105). It was tested on a clean Windows machine (install, start-up, real sites, saved passwords, uninstall), but not yet used day-to-day by a person on a real PC, and the installer isn't code-signed, so SmartScreen warns on first run.</li>
+          <li>Reyva for Windows is out (0.1.0.106). It was tested on a clean Windows machine (install, start-up, real sites, saved passwords, uninstall), but not yet used day-to-day by a person on a real PC, and the installer isn't code-signed, so SmartScreen warns on first run.</li>
           <li>Reyva can't save passwords on at least one fresh install until a KDE Wallet exists (open KWallet Manager and create a wallet named <code>kdewallet</code>). A proper fix is being worked on.</li>
           <li><a href="#wsl" style="color:var(--copper-light);">ReyOS WSL</a> — a separate, terminal-only build for Windows Subsystem for Linux — is downloadable now, but was only built and verified on Linux (a real Dev VM build run). It hasn't been installed on a real Windows 11 + WSL2 machine yet.</li>
         </ul>
@@ -990,7 +990,7 @@
           <div class="platform-icon">🪟</div>
           <div class="platform-name">Windows</div>
           <p class="platform-desc">Windows 10/11, 64-bit. A per-user installer: no admin rights needed. Saved passwords go to Windows Credential Manager, and installed web apps show up in the Start menu.</p>
-          <a href="https://github.com/Reypaulino/ReyOS/releases/download/reyva-windows-v0.1.0.105/Reyva-Setup-0.1.0.105.exe" class="btn btn-ghost">Download for Windows (151 MB)</a>
+          <a href="https://github.com/Reypaulino/ReyOS/releases/download/reyva-windows-v0.1.0.106/Reyva-Setup-0.1.0.106.exe" class="btn btn-ghost">Download for Windows (151 MB)</a>
           <p class="platform-subnote"><a href="#browser-windows">Install notes ↓</a></p>
         </div>
       </div>
@@ -1009,10 +1009,10 @@ makepkg -si</code></pre>
         <p style="color:var(--text); font-weight:700; margin: 22px 0 10px;">Ubuntu / Debian</p>
         <p>A ready-made <code>amd64 .deb</code> is available on GitHub Releases. <code>apt</code> pulls in the system libraries QtWebEngine needs automatically, then sets up its own Python runtime (PySide6 + Qt WebEngine) on first install — this needs an internet connection during <code>apt install</code>, and can take a minute:</p>
         <pre><code>cd /tmp
-wget https://github.com/Reypaulino/ReyOS/releases/download/reyos-browser-v0.1.0-117ubuntu1/reyos-browser_0.1.0-117ubuntu1_amd64.deb
-sudo apt install ./reyos-browser_0.1.0-117ubuntu1_amd64.deb</code></pre>
+wget https://github.com/Reypaulino/ReyOS/releases/download/reyos-browser-v0.1.0-118ubuntu1/reyos-browser_0.1.0-118ubuntu1_amd64.deb
+sudo apt install ./reyos-browser_0.1.0-118ubuntu1_amd64.deb</code></pre>
         <p>Then launch it from your app menu, or run <code>reyos-browser</code>.</p>
-        <a href="https://github.com/Reypaulino/ReyOS/releases/tag/reyos-browser-v0.1.0-117ubuntu1" class="btn btn-ghost">Download for Ubuntu/Debian (.deb)</a>
+        <a href="https://github.com/Reypaulino/ReyOS/releases/tag/reyos-browser-v0.1.0-118ubuntu1" class="btn btn-ghost">Download for Ubuntu/Debian (.deb)</a>
 
         <p style="color:var(--text); font-weight:700; margin: 22px 0 10px;">Any distro (Flatpak)</p>
         <p>Works anywhere Flatpak is installed: Fedora, openSUSE, Mint, Pop!_OS, Steam Deck and more. Updates arrive with your normal Flatpak updates (software center or <code>flatpak update</code>). The first install also pulls the KDE runtime from Flathub. Installing a site as an app works too, except on Ubuntu 24.04, where the system blocks it for every Flatpak (Ubuntu users: use the <code>.deb</code> above):</p>
@@ -1021,10 +1021,10 @@ sudo apt install ./reyos-browser_0.1.0-117ubuntu1_amd64.deb</code></pre>
         <a href="https://reypaulino.github.io/reyva-flatpak/" class="btn btn-ghost">Install Flatpak</a>
 
         <p id="browser-windows" style="color:var(--text); font-weight:700; margin: 22px 0 10px; scroll-margin-top: 96px;">Windows</p>
-        <p>Download <a href="https://github.com/Reypaulino/ReyOS/releases/download/reyva-windows-v0.1.0.105/Reyva-Setup-0.1.0.105.exe" style="color:var(--copper-light);"><code>Reyva-Setup-0.1.0.105.exe</code></a> and run it. It installs for your user only (to <code>%LOCALAPPDATA%\Programs\Reyva</code>, no admin prompt) and adds Reyva to the Start menu. The installer isn't code-signed yet, so Windows SmartScreen may show "Windows protected your PC": click <strong style="color:var(--text);">More info → Run anyway</strong>.</p>
+        <p>Download <a href="https://github.com/Reypaulino/ReyOS/releases/download/reyva-windows-v0.1.0.106/Reyva-Setup-0.1.0.106.exe" style="color:var(--copper-light);"><code>Reyva-Setup-0.1.0.106.exe</code></a> and run it. It installs for your user only (to <code>%LOCALAPPDATA%\Programs\Reyva</code>, no admin prompt) and adds Reyva to the Start menu. The installer isn't code-signed yet, so Windows SmartScreen may show "Windows protected your PC": click <strong style="color:var(--text);">More info → Run anyway</strong>.</p>
         <p>Saved passwords live in Windows Credential Manager; "Install This Site as an App" adds the site to the Start menu under <em>Reyva Web Apps</em> with its own taskbar icon. There are no automatic updates yet: run a newer installer over the old one. Uninstall from Settings → Apps; bookmarks and settings in <code>%APPDATA%\Reyva</code> are kept.</p>
         <img src="screenshots/reyva-windows.png" alt="Reyva's New Tab page running on Windows" loading="lazy" style="width:100%; max-width:640px; height:auto; border-radius:10px; border:1px solid var(--border, rgba(255,255,255,0.1)); margin: 6px 0 14px;" />
-        <a href="https://github.com/Reypaulino/ReyOS/releases/tag/reyva-windows-v0.1.0.105" class="btn btn-ghost">Windows release notes</a>
+        <a href="https://github.com/Reypaulino/ReyOS/releases/tag/reyva-windows-v0.1.0.106" class="btn btn-ghost">Windows release notes</a>
       </div>
     </div>
   </section>

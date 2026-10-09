@@ -7,7 +7,7 @@ on:
       version:
         description: "Installer version (Windows wants four numbers, e.g. 0.1.0.102)"
         required: true
-        default: "0.1.0.105"
+        default: "0.1.0.106"
 
 jobs:
   build:

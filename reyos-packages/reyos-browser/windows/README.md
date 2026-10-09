@@ -1,7 +1,7 @@
 # Reyva (ReyOS web browser) on Windows
 
-Status (2026-10-05): **released** as `Reyva-Setup-0.1.0.105.exe` (GitHub Release
-`reyva-windows-v0.1.0.105`, linked from reyos.reyapps.com). Built and tested by the
+Status (2026-10-09): **released** as `Reyva-Setup-0.1.0.106.exe` (GitHub Release
+`reyva-windows-v0.1.0.106`, linked from reyos.reyapps.com). Built and tested by the
 "Reyva for Windows" workflow on GitHub's Windows runner: the exe stays up and
 renders a URL passed on the command line, the saved-password vault round-trips
 through Windows Credential Manager (two accounts on one site, then delete), the
@@ -35,7 +35,7 @@ python -m venv windows\.venv
 windows\.venv\Scripts\activate
 pip install -r windows\requirements.txt
 pyinstaller --noconfirm windows\reyos-browser.spec
-iscc /DAppVersion=0.1.0.105 windows\reyos-browser.iss
+iscc /DAppVersion=0.1.0.106 windows\reyos-browser.iss
 ```
 
 `dist\Reyva\` is the app folder (about 800 MB unpacked, a folder build
