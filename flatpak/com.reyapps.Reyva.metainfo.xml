@@ -67,6 +67,11 @@
   </requires>
 
   <releases>
+    <release version="0.1.2" date="2026-10-09">
+      <description>
+        <p>Video fullscreen works: a player's fullscreen button now fills the screen and hides the toolbars. Press Esc to leave it.</p>
+      </description>
+    </release>
     <release version="0.1.1" date="2026-10-06">
       <description>
         <p>Install any site as an app: it gets its own window and its own entry in your app menu, through your desktop's own confirmation dialog.</p>

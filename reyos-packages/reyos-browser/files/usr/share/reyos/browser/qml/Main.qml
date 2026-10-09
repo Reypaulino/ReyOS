@@ -21,6 +21,24 @@ ApplicationWindow {
     property var downloadRequests: ({})
     property var closedTabsStack: []
     property int findMatchCount: 0
+    // True while a page (a video player's fullscreen button) is fullscreen:
+    // the browser chrome is hidden and the window goes fullscreen with it.
+    property bool pageFullScreen: false
+    property int visibilityBeforeFullScreen: Window.Windowed
+
+    function setPageFullScreen(on) {
+        if (on === pageFullScreen) {
+            return
+        }
+        if (on) {
+            visibilityBeforeFullScreen = visibility
+            pageFullScreen = true
+            showFullScreen()
+        } else {
+            pageFullScreen = false
+            visibility = visibilityBeforeFullScreen === Window.FullScreen ? Window.Windowed : visibilityBeforeFullScreen
+        }
+    }
     readonly property string downloadsPath: StandardPaths.writableLocation(StandardPaths.DownloadLocation).toString().replace(/^file:\/\//, "")
     readonly property url homeUrl: Qt.resolvedUrl("../home.html")
 
@@ -458,6 +476,11 @@ ApplicationWindow {
     Shortcut { sequence: "Ctrl+F"; onActivated: window.openFind() }
     Shortcut { sequence: "Ctrl+Shift+R"; onActivated: window.openReaderMode() }
     Shortcut { sequence: "Ctrl+Q"; onActivated: Qt.quit() }
+    Shortcut {
+        sequence: "Esc"
+        enabled: window.pageFullScreen
+        onActivated: if (currentView) currentView.triggerWebAction(WebEngineView.ExitFullScreen)
+    }
 
     Connections {
         target: passwordBridge
@@ -471,6 +494,7 @@ ApplicationWindow {
 
     header: ColumnLayout {
         id: headerLayout
+        visible: !window.pageFullScreen
         spacing: 0
 
         Rectangle {
@@ -2028,7 +2052,13 @@ ApplicationWindow {
                     lifecycleTimer.restart()
                 }
 
-                onSelectedChanged: updateLifecycle()
+                onSelectedChanged: {
+                    if (!selected && isFullScreen) {
+                        triggerWebAction(WebEngineView.ExitFullScreen)
+                    }
+                    updateLifecycle()
+                }
+                Component.onDestruction: if (isFullScreen) window.setPageFullScreen(false)
                 onKeepAliveChanged: updateLifecycle()
                 Component.onCompleted: updateLifecycle()
 
@@ -2097,7 +2127,12 @@ ApplicationWindow {
                 // Chromium) -- this attribute just also happens to gate the PDF
                 // viewer's internal MIME handler extension.
                 settings.pluginsEnabled: true
+                settings.fullScreenSupportEnabled: true
 
+                onFullScreenRequested: function(request) {
+                    request.accept()
+                    window.setPageFullScreen(request.toggleOn)
+                }
                 onPermissionRequested: function(request) {
                     window.requestPermission(request)
                 }

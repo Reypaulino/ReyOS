@@ -17,6 +17,28 @@ ApplicationWindow {
     signal lifecycleActiveChanged(bool active)
 
     property bool keepRunning: false
+    property bool pageFullScreen: false
+    property int visibilityBeforeFullScreen: Window.Windowed
+
+    function setPageFullScreen(on) {
+        if (on === pageFullScreen) {
+            return
+        }
+        if (on) {
+            visibilityBeforeFullScreen = visibility
+            pageFullScreen = true
+            showFullScreen()
+        } else {
+            pageFullScreen = false
+            visibility = visibilityBeforeFullScreen === Window.FullScreen ? Window.Windowed : visibilityBeforeFullScreen
+        }
+    }
+
+    Shortcut {
+        sequence: "Esc"
+        enabled: appWindow.pageFullScreen
+        onActivated: view.triggerWebAction(WebEngineView.ExitFullScreen)
+    }
 
     function isMinimized() {
         return appWindow.visibility === Window.Minimized
@@ -81,6 +103,7 @@ ApplicationWindow {
         spacing: 0
 
         ToolBar {
+            visible: !appWindow.pageFullScreen
             Layout.fillWidth: true
             implicitHeight: 34
             background: Rectangle { color: "#302217" }
@@ -150,6 +173,11 @@ ApplicationWindow {
             settings.javascriptCanOpenWindows: false
             settings.pdfViewerEnabled: true
             settings.pluginsEnabled: true
+            settings.fullScreenSupportEnabled: true
+            onFullScreenRequested: function(request) {
+                request.accept()
+                appWindow.setPageFullScreen(request.toggleOn)
+            }
             onUrlChanged: browserBackend.setCurrentSite(url.toString())
             onLifecycleStateChanged: appWindow.lifecycleActiveChanged(lifecycleState === WebEngineView.LifecycleState.Active)
         }
