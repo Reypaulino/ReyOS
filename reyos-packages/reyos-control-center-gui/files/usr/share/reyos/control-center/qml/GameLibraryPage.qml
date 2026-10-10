@@ -221,6 +221,25 @@ Kirigami.Page {
                                 sourceSize.width: width * 2
                                 smooth: true
                             }
+                            // Text, not a theme icon: "window" isn't in every icon
+                            // theme and drew nothing on the ReyOS theme.
+                            Rectangle {
+                                visible: model.windowed
+                                anchors.top: parent.top
+                                anchors.right: parent.right
+                                anchors.margins: Kirigami.Units.smallSpacing
+                                width: windowedLabel.implicitWidth + Kirigami.Units.largeSpacing
+                                height: windowedLabel.implicitHeight + Kirigami.Units.smallSpacing
+                                radius: height / 2
+                                color: Qt.rgba(0, 0, 0, 0.7)
+                                Controls.Label {
+                                    id: windowedLabel
+                                    anchors.centerIn: parent
+                                    text: "In a window"
+                                    color: "white"
+                                    font.pointSize: Kirigami.Theme.smallFont.pointSize
+                                }
+                            }
                             Rectangle {
                                 anchors.centerIn: parent
                                 width: Kirigami.Units.iconSizes.huge
@@ -257,8 +276,36 @@ Kirigami.Page {
                         id: hover
                         anchors.fill: parent
                         hoverEnabled: true
+                        acceptedButtons: Qt.LeftButton | Qt.RightButton
                         cursorShape: model.playable ? Qt.PointingHandCursor : Qt.ArrowCursor
-                        onClicked: if (model.playable) backend.launchGame(model.systemId, model.path)
+                        onClicked: function(mouse) {
+                            if (mouse.button === Qt.RightButton) gameMenu.popup()
+                            else if (model.playable) backend.launchGame(model.systemId, model.path)
+                        }
+                        onPressAndHold: gameMenu.popup()
+                    }
+                    Controls.Menu {
+                        id: gameMenu
+                        width: Kirigami.Units.gridUnit * 17
+                        Controls.MenuItem {
+                            text: "Play"
+                            icon.name: "media-playback-start"
+                            enabled: model.playable
+                            onTriggered: backend.launchGame(model.systemId, model.path)
+                        }
+                        Controls.MenuItem {
+                            text: "Always play this game in a window"
+                            checkable: true
+                            checked: model.windowed
+                            onToggled: {
+                                backend.setGameWindowed(model.path, checked)
+                                gameModel.setProperty(index, "windowed", checked)
+                                // Keep the unfiltered list in step, or the badge
+                                // would vanish on the next search/filter change.
+                                for (var i = 0; i < allGames.length; i++)
+                                    if (allGames[i].path === model.path) allGames[i].windowed = checked
+                            }
+                        }
                     }
                 }
             }

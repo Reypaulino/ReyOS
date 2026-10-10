@@ -96,7 +96,7 @@ def system_installed(system):
 
 
 # ---- Display settings -----------------------------------------------------
-DEFAULT_SETTINGS = {"fullscreen": True, "overlay": True, "picture": "clean", "resolution": 1, "expanded": None, "bios_expanded": False, "boxart": True}
+DEFAULT_SETTINGS = {"fullscreen": True, "overlay": True, "picture": "clean", "resolution": 1, "ps2_graphics": True, "windowed_games": [], "expanded": None, "bios_expanded": False, "boxart": True}
 
 # 3D internal resolution per core, keyed by ReyOS's 1x / 2x / 4x choice.
 # Option names and values checked against the cores Arch ships.
@@ -126,7 +126,23 @@ def load_settings():
         settings["picture"] = "fill"
     if settings["resolution"] not in RESOLUTION_OPTIONS:
         settings["resolution"] = 1
+    if not isinstance(settings["windowed_games"], list):
+        settings["windowed_games"] = []
     return settings
+
+
+def game_fullscreen(path, settings=None):
+    """Full screen for this game: the Display switch, unless the game is in
+    the library's "Always play in a window" list."""
+    settings = settings or load_settings()
+    return bool(settings["fullscreen"]) and str(path) not in settings["windowed_games"]
+
+
+def set_game_windowed(path, windowed):
+    games = [g for g in load_settings()["windowed_games"] if g != str(path)]
+    if windowed:
+        games.append(str(path))
+    save_settings({"windowed_games": games})
 
 
 def save_settings(settings):
@@ -174,7 +190,7 @@ def gpu_is_weak():
     return not any(g["vendor"] == "amd" or (g["vendor"] == "nvidia" and g.get("nvidiaOpenSupported")) for g in gpus)
 
 
-def write_retroarch_cfg(settings=None, system_id=None):
+def write_retroarch_cfg(settings=None, system_id=None, fullscreen=None):
     """The small config ReyOS appends at launch (--appendconfig), so the
     user's own ~/.config/retroarch/retroarch.cfg is never rewritten. Core
     options go to a ReyOS-owned file for the same reason."""
@@ -187,7 +203,7 @@ def write_retroarch_cfg(settings=None, system_id=None):
         "savefile_directory": GAMES_DIR / "Saves",
         "savestate_directory": GAMES_DIR / "Saves" / "states",
         "rgui_browser_directory": GAMES_DIR / "ROMs",
-        "video_fullscreen": "true" if settings["fullscreen"] else "false",
+        "video_fullscreen": "true" if (settings["fullscreen"] if fullscreen is None else fullscreen) else "false",
         "video_scale_integer": "true" if picture in ("sharp", "lcd") else "false",
         "video_smooth": "true" if picture == "smooth" else "false",
         # Always set: a Vulkan driver picked once in RetroArch's own menu is
@@ -275,12 +291,67 @@ def prepare_flatpak(system):
     _ini_default(lines, "GameList", "RecursivePaths", str(GAMES_DIR / "ROMs" / "ps2"))
     # MangoHud can't reach into the Flatpak; PCSX2's own on-screen display
     # shows the same numbers and follows the overlay switch.
-    overlay = "true" if load_settings()["overlay"] else "false"
+    settings = load_settings()
+    overlay = "true" if settings["overlay"] else "false"
     for key in ("OsdShowFPS", "OsdShowSpeed", "OsdShowCPU", "OsdShowGPU"):
         _ini_set(lines, "EmuCore/GS", key, overlay)
+    if settings["ps2_graphics"]:
+        _apply_pcsx2_graphics(lines, settings)
+    _map_pcsx2_controller(lines)
     if lines != before:
         PCSX2_INI.parent.mkdir(parents=True, exist_ok=True)
         PCSX2_INI.write_text("\n".join(lines) + "\n")
+
+
+def _apply_pcsx2_graphics(lines, settings):
+    """Control Center's Display settings replace PCSX2's own graphics
+    settings ("Also use for PlayStation 2" switch): 3D resolution, sharp
+    (integer) scaling and full screen when PCSX2 is opened on its own. The
+    aspect ratio stays PCSX2's (stretching PS2 games to 16:9 distorts them).
+    Same 4x -> 2x cap as the RetroArch cores without a strong GPU."""
+    resolution = settings["resolution"]
+    if resolution > 2 and gpu_is_weak():
+        resolution = 2
+    picture = settings["picture"]
+    _ini_set(lines, "EmuCore/GS", "upscale_multiplier", str(resolution))
+    _ini_set(lines, "EmuCore/GS", "IntegerScaling", "true" if picture in ("sharp", "lcd") else "false")
+    _ini_set(lines, "UI", "StartFullscreen", "true" if settings["fullscreen"] else "false")
+
+
+# Pad 1 bound to the first controller the way PCSX2's own "Automatic
+# Mapping" does it for a standard pad. Binding names checked against
+# pcsx2-qt v2.8.2; Pad 1 key names from a PCSX2-written PCSX2.ini.
+PCSX2_PAD_SDL = {
+    "Up": "DPadUp", "Down": "DPadDown", "Left": "DPadLeft", "Right": "DPadRight",
+    "Cross": "FaceSouth", "Circle": "FaceEast", "Square": "FaceWest", "Triangle": "FaceNorth",
+    "L1": "LeftShoulder", "R1": "RightShoulder", "L2": "+LeftTrigger", "R2": "+RightTrigger",
+    "L3": "LeftStick", "R3": "RightStick", "Select": "Back", "Start": "Start", "Analog": "Guide",
+    "LUp": "-LeftY", "LDown": "+LeftY", "LLeft": "-LeftX", "LRight": "+LeftX",
+    "RUp": "-RightY", "RDown": "+RightY", "RLeft": "-RightX", "RRight": "+RightX",
+    "LargeMotor": "LargeMotor", "SmallMotor": "SmallMotor",
+}
+
+
+def controller_connected():
+    return any(Path("/sys/class/input").glob("js*"))
+
+
+def _map_pcsx2_controller(lines):
+    """PCSX2 keeps Pad 1 on the keyboard even with a controller connected
+    (seen with an Xbox pad on the real laptop). When a controller is plugged
+    in and no Pad 1 button is bound to anything but the keyboard (nothing
+    remapped in PCSX2), bind Pad 1 to the first controller. Without a
+    controller the keyboard keys stay."""
+    if not controller_connected():
+        return
+    for key in PCSX2_PAD_SDL:
+        value = _ini_get(lines, "Pad1", key)
+        if value and not value.startswith("Keyboard/"):
+            return
+    _ini_default(lines, "InputSources", "SDL", "true")
+    _ini_default(lines, "Pad1", "Type", "DualShock2")
+    for key, control in PCSX2_PAD_SDL.items():
+        _ini_set(lines, "Pad1", key, "SDL-0/" + control)
 
 
 def _ini_find(lines, section, key):
@@ -329,11 +400,12 @@ def launch_command(system, rom):
     # Flatpaks it registers the `flatpak run` process, which lives as long as
     # the game does.
     gamemode = ["gamemoderun"] if shutil.which("gamemoderun") else []
+    fullscreen = game_fullscreen(rom, settings)
     if system["id"] == "ps2":
         return gamemode + ["flatpak", "run", system["flatpak"], "-batch",
-                           "-fullscreen" if settings["fullscreen"] else "-nofullscreen", "--", rom]
+                           "-fullscreen" if fullscreen else "-nofullscreen", "--", rom]
     if system["id"] == "3ds":
-        return gamemode + ["flatpak", "run", system["flatpak"], "-f" if settings["fullscreen"] else "-w", rom]
+        return gamemode + ["flatpak", "run", system["flatpak"], "-f" if fullscreen else "-w", rom]
     cmd = ["retroarch", f"--appendconfig={RETROARCH_REYOS_CFG}", "-L", str(core_path(system)), rom]
     shader = shader_for(system["id"], settings)
     if shader:
@@ -365,7 +437,7 @@ def launch_game(system_id, path):
         return False, f"The {system['name']} emulator isn't installed yet -- set it up in Control Center > Gaming."
     if not RETROARCH_REYOS_CFG.is_file():
         prepare_folders()
-    write_retroarch_cfg(system_id=system["id"])
+    write_retroarch_cfg(system_id=system["id"], fullscreen=game_fullscreen(path))
     if "flatpak" in system:
         prepare_flatpak(system)
     LAUNCH_LOG.parent.mkdir(parents=True, exist_ok=True)

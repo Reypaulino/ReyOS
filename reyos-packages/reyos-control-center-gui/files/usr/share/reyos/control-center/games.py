@@ -85,6 +85,7 @@ class GamesBackend(QObject):
     @Slot(result="QVariantList")
     def emulationGames(self):
         games = []
+        windowed = set(emulation.load_settings()["windowed_games"])
         for system in EMU_SYSTEMS:
             playable = emulation.system_installed(system)
             for path in emulation.scan_games(system):
@@ -92,6 +93,7 @@ class GamesBackend(QObject):
                     "title": emulation.game_title(path),
                     "system": system["name"], "short": system["short"], "systemId": system["id"],
                     "path": str(path), "playable": playable,
+                    "windowed": str(path) in windowed,
                     "cover": emulation.local_cover(system, path),
                 })
         games.sort(key=lambda g: (g["title"].lower(), g["system"]))
@@ -130,6 +132,10 @@ class GamesBackend(QObject):
             worker.cancelled = True
             if not worker.wait(2000):
                 os._exit(0)
+
+    @Slot(str, bool)
+    def setGameWindowed(self, path, windowed):
+        emulation.set_game_windowed(path, windowed)
 
     @Slot(str, str)
     def launchGame(self, system_id, path):

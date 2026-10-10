@@ -362,10 +362,18 @@ Kirigami.ScrollablePage {
             contentItem: ColumnLayout {
                 spacing: Kirigami.Units.largeSpacing
                 Kirigami.Heading { text: "Display"; level: 3 }
+                // Switch labels don't wrap: a long one widens the whole card
+                // past the window. Longer explanations go in wrapped Labels.
                 Controls.Switch {
                     text: "Start games in full screen (set it here; RetroArch applies this at every launch)"
                     checked: emuSettings.fullscreen
                     onToggled: saveSettings({ fullscreen: checked })
+                }
+                Controls.Label {
+                    Layout.fillWidth: true
+                    wrapMode: Text.Wrap
+                    opacity: 0.7
+                    text: "To keep one game in a window, right-click it in the game library and choose \"Always play this game in a window\"."
                 }
                 Controls.Switch {
                     text: "Show a performance overlay while playing (FPS, CPU and GPU; Shift+F12 hides it in a game)"
@@ -397,12 +405,18 @@ Kirigami.ScrollablePage {
                     opacity: 0.7
                     text: "3D resolution applies to Nintendo 64, Dreamcast, PlayStation, PSP, Nintendo DS and GameCube / Wii. It does not change NES, SNES, Game Boy, GBA or Genesis games, which are drawn at their original size (use Picture for those; Clean and LCD need the shader pack, installed with the emulators). On computers without a dedicated graphics card, 4× runs as 2×. If a game stutters, go back to Original."
                 }
+                Controls.Switch {
+                    visible: flatpakSystems.some(function(s) { return s.id === "ps2" })
+                    text: "Also use this 3D resolution and picture for PlayStation 2"
+                    checked: emuSettings.ps2_graphics !== false
+                    onToggled: saveSettings({ ps2_graphics: checked })
+                }
                 Controls.Label {
                     visible: flatpakSystems.length > 0
                     Layout.fillWidth: true
                     wrapMode: Text.Wrap
                     opacity: 0.7
-                    text: "PlayStation 2 and 3DS use their own emulator apps: full screen follows the switch above, everything else (resolution, controller buttons) is in the app's own settings."
+                    text: "PlayStation 2 and 3DS use their own emulator apps: full screen follows the switch above. With the switch on, PlayStation 2 also follows 3D resolution and Picture, replacing PCSX2's own graphics settings at every launch; turn it off to keep PCSX2's settings. Everything else is in the app's own settings."
                 }
                 Flow {
                     Layout.fillWidth: true
@@ -473,7 +487,7 @@ Kirigami.ScrollablePage {
                     Layout.fillWidth: true
                     wrapMode: Text.Wrap
                     opacity: 0.7
-                    text: "In a game, Start + Select (or the Home button) opens the emulator menu, where you can save, load or quit. Keyboard works too: arrow keys, Z X A S, Enter = Start, F1 = menu, Esc = quit." + (flatpakSystems.length > 0 ? " PlayStation 2 and 3DS recognise common controllers on their own; change their buttons in the app's settings." : "")
+                    text: "In a game, Start + Select (or the Home button) opens the emulator menu, where you can save, load or quit. Keyboard works too: arrow keys, Z X A S, Enter = Start, F1 = menu, Esc = quit." + (flatpakSystems.length > 0 ? " PlayStation 2: a connected controller becomes player 1 when a game starts, unless you changed its buttons in PCSX2. 3DS: set its buttons in Azahar's settings." : "")
                 }
             }
         }
