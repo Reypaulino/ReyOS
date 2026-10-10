@@ -6,6 +6,14 @@ This file was rewritten from scratch on 2026-08-18 after a full audit of the wor
 
 **2026-10-08 verification pass:** see `BUG_VERIFICATION_REPORT.md` for what was re-tested and how. Entries below carry a "Status 2026-10-08" line where they were checked; resolved entries moved to the "Resolved" section at the end.
 
+## Reyva can't save passwords on a fresh install: no default wallet
+
+Added 2026-10-09, real laptop install (reported 2026-10-08, cause confirmed by the ReyOS-side agent). Saving a password in Reyva fails with `[org.freedesktop.DBus.Error.UnknownObject] ("No such object path '/org/freedesktop/secrets/aliases/default'",)`. `~/.local/share/kwalletd/` is empty and there's no `~/.config/kwalletrc`: no wallet was ever created. The Secret Service (`ksecretd`) runs and exports `/org/freedesktop/secrets/session/…`, but there's no collection and no `default` alias. Not fixed. Likely fix: create the default wallet/collection on first login (Welcome or a first-run step), or have Reyva create the collection through the Secret Service `CreateCollection` call when the alias is missing. Check what a fresh Calamares install sets up (PAM `pam_kwallet5` + an empty wallet) before choosing.
+
+## Discover can't manage system packages or firmware
+
+Added 2026-10-09, real laptop install (ReyOS-side agent's log check). Discover logs that its `packagekit-backend` and `fwupd-backend` fail to load (`libpackagekitqt6` / `libfwupd.so.3` missing), so it only handles Flatpaks. Probably intended (system updates go through Control Center), but Discover still shows the empty sections. Decide: install the two backends, or hide/remove them so Discover is clearly Flatpak-only.
+
 ## Bottom panel stays light after switching Light → Dark
 
 Added 2026-10-08, Dev VM only. Driving `applyLookAndFeel()` Light → Dark → Light → Dark: after each Dark step the bottom panel stayed light (still light 60 s later with a freshly restarted plasmashell), while `kdeglobals` held the dark `ReyOS` scheme and the Plasma theme was `ReyOS` (panel transparency 85%). It was dark before the test. Not root-caused; check on real hardware first (the VM renders in software).
@@ -29,6 +37,8 @@ Found live (2026-09-12) while investigating a different PDF complaint ("also in 
 ## ReyOS Welcome's software install prints "unknown key '%INSTALLED_DB%' in local database" warning spam
 
 Confirmed live (2026-09-09) on a fresh install: installing anything from Welcome's software picker (e.g. `btop`) prints a wall of `warning: <pkgname>: unknown key '%INSTALLED_DB%' in local database` lines, one per already-installed package, before the actual install proceeds and succeeds. Cosmetic — the transaction completes fine — but looks alarming in the log view. Root cause not investigated; likely an unescaped/unresolved format-string token somewhere in the install worker's own pacman invocation or output parsing, unrelated to the real keyring/signing fixes from the same session.
+
+Update 2026-10-09: not Welcome-specific. A plain `sudo pacman -Sw reyos-local/reyos-control-center-gui` on the Dev VM printed the same warning for ~110 packages (all from the ISO's package set: `base`, `sudo`, `plasma-desktop`, `sddm`, `zram-generator`, …). So it's in pacman's local database (`/var/lib/pacman/local/*/desc` entries carrying a `%INSTALLED_DB%` key that the installed pacman doesn't know), not in Welcome's code. Unverified guess: written by the newer pacman used to build the ISO, read by the older pacman from the stable snapshot. Check one `desc` file and the pacman versions before fixing.
 
 ## Launched apps sometimes never get a taskbar entry, on a real fresh install
 
@@ -111,7 +121,19 @@ Right-click desktop → Configure Desktop and Wallpaper opens Folder View's own 
 
 ## Resolved
 
-Moved out of the open list after the 2026-10-08 verification; original text kept for history.
+Moved out of the open list after the 2026-10-08 verification; original text kept for history. Fixes from 2026-10-09 are listed first (details in `fixes.md`).
+
+### Reyva: fullscreen video didn't work — fixed in Flatpak 0.1.2, `.deb` 0.1.0-118ubuntu1, Windows 0.1.0.106
+
+Reported from the laptop 2026-10-09. Neither `WebEngineView` enabled `fullScreenSupportEnabled` or handled `fullScreenRequested`, so every player's fullscreen button did nothing. Verified on the Dev VM desktop (real fullscreen, real Esc), and in a clean Ubuntu container (.deb); the ReyOS-side agent confirmed the code is in the laptop's installed 0.1.2 but didn't watch it on screen. Not exercised on Windows.
+
+### Reyva: 720p+ video had no picture on Intel graphics — fixed in Flatpak 0.1.3 / `.deb` 0.1.0-119ubuntu1, **not yet confirmed on the laptop**
+
+Reported from the laptop 2026-10-09 ("watching video does not work"). GPU-decoded (VA-API) frames couldn't be imported for drawing in the Flatpak's QtWebEngine 6.11.1 (`MailboxVideoFrameConverter`, GPU context lost; 812 of 816 frames lost, one SIGTRAP crash). Reyva now passes `--disable-accelerated-video-decode` on Linux. Verified on the Dev VM (software decode active after `flatpak update`) and by the ReyOS-side agent with the flag by hand (0 errors). Move fully to `fixes.md` once the laptop confirms with 0.1.3 installed.
+
+### Control Center didn't show Flatpak updates, and hid why a Flatpak update failed — fixed in control-center-gui 1.0.0-120
+
+Reported from the laptop 2026-10-09 (Discover showed the Reyva update, Control Center didn't; a disk-full update only said "Flatpak update failed."). "Check for updates" and the Flatpak page now list pending app updates with old → new versions, and failures name the cause. Verified on the Dev VM with a real pending update (Reyva rolled back to 0.1.2, plus Azahar from Flathub) through Update all. The disk-full message was only unit-checked.
 
 ### Published ISO 2026.10.01: install stopped with "Missing variables are: PK" — resolved by ISO 2026.10.08
 
