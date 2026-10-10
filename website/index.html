@@ -1009,15 +1009,15 @@ makepkg -si</code></pre>
         <p style="color:var(--text); font-weight:700; margin: 22px 0 10px;">Ubuntu / Debian</p>
         <p>A ready-made <code>amd64 .deb</code> is available on GitHub Releases. <code>apt</code> pulls in the system libraries QtWebEngine needs automatically, then sets up its own Python runtime (PySide6 + Qt WebEngine) on first install — this needs an internet connection during <code>apt install</code>, and can take a minute:</p>
         <pre><code>cd /tmp
-wget https://github.com/Reypaulino/ReyOS/releases/download/reyos-browser-v0.1.0-118ubuntu1/reyos-browser_0.1.0-118ubuntu1_amd64.deb
-sudo apt install ./reyos-browser_0.1.0-118ubuntu1_amd64.deb</code></pre>
+wget https://github.com/Reypaulino/ReyOS/releases/download/reyos-browser-v0.1.0-119ubuntu1/reyos-browser_0.1.0-119ubuntu1_amd64.deb
+sudo apt install ./reyos-browser_0.1.0-119ubuntu1_amd64.deb</code></pre>
         <p>Then launch it from your app menu, or run <code>reyos-browser</code>.</p>
-        <a href="https://github.com/Reypaulino/ReyOS/releases/tag/reyos-browser-v0.1.0-118ubuntu1" class="btn btn-ghost">Download for Ubuntu/Debian (.deb)</a>
+        <a href="https://github.com/Reypaulino/ReyOS/releases/tag/reyos-browser-v0.1.0-119ubuntu1" class="btn btn-ghost">Download for Ubuntu/Debian (.deb)</a>
 
         <p style="color:var(--text); font-weight:700; margin: 22px 0 10px;">Any distro (Flatpak)</p>
         <p>Works anywhere Flatpak is installed: Fedora, openSUSE, Mint, Pop!_OS, Steam Deck and more. Updates arrive with your normal Flatpak updates (software center or <code>flatpak update</code>). The first install also pulls the KDE runtime from Flathub. Installing a site as an app works too, except on Ubuntu 24.04, where the system blocks it for every Flatpak (Ubuntu users: use the <code>.deb</code> above):</p>
         <pre><code>flatpak install --user https://reypaulino.github.io/reyva-flatpak/com.reyapps.Reyva.flatpakref</code></pre>
-        <p>Then launch it from your app menu, or run <code>flatpak run com.reyapps.Reyva</code>. Prefer a single file? The <a href="https://github.com/Reypaulino/ReyOS/releases/tag/reyva-flatpak-v0.1.2" style="color:var(--copper-light);">Reyva.flatpak</a> download installs the same app and updates the same way.</p>
+        <p>Then launch it from your app menu, or run <code>flatpak run com.reyapps.Reyva</code>. Prefer a single file? The <a href="https://github.com/Reypaulino/ReyOS/releases/tag/reyva-flatpak-v0.1.3" style="color:var(--copper-light);">Reyva.flatpak</a> download installs the same app and updates the same way.</p>
         <a href="https://reypaulino.github.io/reyva-flatpak/" class="btn btn-ghost">Install Flatpak</a>
 
         <p id="browser-windows" style="color:var(--text); font-weight:700; margin: 22px 0 10px; scroll-margin-top: 96px;">Windows</p>
