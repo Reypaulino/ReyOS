@@ -32,6 +32,7 @@ from looks import (  # Qt-free Look / Light-Dark helpers, also run at login
 )
 import emulation  # Qt-free emulation helpers (systems, settings, BIOS, controllers)
 import steam_options  # Qt-free: GameMode/MangoHud in Steam games' launch options
+import flatpak_updates  # Qt-free: pending Flatpak updates, readable update errors
 from emulation import EMU_SYSTEMS, GAMES_DIR, RETROARCH_REYOS_CFG
 
 
@@ -242,6 +243,34 @@ def _run(cmd, progress_emit=None):
         if progress_emit:
             progress_emit(line.rstrip())
     return proc.wait()
+
+
+def _flatpak_update(emit):
+    # Returns (ok, message); the message names the real cause (e.g. a full
+    # disk) instead of a bare "failed".
+    warning = flatpak_updates.low_space_warning()
+    if warning:
+        emit(warning)
+    lines = []
+
+    def keep(line):
+        lines.append(line)
+        del lines[:-40]
+        emit(line)
+
+    emit("$ flatpak update -y")
+    if _run(["flatpak", "update", "-y"], keep) == 0:
+        return True, "Flatpaks updated."
+    return False, flatpak_updates.explain_failure(lines)
+
+
+def _app_updates_text(updates):
+    if not updates:
+        return ""
+    names = ", ".join(u["name"] for u in updates)
+    if len(updates) == 1:
+        return f"1 app update is available: {names}."
+    return f"{len(updates)} app updates are available: {names}."
 
 
 # For tools whose output is parsed (lpstat, scanimage translate theirs).
@@ -551,12 +580,25 @@ class PkgWorker(_Worker):
             if self.action == "check":
                 emit("$ checkupdates")
                 rc = _run(["checkupdates"], emit)
+                # Flatpak apps (Reyva, emulators...) update separately from
+                # pacman; without this only Discover showed their updates.
+                emit("$ flatpak remote-ls --updates")
+                updates = flatpak_updates.available_updates()
+                for u in updates:
+                    emit("  " + flatpak_updates.describe(u))
+                if not updates:
+                    emit("  No Flatpak app updates.")
+                apps = _app_updates_text(updates)
+                if updates:
+                    warning = flatpak_updates.low_space_warning()
+                    if warning:
+                        apps += " " + warning
                 if rc == 0:
-                    self.finished_ok.emit(True, "Updates are available.")
+                    self.finished_ok.emit(True, ("System updates are available. " + apps).strip())
                 elif rc == 2:
-                    self.finished_ok.emit(True, "Your packages are up to date.")
+                    self.finished_ok.emit(True, "Your system packages are up to date. " + apps if apps else "Your packages are up to date.")
                 else:
-                    self.finished_ok.emit(False, "Could not check updates. Verify your network connection.")
+                    self.finished_ok.emit(False, ("Could not check system updates. Verify your network connection. " + apps).strip())
             elif self.action == "upgrade":
                 _wait_for_pacman_lock(emit)
                 emit("$ sudo " + " ".join(_upgrade_cmd()))
@@ -588,10 +630,12 @@ class PkgWorker(_Worker):
                 if _run(["sudo", "-n", REYOS_ADMIN, "clean-cache"], emit) != 0:
                     failed.append("cleaning the package cache")
                 emit("[3/3] Flatpak update...")
-                if _run(["flatpak", "update", "-y"], emit) != 0:
+                flatpak_ok, flatpak_message = _flatpak_update(emit)
+                if not flatpak_ok:
                     failed.append("updating Flatpak apps")
                 if failed:
-                    self.finished_ok.emit(True, "System updated, but " + " and ".join(failed) + " failed -- see the log.")
+                    detail = " " + flatpak_message if not flatpak_ok else " -- see the log."
+                    self.finished_ok.emit(True, "System updated, but " + " and ".join(failed) + " failed." + detail)
                 else:
                     self.finished_ok.emit(True, "Full update complete.")
             elif self.action == "reyos":
@@ -2117,21 +2161,16 @@ class Backend(QObject):
 
     @staticmethod
     def _compute_flatpak_list():
-        try:
-            out = subprocess.check_output(
-                ["flatpak", "list", "--app", "--columns=application,name,version"], text=True,
-            )
-        except Exception:
-            return []
+        updates = {u["appId"]: u for u in flatpak_updates.available_updates()}
         apps = []
-        for line in out.splitlines():
-            parts = line.split("\t")
-            if len(parts) < 2:
-                continue
+        for app_id, info in flatpak_updates.installed_apps().items():
+            update = updates.get(app_id)
             apps.append({
-                "appId": parts[0],
-                "appName": parts[1],
-                "appVersion": parts[2] if len(parts) > 2 else "",
+                "appId": app_id,
+                "appName": info["name"],
+                "appVersion": info["version"],
+                "hasUpdate": update is not None,
+                "updateVersion": update["version"] if update else "",
             })
         return apps
 
@@ -2150,10 +2189,7 @@ class Backend(QObject):
 
     @Slot()
     def updateFlatpaks(self):
-        def task(emit):
-            rc = _run(["flatpak", "update", "-y"], emit)
-            return rc == 0, ("Flatpaks updated." if rc == 0 else "Flatpak update failed.")
-        self._run_action(task)
+        self._run_action(_flatpak_update)
 
     # --- systemd services ---------------------------------------------------
 
