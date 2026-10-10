@@ -1700,6 +1700,20 @@ def _enable_page_gc_flag():
     os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = flags
 
 
+def _disable_hardware_video_decode_flag():
+    # GPU-decoded (VA-API) video frames can't be imported for drawing in the
+    # Flatpak's QtWebEngine on Intel (HD 630 + nouveau laptop, Plasma Wayland):
+    # "Could not find SharedImageBackingFactory ... MailboxVideoFrameConverter",
+    # the GPU context is lost and 812 of 816 frames of a 720p video never drew
+    # (sound and clock kept running). CPU decoding showed all 834 frames.
+    # Small videos are CPU-decoded anyway, so only 720p and up were affected.
+    if IS_WINDOWS:
+        return
+    flags = os.environ.get("QTWEBENGINE_CHROMIUM_FLAGS", "")
+    if "--disable-accelerated-video-decode" not in flags:
+        os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = f"{flags} --disable-accelerated-video-decode".strip()
+
+
 def _app_icon() -> QIcon:
     if IS_WINDOWS:
         return QIcon(str(APP_ICON_ICO))
@@ -1718,6 +1732,7 @@ def _set_windows_app_id(app_id: str) -> None:
 
 def main():
     _enable_page_gc_flag()
+    _disable_hardware_video_decode_flag()
     # Under Plasma, Qt picks KDE's org.kde.desktop controls style, which looks
     # icons up by theme name: the toolbar's own SVG icons came out blank and
     # the tab strip collapsed (real install, Forest look, 2026-10-01). Fusion
