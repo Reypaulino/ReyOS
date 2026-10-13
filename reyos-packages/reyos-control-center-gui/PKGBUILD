@@ -1,7 +1,7 @@
 # Maintainer: Rey Paulino
 pkgname=reyos-control-center-gui
 pkgver=1.0.0
-pkgrel=121
+pkgrel=122
 pkgdesc="ReyOS Control Center — Kirigami/QML GUI for updates, performance, network, disk and permissions"
 arch=('any')
 license=('MIT')
@@ -14,6 +14,8 @@ sha256sums=()
 package() {
     cp -a "$startdir/files/etc" "$pkgdir/"
     cp -a "$startdir/files/usr" "$pkgdir/"
+    # cp -a keeps the build checkout's modes; a group-writable umask there left dirs 775.
+    chmod -R go-w "$pkgdir"
     find "$pkgdir/etc/skel/.local/share/applications" -type f -exec chmod 644 {} \;
     find "$pkgdir/usr/share/reyos/control-center/qml" -type f -exec chmod 644 {} \;
     find "$pkgdir/usr/local/share/applications" -type f -exec chmod 644 {} \;
@@ -28,4 +30,5 @@ package() {
     chmod 755 "$pkgdir/usr/share/reyos/control-center/reyos-fix-permissions.sh"
     chmod 755 "$pkgdir/usr/share/reyos/control-center/reyos-manage-users.sh"
     chmod 755 "$pkgdir/usr/share/reyos/control-center/reyos-install-emulators.sh"
+    chmod 755 "$pkgdir/usr/share/reyos/control-center/reyos-pcsx2"
 }

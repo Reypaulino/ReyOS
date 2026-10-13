@@ -4,6 +4,7 @@ Operation = Upgrade
 Type = Package
 Target = reyos-calamares
 Target = cachyos-calamares
+Target = reyos-calamares-core
 
 [Action]
 Description = Applying ReyOS Calamares config overrides...

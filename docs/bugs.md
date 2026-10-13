@@ -10,10 +10,6 @@ This file was rewritten from scratch on 2026-08-18 after a full audit of the wor
 
 Added 2026-10-09, real laptop install (reported 2026-10-08, cause confirmed by the ReyOS-side agent). Saving a password in Reyva fails with `[org.freedesktop.DBus.Error.UnknownObject] ("No such object path '/org/freedesktop/secrets/aliases/default'",)`. `~/.local/share/kwalletd/` is empty and there's no `~/.config/kwalletrc`: no wallet was ever created. The Secret Service (`ksecretd`) runs and exports `/org/freedesktop/secrets/session/…`, but there's no collection and no `default` alias. Not fixed. Likely fix: create the default wallet/collection on first login (Welcome or a first-run step), or have Reyva create the collection through the Secret Service `CreateCollection` call when the alias is missing. Check what a fresh Calamares install sets up (PAM `pam_kwallet5` + an empty wallet) before choosing.
 
-## Discover can't manage system packages or firmware
-
-Added 2026-10-09, real laptop install (ReyOS-side agent's log check). Discover logs that its `packagekit-backend` and `fwupd-backend` fail to load (`libpackagekitqt6` / `libfwupd.so.3` missing), so it only handles Flatpaks. Probably intended (system updates go through Control Center), but Discover still shows the empty sections. Decide: install the two backends, or hide/remove them so Discover is clearly Flatpak-only.
-
 ## Bottom panel stays light after switching Light → Dark
 
 Added 2026-10-08, Dev VM only. Driving `applyLookAndFeel()` Light → Dark → Light → Dark: after each Dark step the bottom panel stayed light (still light 60 s later with a freshly restarted plasmashell), while `kdeglobals` held the dark `ReyOS` scheme and the Plasma theme was `ReyOS` (panel transparency 85%). It was dark before the test. Not root-caused; check on real hardware first (the VM renders in software).
@@ -39,6 +35,8 @@ Found live (2026-09-12) while investigating a different PDF complaint ("also in 
 Confirmed live (2026-09-09) on a fresh install: installing anything from Welcome's software picker (e.g. `btop`) prints a wall of `warning: <pkgname>: unknown key '%INSTALLED_DB%' in local database` lines, one per already-installed package, before the actual install proceeds and succeeds. Cosmetic — the transaction completes fine — but looks alarming in the log view. Root cause not investigated; likely an unescaped/unresolved format-string token somewhere in the install worker's own pacman invocation or output parsing, unrelated to the real keyring/signing fixes from the same session.
 
 Update 2026-10-09: not Welcome-specific. A plain `sudo pacman -Sw reyos-local/reyos-control-center-gui` on the Dev VM printed the same warning for ~110 packages (all from the ISO's package set: `base`, `sudo`, `plasma-desktop`, `sddm`, `zram-generator`, …). So it's in pacman's local database (`/var/lib/pacman/local/*/desc` entries carrying a `%INSTALLED_DB%` key that the installed pacman doesn't know), not in Welcome's code. Unverified guess: written by the newer pacman used to build the ISO, read by the older pacman from the stable snapshot. Check one `desc` file and the pacman versions before fixing.
+
+Update 2026-10-13: not produced by current ISOs. The laptop (installed 2026-10-01) has 0 `desc` files with the key; the Dev VM (installed from a 2026-09-11 ISO) has 113, all ISO-set packages. The pacman that built that ISO wrote it; Arch's pacman (7.1.0) doesn't know it. It disappears from each package when that package is upgraded or reinstalled. Affects old installs only; no fix shipped.
 
 ## Launched apps sometimes never get a taskbar entry, on a real fresh install
 
@@ -120,6 +118,13 @@ Confirmed on 2 of 3 fresh `ReyOS-Test` live boots off the 2026-08-20 ISO (2026-0
 Right-click desktop → Configure Desktop and Wallpaper opens Folder View's own settings dialog, which always includes a generic plugin "About" tab appended automatically by Plasma's own config-dialog framework — not specific to ReyOS's config, and no kiosk restriction found to suppress it. Purely cosmetic; disproportionate effort to fix (would mean patching Plasma itself). Deprioritized.
 
 ## Resolved
+
+## Discover can't manage system packages or firmware
+
+Added 2026-10-09, real laptop install (ReyOS-side agent's log check). Discover logs that its `packagekit-backend` and `fwupd-backend` fail to load (`libpackagekitqt6` / `libfwupd.so.3` missing), so it only handles Flatpaks. Probably intended (system updates go through Control Center), but Discover still shows the empty sections. Decide: install the two backends, or hide/remove them so Discover is clearly Flatpak-only.
+
+Decided 2026-10-13: keep Discover Flatpak-only. System updates must go through Control Center (stable channel, `reyos-channel upgrade`); a working PackageKit backend would let Discover do partial upgrades around it. `fwupd-backend` starts working by itself if the user installs `fwupd` (offered in Control Center). The log lines are harmless.
+
 
 Moved out of the open list after the 2026-10-08 verification; original text kept for history. Fixes from 2026-10-09 are listed first (details in `fixes.md`).
 

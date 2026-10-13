@@ -1,0 +1,5 @@
+post_upgrade() {
+    # Packages up to 3.3.3-31 left this directory group-writable, and pacman
+    # doesn't change the mode of a directory that already exists.
+    chmod 755 /usr/share/reyos/welcome/assets 2>/dev/null || true
+}

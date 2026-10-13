@@ -7,8 +7,13 @@ import sys
 import tempfile
 from pathlib import Path
 
-# Admin actions that always need the user's password: run via pkexec.
-PASSWORD_REQUIRED = {"service"}
+# Admin actions that always need the user's password (run via pkexec): anything that
+# lowers the system's protection or removes software.
+def needs_password(action, args):
+    return (action in ("service", "remove-package")
+            or (action in ("firewall", "usbguard") and args[:1] == ["disable"])
+            or (action == "time" and args[:1] == ["set"]))
+
 
 UNIT_RE = re.compile(r"[A-Za-z0-9@_.:\\-]+\.(service|socket|timer|target|path|mount)")
 SWAP_UNIT_RE = re.compile(r"[A-Za-z0-9@_.:\\-]+\.swap")
@@ -372,7 +377,7 @@ def main(argv):
         print("usage: reyos-admin " + "|".join(sorted(ACTIONS)) + " ...", file=sys.stderr)
         return 2
     action, args = argv[0], argv[1:]
-    if action in PASSWORD_REQUIRED and "PKEXEC_UID" not in os.environ:
+    if needs_password(action, args) and "PKEXEC_UID" not in os.environ:
         print(f"reyos-admin {action} needs your password: run it with pkexec", file=sys.stderr)
         return 1
     os.environ["PATH"] = "/usr/local/sbin:/usr/local/bin:/usr/bin"

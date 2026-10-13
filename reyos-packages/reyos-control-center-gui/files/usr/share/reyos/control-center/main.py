@@ -1058,9 +1058,11 @@ class Backend(QObject):
     @staticmethod
     def _emu_prepare_folders():
         emulation.prepare_folders()
+        emulation.sync_pcsx2_launcher()
 
     @Slot(result="QVariantList")
     def emulationSystems(self):
+        emulation.sync_pcsx2_launcher()
         result = []
         for system in EMU_SYSTEMS:
             result.append({
@@ -2012,9 +2014,9 @@ class Backend(QObject):
             # build artifact) makes du exit non-zero -- check_output would
             # discard the partial stdout for every *other* entry along with
             # it, so use run() and read stdout regardless of the exit code.
+            # Hidden folders count too: ~/.local (Flatpak, Steam) is usually the biggest.
             result = subprocess.run(
-                ["du", "-sh", "--exclude=node_modules", "--exclude=.git", "--exclude=.cache"]
-                + glob.glob(home + "/*"),
+                ["du", "-sh", "--"] + glob.glob(home + "/*") + glob.glob(home + "/.[!.]*"),
                 capture_output=True, text=True,
             )
             rows = [l.split("\t") for l in result.stdout.splitlines() if "\t" in l]
@@ -2150,7 +2152,9 @@ class Backend(QObject):
     def removePackage(self, pkgname):
         def task(emit):
             _wait_for_pacman_lock(emit)
-            rc = _run(["sudo", "-n", REYOS_ADMIN, "remove-package", pkgname], emit)
+            rc = _run(["pkexec", REYOS_ADMIN, "remove-package", pkgname], emit)
+            if rc in PKEXEC_DISMISSED:
+                return True, ""
             return rc == 0, (
                 f"Removed: {pkgname}" if rc == 0
                 else f"Failed to remove {pkgname} -- it may still be required by another package."
@@ -2184,6 +2188,7 @@ class Backend(QObject):
     def removeFlatpak(self, app_id):
         def task(emit):
             rc = _run(["flatpak", "uninstall", "-y", app_id], emit)
+            emulation.sync_pcsx2_launcher()
             return rc == 0, (f"Removed: {app_id}" if rc == 0 else f"Failed to remove {app_id}.")
         self._run_action(task)
 
@@ -2356,8 +2361,11 @@ class Backend(QObject):
                 # first so enabling never strands an active SSH session.
                 subprocess.run(["sudo", "-n", REYOS_ADMIN, "firewall", "allow", "22/tcp"], capture_output=True)
                 note = " (SSH access on 22/tcp was kept open automatically.)"
-            cmd = ["sudo", "-n", REYOS_ADMIN, "firewall", "enable" if enable else "disable"]
+            cmd = (["sudo", "-n", REYOS_ADMIN, "firewall", "enable"] if enable
+                   else ["pkexec", REYOS_ADMIN, "firewall", "disable"])
             rc = subprocess.run(cmd, capture_output=True, text=True).returncode
+            if rc in PKEXEC_DISMISSED and not enable:
+                return True, ""
             if rc != 0:
                 return False, "Failed to change firewall state."
             return True, ("Firewall enabled." + note if enable else "Firewall disabled.")
@@ -2538,7 +2546,9 @@ class Backend(QObject):
     @Slot()
     def disableUsbGuard(self):
         def task(emit):
-            rc = subprocess.run(["sudo", "-n", REYOS_ADMIN, "usbguard", "disable"]).returncode
+            rc = subprocess.run(["pkexec", REYOS_ADMIN, "usbguard", "disable"]).returncode
+            if rc in PKEXEC_DISMISSED:
+                return True, ""
             return rc == 0, ("USB protection disabled." if rc == 0 else "Failed to stop USBGuard.")
         self._run_action(task)
 
@@ -2824,6 +2834,9 @@ class Backend(QObject):
         def summarize(devices, default_name):
             rows = []
             for d in devices:
+                # "Monitor of …" sources record what the speakers play; list them only if chosen.
+                if d.get("name", "").endswith(".monitor") and d.get("name") != default_name:
+                    continue
                 vol_pct = 0
                 vols = d.get("volume") or {}
                 if vols:
@@ -3361,7 +3374,9 @@ class Backend(QObject):
     @Slot(str)
     def setManualDateTime(self, value):
         def task(emit):
-            result = subprocess.run(["sudo", "-n", REYOS_ADMIN, "time", "set", value], capture_output=True, text=True)
+            result = subprocess.run(["pkexec", REYOS_ADMIN, "time", "set", value], capture_output=True, text=True)
+            if result.returncode in PKEXEC_DISMISSED:
+                return True, ""
             ok = result.returncode == 0
             return ok, ("Date/time set." if ok else (result.stderr.strip() or "Failed -- disable automatic sync first."))
         self._run_action(task)

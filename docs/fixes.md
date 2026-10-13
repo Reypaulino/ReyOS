@@ -2,6 +2,19 @@
 
 Real bugs found and fixed, with root cause. Newest first. See `bugs.md` for what's still open.
 
+## 2026-10-13 — Laptop handoff leftovers (control-center-gui 1.0.0-122, reyos-welcome 3.3.3-32, reyos-calamares 1.3.6-49)
+
+From the open items in the laptop handoff (`~/reyos-update-handoff.md` on the ReyOS partition).
+
+- **Security-lowering actions need the password** (`reyos-admin`): `firewall disable`, `usbguard disable`, `remove-package` and `time set` now refuse `sudo -n` and must come through pkexec, like `service`. `PASSWORD_REQUIRED` became `needs_password(action, args)`. Control Center calls them with `pkexec`; a closed password dialog (126/127) reports nothing, as on the Services page. Enabling the firewall/USBGuard, NTP, timezone and firewall rules stay passwordless.
+- **PCSX2 opened from its own menu entry** skipped `prepare_flatpak()` (setup wizard, no BIOS, no controller mapping). New `emulation.sync_pcsx2_launcher()` writes `~/.local/share/applications/net.pcsx2.PCSX2.desktop` (copy of Flathub's export with `Exec=/usr/share/reyos/control-center/reyos-pcsx2`, marked `X-ReyOS-Launcher=true`), which hides Flathub's entry; `reyos-pcsx2` runs `prepare_flatpak()` then `flatpak run net.pcsx2.PCSX2 "$@"`. Synced on every `prepare_flatpak()`, when the Gaming page lists systems, on emulator install and after a Flatpak removal (deleted when PCSX2 is gone). An entry the user made themselves is left alone.
+- **Sound page** no longer lists "Monitor of …" sources as inputs, unless one is the current default (F-5).
+- **Disk page "Largest items"** includes hidden folders (`~/.local` is usually the biggest: Flatpak, Steam) and no longer excludes `.git`/`node_modules`/`.cache`, so sizes match `du -sh` (F-3).
+- **Installer minimum size**: `requiredStorage` 5.5 → 30 GiB in a new `welcome.conf` override (`reyos-calamares`). Calamares also uses it as the smallest partition "Install alongside" makes and the smallest one "Replace a partition" accepts; the laptop's 20 GB alongside install was 99 % full within a week. Still only a warning on the Welcome page (`storage` isn't in `required`). The override hook now also runs when `reyos-calamares-core` is upgraded (it owns the stock `welcome.conf`). Takes effect on the next ISO.
+- **Group-writable dirs** (`/usr/share/reyos/welcome/assets` was 775): `cp -a` kept the build checkout's modes. `reyos-welcome` and `control-center-gui` PKGBUILDs run `chmod -R go-w "$pkgdir"`; `reyos-welcome.install` fixes the existing directory on upgrade (pacman doesn't change modes of existing dirs).
+
+Tested on the Dev VM with the built packages: `sudo -n reyos-admin` refuses the four actions with "needs your password: run it with pkexec" and still runs `firewall status`/`time ntp`; with `PKEXEC_UID` set the action is accepted. Launcher sync in a temp `$HOME`: entry written with the right `Exec`, `TryExec` dropped, removed when the export is gone, a user's own entry kept; `reyos-pcsx2` with a stub `flatpak` wrote BIOS/game folders to `PCSX2.ini` and exec'd `flatpak run net.pcsx2.PCSX2 --foo`. Sound filter with sample data (monitor hidden; shown when default). Disk page lists `.local` first. `welcome/assets` 775 → 755 after the upgrade; `/etc/calamares/modules/welcome.conf` has `requiredStorage: 30`. **Not tested on screen**: the polkit dialogs from Control Center (the VM was at the login screen), and the PCSX2 menu entry with the real Flatpak.
+
 ## 2026-10-09 — PS2 follows Display settings, per-game window option, PS2 controller mapping (control-center-gui 1.0.0-121)
 
 From the laptop (PS2 + Xbox pad, user reports "Control Center doesn't overwrite the PCSX2 settings / the controller doesn't show up" and a request for a per-game window option). The ReyOS-side agent wrote and unit-tested patches 0004 and 0005 against 120; applied unchanged except for the fixes below.

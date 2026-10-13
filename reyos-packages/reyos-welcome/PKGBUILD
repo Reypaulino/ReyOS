@@ -1,17 +1,20 @@
 # Maintainer: Rey Paulino
 pkgname=reyos-welcome
 pkgver=3.3.3
-pkgrel=31
+pkgrel=32
 pkgdesc="ReyOS Welcome first-login setup wizard (Kirigami/QML) — post-install software picker"
 arch=('any')
 license=('MIT')
 depends=('pyside6' 'kirigami' 'discover' 'reyos-control-center-gui')
 source=()
 sha256sums=()
+install=reyos-welcome.install
 
 package() {
     cp -a "$startdir/files/etc" "$pkgdir/"
     cp -a "$startdir/files/usr" "$pkgdir/"
+    # cp -a keeps the build checkout's modes; a group-writable umask there left dirs 775.
+    chmod -R go-w "$pkgdir"
     find "$pkgdir/etc/skel/.local/share/applications" -type f -exec chmod 644 {} \;
     find "$pkgdir/etc/skel/.config/autostart" -type f -exec chmod 644 {} \;
     find "$pkgdir/usr/share/reyos/welcome/qml" -type f -exec chmod 644 {} \;

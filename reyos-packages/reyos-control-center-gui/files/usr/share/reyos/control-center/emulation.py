@@ -69,6 +69,11 @@ AUTOCONFIG_DIR = Path.home() / ".config" / "retroarch" / "autoconfig" / "udev"
 DOLPHIN_SYS = Path("/usr/share/dolphin-emu/sys")
 FLATHUB_URL = "https://flathub.org/repo/flathub.flatpakrepo"
 PCSX2_INI = Path.home() / ".var" / "app" / "net.pcsx2.PCSX2" / "config" / "PCSX2" / "inis" / "PCSX2.ini"
+PCSX2_LAUNCHER = "/usr/share/reyos/control-center/reyos-pcsx2"
+PCSX2_DESKTOP = "net.pcsx2.PCSX2.desktop"
+PCSX2_EXPORTS = [Path.home() / ".local" / "share" / "flatpak" / "exports" / "share" / "applications",
+                 Path("/var/lib/flatpak/exports/share/applications")]
+PCSX2_OVERRIDE = Path.home() / ".local" / "share" / "applications" / PCSX2_DESKTOP
 
 
 def rom_dirs(system):
@@ -301,6 +306,29 @@ def prepare_flatpak(system):
     if lines != before:
         PCSX2_INI.parent.mkdir(parents=True, exist_ok=True)
         PCSX2_INI.write_text("\n".join(lines) + "\n")
+    sync_pcsx2_launcher()
+
+
+def sync_pcsx2_launcher():
+    """PCSX2 opened from its own menu entry skipped prepare_flatpak (setup
+    wizard, no BIOS). A same-named entry in ~/.local/share/applications hides
+    Flathub's and runs PCSX2 through reyos-pcsx2, which prepares it first.
+    Removed again when PCSX2 is gone. An entry the user made is left alone."""
+    ours = PCSX2_OVERRIDE.exists() and "X-ReyOS-Launcher=true" in PCSX2_OVERRIDE.read_text(errors="replace")
+    if PCSX2_OVERRIDE.exists() and not ours:
+        return
+    exported = next((d / PCSX2_DESKTOP for d in PCSX2_EXPORTS if (d / PCSX2_DESKTOP).exists()), None)
+    if exported is None:
+        if ours:
+            PCSX2_OVERRIDE.unlink()
+        return
+    text = re.sub(r"^(Exec=).*?net\.pcsx2\.PCSX2(?=\s|$)", lambda m: m.group(1) + PCSX2_LAUNCHER,
+                  exported.read_text(errors="replace"), flags=re.M)
+    text = re.sub(r"^TryExec=.*\n", "", text, flags=re.M)
+    text = text.replace("[Desktop Entry]\n", "[Desktop Entry]\nX-ReyOS-Launcher=true\n", 1)
+    if not ours or PCSX2_OVERRIDE.read_text(errors="replace") != text:
+        PCSX2_OVERRIDE.parent.mkdir(parents=True, exist_ok=True)
+        PCSX2_OVERRIDE.write_text(text)
 
 
 def _apply_pcsx2_graphics(lines, settings):

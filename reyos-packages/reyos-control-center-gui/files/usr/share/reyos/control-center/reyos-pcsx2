@@ -1,0 +1,11 @@
+#!/bin/sh
+# PCSX2's menu entry (ReyOS's copy in ~/.local/share/applications, written by
+# emulation.sync_pcsx2_launcher): give PCSX2 ReyOS's BIOS and game folders,
+# Display settings and controller mapping first, as a launch from Control Center does.
+/usr/bin/python3 -I -c '
+import sys
+sys.path.insert(0, "/usr/share/reyos/control-center")
+import emulation
+emulation.prepare_flatpak(next(s for s in emulation.EMU_SYSTEMS if s["id"] == "ps2"))
+' || true
+exec flatpak run net.pcsx2.PCSX2 "$@"
