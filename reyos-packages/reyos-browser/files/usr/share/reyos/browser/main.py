@@ -16,6 +16,10 @@ from datetime import datetime, timezone
 from html.parser import HTMLParser
 from pathlib import Path
 
+# Reyva's own version, shown in Settings. Bump it with every release (and the
+# Flatpak metainfo <release>); the .deb/Windows package numbers are separate.
+APP_VERSION = "0.1.6"
+
 IS_WINDOWS = sys.platform == "win32"
 IS_FLATPAK = os.path.exists("/.flatpak-info")
 
@@ -43,7 +47,8 @@ except ModuleNotFoundError:
 
 from PySide6.QtCore import QBuffer, QByteArray, QFile, QIODevice, QObject, Property, QRectF, QSize, Qt, QThread, QTimer, QUrl, QUrlQuery, Signal, Slot
 from PySide6.QtGui import QIcon, QImage, QPainter, QPixmap
-from PySide6.QtQml import QQmlApplicationEngine
+from PySide6.QtQml import QQmlApplicationEngine, QQmlImageProviderBase
+from PySide6.QtQuick import QQuickImageProvider
 from PySide6.QtWebEngineCore import QWebEngineUrlRequestInfo, QWebEngineUrlRequestInterceptor
 from PySide6.QtWebEngineQuick import QQuickWebEngineProfile, QtWebEngineQuick
 from PySide6.QtWidgets import QApplication, QFileDialog, QLineEdit, QSystemTrayIcon
@@ -600,7 +605,8 @@ class BrowserBackend(QObject):
         self._low_memory_mode = load_low_memory_mode()
         self._blocked_request_count = 0
         self._current_site = ""
-        self._search_engine = "DuckDuckGo"
+        self._print_files: set[str] = set()
+        self._search_engine = load_setting("searchEngine", "DuckDuckGo", {"DuckDuckGo", "Startpage"})
         self._bookmarks_path = BROWSER_STATE_DIR / "bookmarks.json"
         self._password_blocklist_path = PASSWORD_BLOCKLIST_PATH
         self._bookmarks = self._load_bookmarks()
@@ -1108,7 +1114,34 @@ class BrowserBackend(QObject):
     def setSearchEngine(self, engine: str) -> None:
         if engine in {"DuckDuckGo", "Startpage"} and engine != self._search_engine:
             self._search_engine = engine
+            save_setting("searchEngine", engine)
             self.searchEngineChanged.emit()
+
+    @Property(str, constant=True)
+    def appVersion(self) -> str:
+        return APP_VERSION
+
+    @Property(str, constant=True)
+    def installKind(self) -> str:
+        if IS_FLATPAK:
+            return "Flatpak"
+        if IS_WINDOWS:
+            return "Windows"
+        if str(APP_DIR).startswith("/opt/reyos-browser"):
+            return "Ubuntu/Debian package"
+        return "Run from source"
+
+    @Property(str, constant=True)
+    def engineVersion(self) -> str:
+        from PySide6 import QtWebEngineCore
+
+        chromium = getattr(QtWebEngineCore, "qWebEngineChromiumVersion", lambda: "")()
+        patches = getattr(QtWebEngineCore, "qWebEngineChromiumSecurityPatchVersion", lambda: "")()
+        qt = getattr(QtWebEngineCore, "qWebEngineVersion", lambda: "")()
+        text = f"Chromium {chromium}" if chromium else "Chromium"
+        if patches:
+            text += f" (security patches {patches})"
+        return f"{text}\nQt WebEngine {qt}" if qt else text
 
     @Property(bool, constant=True)
     def sandboxed(self) -> bool:
@@ -1139,7 +1172,15 @@ class BrowserBackend(QObject):
     def newPrintFile(self) -> str:
         fd, path = tempfile.mkstemp(prefix="reyva-print-", suffix=".pdf")
         os.close(fd)
+        self._print_files.add(path)
         return path
+
+    @Slot()
+    def removePrintFiles(self) -> None:
+        """At quit: temp PDFs of a print preview that was still open."""
+        for path in self._print_files:
+            Path(path).unlink(missing_ok=True)
+        self._print_files.clear()
 
     @Slot(result=int)
     def printPageSizeId(self) -> int:
@@ -1161,6 +1202,7 @@ class BrowserBackend(QObject):
             self.notify("Couldn't print", str(error))
         finally:
             Path(pdf_path).unlink(missing_ok=True)
+            self._print_files.discard(pdf_path)
 
     @staticmethod
     def _suggested_pdf_path(title: str) -> Path:
@@ -1231,28 +1273,114 @@ class BrowserBackend(QObject):
             self.notify("Saved as PDF", Path(output_file).name)
             return
 
-        painter = QPainter()
-        if not painter.begin(printer):
+        if not draw_pdf_pages(document, printer, pages):
             if to_file:
                 self.notify("Couldn't save the PDF", cant_write)
             else:
                 self.notify("Couldn't print", "The printer could not be opened.")
-            return
+
+    # Print preview (qml/components/PrintPreview.qml): the same temp PDF stays
+    # open while the user changes settings; QML deletes it with discardPrintFile.
+    @Slot(result="QVariantList")
+    def printDestinations(self) -> list:
+        from PySide6.QtPrintSupport import QPrinterInfo
+
+        default = QPrinterInfo.defaultPrinterName()
+        names = sorted((info.printerName() for info in QPrinterInfo.availablePrinters()), key=lambda name: (name != default, name.lower()))
+        return [{"name": name, "label": f"{name} (default)" if name == default else name} for name in names]
+
+    @Slot(result="QVariantList")
+    def paperSizes(self) -> list:
+        from PySide6.QtGui import QPageSize
+
+        ids = [QPageSize.PageSizeId.Letter, QPageSize.PageSizeId.Legal, QPageSize.PageSizeId.Tabloid, QPageSize.PageSizeId.A3, QPageSize.PageSizeId.A4, QPageSize.PageSizeId.A5]
+        return [{"name": QPageSize.name(size_id), "id": size_id.value} for size_id in ids]
+
+    @Slot(str, result="QVariantMap")
+    def loadPrintPreview(self, pdf_path: str) -> dict:
+        pages, aspect = self.print_preview_images.load(pdf_path)
+        return {"pages": pages, "aspect": aspect}
+
+    @Slot(str, int, result="QVariantList")
+    def selectedPages(self, spec: str, page_count: int) -> list:
+        return [page + 1 for page in parse_page_ranges(spec, page_count)]
+
+    @Slot(str)
+    def discardPrintFile(self, pdf_path: str) -> None:
+        self.print_preview_images.unload(pdf_path)
+        if pdf_path:
+            Path(pdf_path).unlink(missing_ok=True)
+            self._print_files.discard(pdf_path)
+
+    @Slot(str, str, str, str, int, bool, bool, int, bool, result=str)
+    def printFromPreview(self, pdf_path: str, title: str, printer_name: str, spec: str, copies: int, color: bool, two_sided: bool, paper_id: int, landscape: bool) -> str:
+        from PySide6.QtGui import QPageLayout, QPageSize
+        from PySide6.QtPdf import QPdfDocument
+        from PySide6.QtPrintSupport import QPrinter
+
+        document = QPdfDocument()
+        document.load(pdf_path)
+        pages = parse_page_ranges(spec, document.pageCount())
+        if not pages:
+            return "Enter pages like 1-3, 5."
+        printer = QPrinter(QPrinter.PrinterMode.HighResolution)
+        printer.setPrinterName(printer_name)
+        if not printer.isValid():
+            return f"The printer {printer_name} isn't available."
+        printer.setDocName(title or "Reyva")
+        printer.setCopyCount(max(1, copies))
+        printer.setColorMode(QPrinter.ColorMode.Color if color else QPrinter.ColorMode.GrayScale)
+        printer.setDuplex(QPrinter.DuplexMode.DuplexLongSide if two_sided else QPrinter.DuplexMode.DuplexNone)
+        printer.setPageSize(QPageSize(QPageSize.PageSizeId(paper_id)))
+        printer.setPageOrientation(QPageLayout.Orientation.Landscape if landscape else QPageLayout.Orientation.Portrait)
+        if not draw_pdf_pages(document, printer, pages):
+            return "The printer could not be opened."
+        self.notify("Sent to printer", f"{title or 'Page'} → {printer_name}")
+        return ""
+
+    @Slot(str, str, str, result=str)
+    def savePreviewAsPdf(self, pdf_path: str, title: str, spec: str) -> str:
+        from PySide6.QtPdf import QPdfDocument
+        from PySide6.QtPrintSupport import QPrinter
+
+        document = QPdfDocument()
+        document.load(pdf_path)
+        pages = parse_page_ranges(spec, document.pageCount())
+        if not pages:
+            return "Enter pages like 1-3, 5."
+        suggested = self._suggested_pdf_path(title)
+        dialog = QFileDialog()
+        dialog.setWindowTitle("Save as PDF")
+        dialog.setAcceptMode(QFileDialog.AcceptSave)
+        dialog.setDirectory(str(suggested.parent))
+        dialog.selectFile(suggested.name)
+        dialog.setDefaultSuffix("pdf")
+        dialog.setOption(QFileDialog.DontUseNativeDialog, not IS_FLATPAK)
+        dialog.setNameFilters(["PDF documents (*.pdf)"])
+        if not dialog.exec() or not dialog.selectedFiles():
+            return "cancelled"
+        target = dialog.selectedFiles()[0]
         try:
-            target = printer.pageRect(QPrinter.Unit.DevicePixel)
-            dpi = min(printer.resolution(), 300)
-            for position, page in enumerate(pages):
-                if position:
-                    printer.newPage()
-                source = document.pagePointSize(page)
-                if source.width() <= 0 or source.height() <= 0:
-                    continue
-                scale = min(target.width() / source.width(), target.height() / source.height())
-                width, height = source.width() * scale, source.height() * scale
-                image = document.render(page, QSize(round(source.width() * dpi / 72), round(source.height() * dpi / 72)))
-                painter.drawImage(QRectF((target.width() - width) / 2, 0, width, height), image)
-        finally:
-            painter.end()
+            if len(pages) == document.pageCount():
+                # Keep Chromium's vector PDF (sharp, searchable text).
+                shutil.copyfile(pdf_path, target)
+            else:
+                printer = QPrinter(QPrinter.PrinterMode.HighResolution)
+                printer.setOutputFormat(QPrinter.OutputFormat.PdfFormat)
+                printer.setOutputFileName(target)
+                if not draw_pdf_pages(document, printer, pages):
+                    raise OSError("can't write the file")
+        except OSError:
+            return "Reyva couldn't write that file. Save it in Downloads, or pick another folder."
+        self.notify("Saved as PDF", Path(target).name)
+        return ""
+
+    @Slot(str, str)
+    def printWithSystemDialog(self, pdf_path: str, title: str) -> None:
+        try:
+            self._print_pdf(pdf_path, title)
+        except Exception as error:
+            self.notify("Couldn't print", str(error))
 
     @Slot(str, str)
     def notify(self, title: str, message: str) -> None:
@@ -1685,22 +1813,117 @@ def load_shields_meta() -> dict:
         return {}
 
 
-def load_low_memory_mode() -> bool:
-    """Shared default across the main browser and every installed-app process --
-    each runs as its own OS process with its own BrowserBackend, so this file is
-    the only thing that keeps "Low Memory Mode" feeling like one setting instead
-    of a dozen independent ones. Toggling it anywhere updates this file; other
-    already-open windows pick up the change the next time they launch, not live."""
+def parse_page_ranges(spec: str, page_count: int) -> list[int]:
+    """'1-3, 5' -> [0, 1, 2, 4] (0-based); empty means every page; [] if invalid."""
+    if page_count <= 0:
+        return []
+    spec = spec.strip()
+    if not spec:
+        return list(range(page_count))
+    pages = set()
+    for part in spec.split(","):
+        part = part.strip()
+        match = re.fullmatch(r"(\d+)\s*(?:-\s*(\d+))?", part)
+        if not match:
+            return []
+        first = int(match.group(1))
+        last = int(match.group(2) or first)
+        if first < 1 or last > page_count or first > last:
+            return []
+        pages.update(range(first - 1, last))
+    return sorted(pages)
+
+
+def draw_pdf_pages(document, printer, pages: list[int]) -> bool:
+    """Draws the PDF's pages onto the printer, each scaled to fit its page."""
+    from PySide6.QtPrintSupport import QPrinter
+
+    painter = QPainter()
+    if not painter.begin(printer):
+        return False
     try:
-        data = json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
-        if isinstance(data, dict) and isinstance(data.get("lowMemoryMode"), bool):
-            return data["lowMemoryMode"]
-    except (OSError, json.JSONDecodeError):
-        pass
+        target = printer.pageRect(QPrinter.Unit.DevicePixel)
+        dpi = min(printer.resolution(), 300)
+        for position, page in enumerate(pages):
+            if position:
+                printer.newPage()
+            source = document.pagePointSize(page)
+            if source.width() <= 0 or source.height() <= 0:
+                continue
+            scale = min(target.width() / source.width(), target.height() / source.height())
+            width, height = source.width() * scale, source.height() * scale
+            image = document.render(page, QSize(round(source.width() * dpi / 72), round(source.height() * dpi / 72)))
+            painter.drawImage(QRectF((target.width() - width) / 2, 0, width, height), image)
+    finally:
+        painter.end()
     return True
 
 
-def save_low_memory_mode(enabled: bool) -> None:
+class PrintPreviewImages(QQuickImageProvider):
+    """Print preview pages for QML, rendered on demand off the GUI thread:
+    image://reyvaprint/<generation>/<page>."""
+
+    def __init__(self) -> None:
+        super().__init__(QQmlImageProviderBase.ImageType.Image, QQmlImageProviderBase.Flag.ForceAsynchronousImageLoading)
+        self._lock = threading.Lock()
+        self._document = None
+        self._path = ""
+
+    def load(self, pdf_path: str) -> tuple[int, float]:
+        from PySide6.QtPdf import QPdfDocument
+
+        document = QPdfDocument()
+        document.load(pdf_path)
+        count = document.pageCount()
+        with self._lock:
+            self._document = document if count > 0 else None
+            self._path = pdf_path
+        if count <= 0:
+            return 0, 1.414
+        size = document.pagePointSize(0)
+        return count, (size.height() / size.width()) if size.width() > 0 else 1.414
+
+    def unload(self, pdf_path: str) -> None:
+        with self._lock:
+            if not pdf_path or pdf_path == self._path:
+                self._document = None
+                self._path = ""
+
+    def requestImage(self, image_id: str, size, requested_size) -> QImage:
+        try:
+            page = int(image_id.rsplit("/", 1)[-1])
+        except ValueError:
+            return QImage()
+        width = requested_size.width() if requested_size.width() > 0 else 720
+        with self._lock:
+            document = self._document
+            if document is None or page >= document.pageCount():
+                return QImage()
+            source = document.pagePointSize(page)
+            height = round(width * source.height() / source.width()) if source.width() > 0 else width
+            rendered = document.render(page, QSize(width, height))
+        page_image = QImage(rendered.size(), QImage.Format.Format_RGB32)
+        page_image.fill(Qt.GlobalColor.white)
+        painter = QPainter(page_image)
+        painter.drawImage(0, 0, rendered)
+        painter.end()
+        return page_image
+
+
+def load_setting(key: str, default, allowed=None):
+    """One value from settings.json, or default if it's missing or invalid."""
+    try:
+        data = json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
+        if isinstance(data, dict) and key in data:
+            value = data[key]
+            if isinstance(value, type(default)) and (allowed is None or value in allowed):
+                return value
+    except (OSError, json.JSONDecodeError):
+        pass
+    return default
+
+
+def save_setting(key: str, value) -> None:
     try:
         SETTINGS_PATH.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         data = {}
@@ -1710,13 +1933,26 @@ def save_low_memory_mode(enabled: bool) -> None:
                 data = existing
         except (OSError, json.JSONDecodeError):
             pass
-        data["lowMemoryMode"] = enabled
+        data[key] = value
         temp_path = SETTINGS_PATH.with_suffix(".tmp")
         temp_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
         os.chmod(temp_path, 0o600)
         os.replace(temp_path, SETTINGS_PATH)
     except OSError:
         pass
+
+
+def load_low_memory_mode() -> bool:
+    """Shared default across the main browser and every installed-app process --
+    each runs as its own OS process with its own BrowserBackend, so this file is
+    the only thing that keeps "Low Memory Mode" feeling like one setting instead
+    of a dozen independent ones. Toggling it anywhere updates this file; other
+    already-open windows pick up the change the next time they launch, not live."""
+    return load_setting("lowMemoryMode", True)
+
+
+def save_low_memory_mode(enabled: bool) -> None:
+    save_setting("lowMemoryMode", enabled)
 
 
 def load_password_script_source() -> str:
@@ -1897,6 +2133,9 @@ def main():
     interceptor = ShieldsInterceptor(load_blocked_domains())
     backend = BrowserBackend(interceptor, PasswordVault(), load_password_script_source())
     engine = QQmlApplicationEngine()
+    backend.print_preview_images = PrintPreviewImages()
+    app.aboutToQuit.connect(backend.removePrintFiles)
+    engine.addImageProvider("reyvaprint", backend.print_preview_images)
     engine.rootContext().setContextProperty("browserBackend", backend)
 
     if app_url:

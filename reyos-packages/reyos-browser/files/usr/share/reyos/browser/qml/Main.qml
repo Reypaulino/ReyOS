@@ -378,26 +378,16 @@ ApplicationWindow {
         })
     }
 
-    // One print job at a time; the PDF is handed to the backend once
-    // printToPdf() finishes (see BrowserBackend.finishPrintJob).
-    property string printJobPath: ""
-    property string printJobMode: ""
-
+    // Print and Save as PDF open the print preview (components/PrintPreview.qml).
     function printPage(view, mode) {
-        if (!view || printJobPath.length || isHomeUrl(view.url.toString())) {
+        if (!view || isHomeUrl(view.url.toString())) {
             return
         }
-        printJobMode = mode
-        printJobPath = browserBackend.newPrintFile()
-        view.printToPdf(printJobPath, browserBackend.printPageSizeId())
+        printPreview.open(view, mode)
     }
 
     function printFinished(view, filePath, success) {
-        if (filePath !== printJobPath) {
-            return
-        }
-        printJobPath = ""
-        browserBackend.finishPrintJob(filePath, view.title, success, printJobMode)
+        printPreview.pdfReady(filePath, success)
     }
 
     function findInPage(query, backwards) {
@@ -1760,14 +1750,14 @@ ApplicationWindow {
                     iconSource: Qt.resolvedUrl("../icons/reyos-print.svg")
                     shortcutText: "Ctrl+P"
                     hoverColor: accentSurfaceHover
-                    enabled: !window.currentIsHome && !window.printJobPath.length
+                    enabled: !window.currentIsHome && !printPreview.visible
                     onClicked: { browserMenu.close(); window.printPage(currentView, "print") }
                 }
                 MenuRow {
                     text: "Save Page as PDF…"
                     iconSource: Qt.resolvedUrl("../icons/reyos-download.svg")
                     hoverColor: accentSurfaceHover
-                    enabled: !window.currentIsHome && !window.printJobPath.length
+                    enabled: !window.currentIsHome && !printPreview.visible
                     onClicked: { browserMenu.close(); window.printPage(currentView, "save") }
                 }
 
@@ -1907,88 +1897,201 @@ ApplicationWindow {
         id: settingsDialog
         title: "Reyva Settings"
         modal: true
-        width: 455
+        width: Math.min(480, window.width - 32)
+        height: Math.min(settingsColumn.implicitHeight + topPadding + bottomPadding + implicitHeaderHeight + implicitFooterHeight, window.height - 48)
         anchors.centerIn: parent
-        padding: 20
+        padding: 18
         background: Rectangle { color: accentSurfaceRaised; border.color: accentBorder; border.width: 1; radius: 12 }
-        contentItem: ColumnLayout {
-            spacing: 14
-            Label { text: "Private session"; font.bold: true; font.pixelSize: 19; color: "#FFF3E6" }
-            Label { text: "Your choices reset when Reyva closes."; wrapMode: Text.Wrap; color: "#F4D5A8"; Layout.fillWidth: true }
-            Rectangle { Layout.fillWidth: true; height: 1; color: accentBorder }
-            Label { text: "Search engine"; font.bold: true; color: "#FFF3E6" }
-            ComboBox {
-                id: searchEnginePicker
-                model: ["DuckDuckGo", "Startpage"]
-                currentIndex: browserBackend.searchEngine === "Startpage" ? 1 : 0
-                Layout.fillWidth: true
-                contentItem: Text {
-                    leftPadding: 10
-                    rightPadding: searchEnginePicker.indicator.width + 10
-                    text: searchEnginePicker.displayText
-                    color: "#FFF3E6"
-                    verticalAlignment: Text.AlignVCenter
-                    elide: Text.ElideRight
-                }
-                background: Rectangle { color: accentSurfaceBase; border.color: accentBorder; radius: 7 }
-                popup: Popup {
-                    y: searchEnginePicker.height - 1
-                    width: searchEnginePicker.width
-                    implicitHeight: contentItem.implicitHeight
-                    padding: 4
-                    background: Rectangle { color: accentSurfaceRaised; border.color: accentBorder; radius: 7 }
-                    contentItem: ListView {
-                        clip: true
-                        implicitHeight: contentHeight
-                        model: searchEnginePicker.popup.visible ? searchEnginePicker.delegateModel : null
-                        currentIndex: searchEnginePicker.highlightedIndex
+
+        component SettingsSection: Rectangle {
+            id: section
+            property string title
+            default property alias content: sectionBody.data
+            Layout.fillWidth: true
+            implicitHeight: sectionBody.implicitHeight + 28
+            radius: 10
+            color: accentSurfaceBase
+            border.color: Qt.rgba(accentBorder.r, accentBorder.g, accentBorder.b, 0.6)
+            ColumnLayout {
+                id: sectionBody
+                anchors.fill: parent
+                anchors.margins: 14
+                spacing: 8
+                Label { text: section.title; font.bold: true; font.pixelSize: 15; color: "#FFF3E6" }
+            }
+        }
+
+        component ThemedButton: Button {
+            id: themedButton
+            leftPadding: 14
+            rightPadding: 14
+            contentItem: Text {
+                text: themedButton.text
+                color: themedButton.enabled ? "#FFF3E6" : "#9F8873"
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
+                elide: Text.ElideRight
+            }
+            background: Rectangle {
+                implicitHeight: 32
+                implicitWidth: 90
+                radius: 7
+                color: themedButton.hovered ? accentSurfaceHover : accentSurfaceRaised
+                border.color: accentBorder
+            }
+        }
+
+        component ThemedSwitch: Switch {
+            id: themedSwitch
+            Layout.fillWidth: true
+            contentItem: Text { text: themedSwitch.text; color: "#FFF3E6"; verticalAlignment: Text.AlignVCenter; leftPadding: themedSwitch.indicator.width + 8 }
+        }
+
+        contentItem: Flickable {
+            id: settingsFlick
+            clip: true
+            contentHeight: settingsColumn.implicitHeight
+            boundsBehavior: Flickable.StopAtBounds
+            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+            ColumnLayout {
+                id: settingsColumn
+                // Leave room for the scrollbar when the dialog has to scroll.
+                width: settingsFlick.width - (settingsFlick.contentHeight > settingsFlick.height ? 14 : 0)
+                spacing: 12
+
+                // About
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 14
+                    Image {
+                        source: Qt.resolvedUrl("../assets/reyos-browser-logo.png")
+                        sourceSize.width: 56
+                        sourceSize.height: 56
+                        Layout.preferredWidth: 56
+                        Layout.preferredHeight: 56
+                    }
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 2
+                        Label { text: "Reyva " + browserBackend.appVersion; font.bold: true; font.pixelSize: 19; color: "#FFF3E6" }
+                        Label { text: browserBackend.installKind; color: "#F4D5A8" }
+                        Label { text: browserBackend.engineVersion; color: "#9F8873"; font.pixelSize: 12; wrapMode: Text.Wrap; Layout.fillWidth: true }
                     }
                 }
-                delegate: ItemDelegate {
-                    required property var modelData
-                    required property int index
-                    width: searchEnginePicker.width - 8
-                    height: 34
-                    highlighted: searchEnginePicker.highlightedIndex === index
-                    contentItem: Text { text: modelData; color: "#FFF3E6"; verticalAlignment: Text.AlignVCenter; leftPadding: 8 }
-                    background: Rectangle { color: highlighted ? accentSurfaceHover : "transparent"; radius: 5 }
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+                    ThemedButton { text: "What's new"; onClicked: { settingsDialog.close(); window.openInNewTab("https://reyos.reyapps.com/#browser") } }
+                    ThemedButton { text: "Report a problem"; onClicked: { settingsDialog.close(); window.openInNewTab("https://github.com/Reypaulino/ReyOS/issues") } }
                 }
-                onActivated: browserBackend.setSearchEngine(currentText)
-            }
-            Rectangle { Layout.fillWidth: true; height: 1; color: accentBorder }
-            Label { text: "Performance"; font.bold: true; color: "#FFF3E6" }
-            Switch {
-                text: "Low Memory Mode"
-                checked: browserBackend.lowMemoryMode
-                contentItem: Text { text: parent.text; color: "#FFF3E6"; verticalAlignment: Text.AlignVCenter; leftPadding: parent.indicator.width + 8 }
-                onToggled: {
-                    if (checked !== browserBackend.lowMemoryMode) {
-                        browserBackend.toggleLowMemoryMode()
+                Label {
+                    text: "Browsing history, cookies and site data are cleared when Reyva closes. The settings below are kept."
+                    wrapMode: Text.Wrap
+                    color: "#D7C1AA"
+                    Layout.fillWidth: true
+                }
+
+                SettingsSection {
+                    title: "Search"
+                    Label { text: "Search engine for the address bar and New Tab page"; color: "#D7C1AA"; wrapMode: Text.Wrap; Layout.fillWidth: true }
+                    ComboBox {
+                        id: searchEnginePicker
+                        model: ["DuckDuckGo", "Startpage"]
+                        currentIndex: browserBackend.searchEngine === "Startpage" ? 1 : 0
+                        Layout.fillWidth: true
+                        contentItem: Text {
+                            leftPadding: 10
+                            rightPadding: searchEnginePicker.indicator.width + 10
+                            text: searchEnginePicker.displayText
+                            color: "#FFF3E6"
+                            verticalAlignment: Text.AlignVCenter
+                            elide: Text.ElideRight
+                        }
+                        background: Rectangle { implicitHeight: 34; color: accentSurfaceRaised; border.color: accentBorder; radius: 7 }
+                        popup: Popup {
+                            y: searchEnginePicker.height - 1
+                            width: searchEnginePicker.width
+                            implicitHeight: contentItem.implicitHeight
+                            padding: 4
+                            background: Rectangle { color: accentSurfaceRaised; border.color: accentBorder; radius: 7 }
+                            contentItem: ListView {
+                                clip: true
+                                implicitHeight: contentHeight
+                                model: searchEnginePicker.popup.visible ? searchEnginePicker.delegateModel : null
+                                currentIndex: searchEnginePicker.highlightedIndex
+                            }
+                        }
+                        delegate: ItemDelegate {
+                            required property var modelData
+                            required property int index
+                            width: searchEnginePicker.width - 8
+                            height: 34
+                            highlighted: searchEnginePicker.highlightedIndex === index
+                            contentItem: Text { text: modelData; color: "#FFF3E6"; verticalAlignment: Text.AlignVCenter; leftPadding: 8 }
+                            background: Rectangle { color: highlighted ? accentSurfaceHover : "transparent"; radius: 5 }
+                        }
+                        onActivated: browserBackend.setSearchEngine(currentText)
                     }
                 }
-            }
-            Label { text: "Freezes safe inactive tabs, then discards them later to save memory."; wrapMode: Text.Wrap; color: "#D7C1AA"; Layout.fillWidth: true }
-            Rectangle { Layout.fillWidth: true; height: 1; color: accentBorder }
-            Label { text: "ReyOS Shields"; font.bold: true; color: "#FFF3E6" }
-            Label { text: (browserBackend.shieldsEnabled ? "On" : "Off") + " · " + browserBackend.blockedRequestCount + " requests blocked this session"; wrapMode: Text.Wrap; color: "#F4D5A8"; Layout.fillWidth: true }
-            Label { text: "Filter list: " + browserBackend.shieldsDomainCount + " domains · updated " + browserBackend.shieldsLastUpdated; wrapMode: Text.Wrap; color: "#D7C1AA"; Layout.fillWidth: true }
-            RowLayout {
-                Layout.fillWidth: true
-                Button { text: browserBackend.shieldsUpdating ? "Updating…" : "Update filter list"; enabled: !browserBackend.shieldsUpdating; onClicked: browserBackend.updateShieldsFilterList() }
-                Label { visible: shieldsUpdateStatus.text.length > 0; id: shieldsUpdateStatus; wrapMode: Text.Wrap; Layout.fillWidth: true; color: "#F4D5A8" }
-            }
-            Connections {
-                target: browserBackend
-                function onShieldsUpdateFinished(ok, message) {
-                    shieldsUpdateStatus.text = message
+
+                SettingsSection {
+                    title: "Privacy & Shields"
+                    ThemedSwitch {
+                        text: "Block ads and trackers"
+                        checked: browserBackend.shieldsEnabled
+                        onToggled: {
+                            if (checked !== browserBackend.shieldsEnabled) {
+                                browserBackend.toggleShields()
+                            }
+                        }
+                    }
+                    Label { text: browserBackend.blockedRequestCount + " requests blocked this session"; wrapMode: Text.Wrap; color: "#F4D5A8"; Layout.fillWidth: true }
+                    Label { text: "Filter list: " + browserBackend.shieldsDomainCount + " domains · updated " + browserBackend.shieldsLastUpdated; wrapMode: Text.Wrap; color: "#D7C1AA"; Layout.fillWidth: true }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 10
+                        ThemedButton { text: browserBackend.shieldsUpdating ? "Updating…" : "Update filter list"; enabled: !browserBackend.shieldsUpdating; onClicked: browserBackend.updateShieldsFilterList() }
+                        Label { id: shieldsUpdateStatus; visible: text.length > 0; wrapMode: Text.Wrap; Layout.fillWidth: true; color: "#F4D5A8" }
+                    }
+                    Connections {
+                        target: browserBackend
+                        function onShieldsUpdateFinished(ok, message) {
+                            shieldsUpdateStatus.text = message
+                        }
+                    }
                 }
-            }
-            Button {
-                Layout.alignment: Qt.AlignRight
-                implicitWidth: 82
-                contentItem: Text { text: "Close"; color: "#FFF3E6"; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-                background: Rectangle { color: parent.hovered ? accentSurfaceHover : accentSurfaceBase; border.color: accentBorder; radius: 7 }
-                onClicked: settingsDialog.close()
+
+                SettingsSection {
+                    title: "Performance"
+                    ThemedSwitch {
+                        text: "Low Memory Mode"
+                        checked: browserBackend.lowMemoryMode
+                        onToggled: {
+                            if (checked !== browserBackend.lowMemoryMode) {
+                                browserBackend.toggleLowMemoryMode()
+                            }
+                        }
+                    }
+                    Label { text: "Freezes tabs you haven't used for a few minutes, and unloads long-unused ones, to save memory. Pinned tabs keep running."; wrapMode: Text.Wrap; color: "#D7C1AA"; Layout.fillWidth: true }
+                }
+
+                SettingsSection {
+                    title: "Your data"
+                    Flow {
+                        Layout.fillWidth: true
+                        spacing: 8
+                        ThemedButton { text: "Bookmarks"; onClicked: { settingsDialog.close(); bookmarksDialog.open() } }
+                        ThemedButton { text: "Passwords"; onClicked: { settingsDialog.close(); passwordsDialog.open() } }
+                        ThemedButton { text: "Web Apps"; visible: browserBackend.webAppsSupported; onClicked: { settingsDialog.close(); manageAppsDialog.open() } }
+                    }
+                }
+
+                ThemedButton {
+                    Layout.alignment: Qt.AlignRight
+                    text: "Close"
+                    onClicked: settingsDialog.close()
+                }
             }
         }
     }
@@ -2202,6 +2305,12 @@ ApplicationWindow {
                 }
             }
         }
+    }
+    PrintPreview {
+        id: printPreview
+        anchors.fill: parent
+        z: 50
+        theme: theme
     }
     NewTabPage {
         id: newTabPage
