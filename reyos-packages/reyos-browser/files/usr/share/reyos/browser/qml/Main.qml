@@ -378,6 +378,28 @@ ApplicationWindow {
         })
     }
 
+    // One print job at a time; the PDF is handed to the backend once
+    // printToPdf() finishes (see BrowserBackend.finishPrintJob).
+    property string printJobPath: ""
+    property string printJobMode: ""
+
+    function printPage(view, mode) {
+        if (!view || printJobPath.length || isHomeUrl(view.url.toString())) {
+            return
+        }
+        printJobMode = mode
+        printJobPath = browserBackend.newPrintFile()
+        view.printToPdf(printJobPath, browserBackend.printPageSizeId())
+    }
+
+    function printFinished(view, filePath, success) {
+        if (filePath !== printJobPath) {
+            return
+        }
+        printJobPath = ""
+        browserBackend.finishPrintJob(filePath, view.title, success, printJobMode)
+    }
+
     function findInPage(query, backwards) {
         if (!currentView) {
             return
@@ -474,6 +496,7 @@ ApplicationWindow {
     Shortcut { sequence: "Ctrl+L"; onActivated: { address.forceActiveFocus(); address.selectAll() } }
     Shortcut { sequence: "Ctrl+R"; onActivated: { if (currentView) currentView.reload() } }
     Shortcut { sequence: "Ctrl+F"; onActivated: window.openFind() }
+    Shortcut { sequence: "Ctrl+P"; onActivated: window.printPage(currentView, "print") }
     Shortcut { sequence: "Ctrl+Shift+R"; onActivated: window.openReaderMode() }
     Shortcut { sequence: "Ctrl+Q"; onActivated: Qt.quit() }
     Shortcut {
@@ -1732,6 +1755,21 @@ ApplicationWindow {
                     enabled: !window.currentIsHome
                     onClicked: { browserMenu.close(); window.openFind() }
                 }
+                MenuRow {
+                    text: "Print…"
+                    iconSource: Qt.resolvedUrl("../icons/reyos-print.svg")
+                    shortcutText: "Ctrl+P"
+                    hoverColor: accentSurfaceHover
+                    enabled: !window.currentIsHome && !window.printJobPath.length
+                    onClicked: { browserMenu.close(); window.printPage(currentView, "print") }
+                }
+                MenuRow {
+                    text: "Save Page as PDF…"
+                    iconSource: Qt.resolvedUrl("../icons/reyos-download.svg")
+                    hoverColor: accentSurfaceHover
+                    enabled: !window.currentIsHome && !window.printJobPath.length
+                    onClicked: { browserMenu.close(); window.printPage(currentView, "save") }
+                }
 
                 MenuDivider {}
 
@@ -2136,6 +2174,10 @@ ApplicationWindow {
                 onPermissionRequested: function(request) {
                     window.requestPermission(request)
                 }
+                // window.print() from the page, or the PDF viewer's print button.
+                onPrintRequested: window.printPage(browserView, "print")
+                onPrintRequestedByFrame: function(frame) { window.printPage(browserView, "print") }
+                onPdfPrintingFinished: function(filePath, success) { window.printFinished(browserView, filePath, success) }
                 onContextMenuRequested: function(request) {
                     request.accepted = true
                     pageContextMenu.request = request

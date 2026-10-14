@@ -12,6 +12,7 @@ finish-args:
   - --socket=wayland
   - --socket=fallback-x11
   - --socket=pulseaudio
+  - --socket=cups
   - --device=dri
   - --filesystem=xdg-download
   - --talk-name=org.freedesktop.Notifications

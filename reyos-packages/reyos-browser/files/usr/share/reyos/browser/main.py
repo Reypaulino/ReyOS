@@ -8,6 +8,7 @@ import secrets
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import urllib.error
 import urllib.request
@@ -40,7 +41,7 @@ try:
 except ModuleNotFoundError:
     setproctitle = None
 
-from PySide6.QtCore import QBuffer, QByteArray, QFile, QIODevice, QObject, Property, Qt, QThread, QTimer, QUrl, QUrlQuery, Signal, Slot
+from PySide6.QtCore import QBuffer, QByteArray, QFile, QIODevice, QObject, Property, QRectF, QSize, Qt, QThread, QTimer, QUrl, QUrlQuery, Signal, Slot
 from PySide6.QtGui import QIcon, QImage, QPainter, QPixmap
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtWebEngineCore import QWebEngineUrlRequestInfo, QWebEngineUrlRequestInterceptor
@@ -1130,6 +1131,108 @@ class BrowserBackend(QObject):
         self._low_memory_mode = not self._low_memory_mode
         save_low_memory_mode(self._low_memory_mode)
         self.lowMemoryChanged.emit()
+
+    # Printing: QML renders the tab with WebEngineView.printToPdf() into a
+    # temp file, then hands it here. Never print a single frame: printing the
+    # PDF viewer's inner frame crashes QtWebEngine 6.11.
+    @Slot(result=str)
+    def newPrintFile(self) -> str:
+        fd, path = tempfile.mkstemp(prefix="reyva-print-", suffix=".pdf")
+        os.close(fd)
+        return path
+
+    @Slot(result=int)
+    def printPageSizeId(self) -> int:
+        # The default printer's paper (Letter in the US); A4 if none is known.
+        from PySide6.QtPrintSupport import QPrinter
+
+        return QPrinter().pageLayout().pageSize().id().value
+
+    @Slot(str, str, bool, str)
+    def finishPrintJob(self, pdf_path: str, title: str, success: bool, mode: str) -> None:
+        try:
+            if not success or not os.path.getsize(pdf_path):
+                self.notify("Couldn't print", "This page couldn't be turned into a printable document.")
+            elif mode == "save":
+                self._save_pdf_copy(pdf_path, title)
+            else:
+                self._print_pdf(pdf_path, title)
+        except Exception as error:
+            self.notify("Couldn't print", str(error))
+        finally:
+            Path(pdf_path).unlink(missing_ok=True)
+
+    def _save_pdf_copy(self, pdf_path: str, title: str) -> None:
+        downloads = Path.home() / "Downloads"
+        name = re.sub(r'[\\/:*?"<>|\x00-\x1f]+', " ", title or "").strip()[:120] or "Page"
+        dialog = QFileDialog()
+        dialog.setWindowTitle("Save Page as PDF")
+        dialog.setAcceptMode(QFileDialog.AcceptSave)
+        dialog.setDirectory(str(downloads if downloads.is_dir() else Path.home()))
+        dialog.selectFile(f"{name}.pdf")
+        dialog.setDefaultSuffix("pdf")
+        # Same as choose_open_file: in Flatpak the native dialog is the portal.
+        dialog.setOption(QFileDialog.DontUseNativeDialog, not IS_FLATPAK)
+        dialog.setNameFilters(["PDF documents (*.pdf)"])
+        if not dialog.exec() or not dialog.selectedFiles():
+            return
+        target = dialog.selectedFiles()[0]
+        shutil.copyfile(pdf_path, target)
+        self.notify("Saved as PDF", Path(target).name)
+
+    def _print_pdf(self, pdf_path: str, title: str) -> None:
+        from PySide6.QtPdf import QPdfDocument
+        from PySide6.QtPrintSupport import QPrintDialog, QPrinter
+
+        document = QPdfDocument()
+        document.load(pdf_path)
+        page_count = document.pageCount()
+        if page_count <= 0:
+            self.notify("Couldn't print", "This page couldn't be turned into a printable document.")
+            return
+
+        printer = QPrinter(QPrinter.PrinterMode.HighResolution)
+        printer.setDocName(title or "Reyva")
+        printer.setFromTo(1, page_count)
+        dialog = QPrintDialog(printer)
+        dialog.setWindowTitle("Print")
+        dialog.setMinMax(1, page_count)
+        if not dialog.exec():
+            return
+
+        pages = list(range(page_count))
+        if printer.printRange() == QPrinter.PrintRange.PageRange:
+            ranges = printer.pageRanges()
+            pages = [page for page in pages if ranges.contains(page + 1)]
+        if not pages:
+            return
+
+        # "Print to File (PDF)" with nothing to cut out: keep Chromium's vector
+        # PDF (sharp, searchable text) instead of re-drawing it as images.
+        output_file = printer.outputFileName()
+        if printer.outputFormat() == QPrinter.OutputFormat.PdfFormat and output_file and len(pages) == page_count and printer.copyCount() == 1:
+            shutil.copyfile(pdf_path, output_file)
+            return
+
+        painter = QPainter()
+        if not painter.begin(printer):
+            self.notify("Couldn't print", "The printer could not be opened.")
+            return
+        try:
+            target = printer.pageRect(QPrinter.Unit.DevicePixel)
+            dpi = min(printer.resolution(), 300)
+            for position, page in enumerate(pages):
+                if position:
+                    printer.newPage()
+                source = document.pagePointSize(page)
+                if source.width() <= 0 or source.height() <= 0:
+                    continue
+                scale = min(target.width() / source.width(), target.height() / source.height())
+                width, height = source.width() * scale, source.height() * scale
+                image = document.render(page, QSize(round(source.width() * dpi / 72), round(source.height() * dpi / 72)))
+                painter.drawImage(QRectF((target.width() - width) / 2, 0, width, height), image)
+        finally:
+            painter.end()
 
     @Slot(str, str)
     def notify(self, title: str, message: str) -> None:

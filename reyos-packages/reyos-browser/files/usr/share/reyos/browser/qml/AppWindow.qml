@@ -179,6 +179,15 @@ ApplicationWindow {
                 appWindow.setPageFullScreen(request.toggleOn)
             }
             onUrlChanged: browserBackend.setCurrentSite(url.toString())
+            onPrintRequested: appWindow.printPage()
+            onPrintRequestedByFrame: function(frame) { appWindow.printPage() }
+            onPdfPrintingFinished: function(filePath, success) {
+                if (filePath !== appWindow.printJobPath) {
+                    return
+                }
+                appWindow.printJobPath = ""
+                browserBackend.finishPrintJob(filePath, view.title, success, "print")
+            }
             onLifecycleStateChanged: appWindow.lifecycleActiveChanged(lifecycleState === WebEngineView.LifecycleState.Active)
         }
     }
@@ -248,4 +257,15 @@ ApplicationWindow {
     Shortcut { sequence: StandardKey.Forward; onActivated: if (view.canGoForward) view.goForward() }
     Shortcut { sequence: StandardKey.Refresh; onActivated: view.reload() }
     Shortcut { sequence: StandardKey.Quit; onActivated: Qt.quit() }
+    Shortcut { sequence: StandardKey.Print; onActivated: appWindow.printPage() }
+
+    property string printJobPath: ""
+
+    function printPage() {
+        if (printJobPath.length) {
+            return
+        }
+        printJobPath = browserBackend.newPrintFile()
+        view.printToPdf(printJobPath, browserBackend.printPageSizeId())
+    }
 }
