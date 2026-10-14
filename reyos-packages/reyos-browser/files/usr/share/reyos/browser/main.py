@@ -46,7 +46,7 @@ from PySide6.QtGui import QIcon, QImage, QPainter, QPixmap
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtWebEngineCore import QWebEngineUrlRequestInfo, QWebEngineUrlRequestInterceptor
 from PySide6.QtWebEngineQuick import QQuickWebEngineProfile, QtWebEngineQuick
-from PySide6.QtWidgets import QApplication, QFileDialog, QSystemTrayIcon
+from PySide6.QtWidgets import QApplication, QFileDialog, QLineEdit, QSystemTrayIcon
 
 APP_DIR = Path(__file__).resolve().parent
 if IS_WINDOWS:
@@ -1162,14 +1162,19 @@ class BrowserBackend(QObject):
         finally:
             Path(pdf_path).unlink(missing_ok=True)
 
-    def _save_pdf_copy(self, pdf_path: str, title: str) -> None:
+    @staticmethod
+    def _suggested_pdf_path(title: str) -> Path:
         downloads = Path.home() / "Downloads"
         name = re.sub(r'[\\/:*?"<>|\x00-\x1f]+', " ", title or "").strip()[:120] or "Page"
+        return (downloads if downloads.is_dir() else Path.home()) / f"{name}.pdf"
+
+    def _save_pdf_copy(self, pdf_path: str, title: str) -> None:
+        suggested = self._suggested_pdf_path(title)
         dialog = QFileDialog()
         dialog.setWindowTitle("Save Page as PDF")
         dialog.setAcceptMode(QFileDialog.AcceptSave)
-        dialog.setDirectory(str(downloads if downloads.is_dir() else Path.home()))
-        dialog.selectFile(f"{name}.pdf")
+        dialog.setDirectory(str(suggested.parent))
+        dialog.selectFile(suggested.name)
         dialog.setDefaultSuffix("pdf")
         # Same as choose_open_file: in Flatpak the native dialog is the portal.
         dialog.setOption(QFileDialog.DontUseNativeDialog, not IS_FLATPAK)
@@ -1197,6 +1202,11 @@ class BrowserBackend(QObject):
         dialog = QPrintDialog(printer)
         dialog.setWindowTitle("Print")
         dialog.setMinMax(1, page_count)
+        # Qt's own dialog leaves "Print to File" without a file name on Wayland
+        # (only the home folder), and the Flatpak can only write to Downloads.
+        file_field = dialog.findChild(QLineEdit, "filename")
+        if file_field is not None:
+            file_field.setText(str(self._suggested_pdf_path(title)))
         if not dialog.exec():
             return
 
@@ -1210,13 +1220,23 @@ class BrowserBackend(QObject):
         # "Print to File (PDF)" with nothing to cut out: keep Chromium's vector
         # PDF (sharp, searchable text) instead of re-drawing it as images.
         output_file = printer.outputFileName()
-        if printer.outputFormat() == QPrinter.OutputFormat.PdfFormat and output_file and len(pages) == page_count and printer.copyCount() == 1:
-            shutil.copyfile(pdf_path, output_file)
+        to_file = printer.outputFormat() == QPrinter.OutputFormat.PdfFormat and bool(output_file)
+        cant_write = "Reyva couldn't write that file. Save it in Downloads, or use Save Page as PDF to pick another folder."
+        if to_file and len(pages) == page_count and printer.copyCount() == 1:
+            try:
+                shutil.copyfile(pdf_path, output_file)
+            except OSError:
+                self.notify("Couldn't save the PDF", cant_write)
+                return
+            self.notify("Saved as PDF", Path(output_file).name)
             return
 
         painter = QPainter()
         if not painter.begin(printer):
-            self.notify("Couldn't print", "The printer could not be opened.")
+            if to_file:
+                self.notify("Couldn't save the PDF", cant_write)
+            else:
+                self.notify("Couldn't print", "The printer could not be opened.")
             return
         try:
             target = printer.pageRect(QPrinter.Unit.DevicePixel)

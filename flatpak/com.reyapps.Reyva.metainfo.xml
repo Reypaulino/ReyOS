@@ -67,6 +67,11 @@
   </requires>
 
   <releases>
+    <release version="0.1.5" date="2026-10-14">
+      <description>
+        <p>"Print to File (PDF)" in the print dialog now suggests a file name in Downloads instead of an empty one.</p>
+      </description>
+    </release>
     <release version="0.1.4" date="2026-10-14">
       <description>
         <p>Printing works: Print (Ctrl+P) and Save Page as PDF in the menu, and the print buttons on web pages and in the PDF viewer now open the print dialog.</p>
