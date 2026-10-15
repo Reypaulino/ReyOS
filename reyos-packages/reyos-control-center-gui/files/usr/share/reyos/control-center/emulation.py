@@ -211,6 +211,12 @@ def write_retroarch_cfg(settings=None, system_id=None, fullscreen=None):
         "video_fullscreen": "true" if (settings["fullscreen"] if fullscreen is None else fullscreen) else "false",
         "video_scale_integer": "true" if picture in ("sharp", "lcd") else "false",
         "video_smooth": "true" if picture == "smooth" else "false",
+        # A windowed game opens at 3x the core's picture size, and cores that
+        # render above native (PSP at 960x544, N64/PS1 at 2x/4x) then ask for
+        # more than the screen and fill it. Cap the window at 1280x720; the
+        # aspect ratio is kept and it can still be resized or maximised.
+        "video_window_auto_width_max": "1280",
+        "video_window_auto_height_max": "720",
         # Always set: a Vulkan driver picked once in RetroArch's own menu is
         # saved on exit, and on a machine without a Vulkan device every game
         # then dies on launch (found on the first real-hardware install).
