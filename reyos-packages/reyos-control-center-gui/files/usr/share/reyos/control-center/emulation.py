@@ -104,7 +104,7 @@ def system_installed(system):
 
 
 # ---- Display settings -----------------------------------------------------
-DEFAULT_SETTINGS = {"fullscreen": True, "overlay": True, "picture": "clean", "resolution": 1, "ps2_graphics": True, "windowed_games": [], "expanded": None, "bios_expanded": False, "boxart": True}
+DEFAULT_SETTINGS = {"fullscreen": True, "overlay": True, "picture": "clean", "resolution": 1, "ps2_graphics": True, "windowed_games": [], "expanded": None, "bios_expanded": False, "boxart": True, "game_storage": "", "game_resolution": {}, "pad_types": {}, "player1": "", "button_maps": {}, "ps2_pad_written": {}, "azahar_written": {}}
 
 # 3D internal resolution per core, keyed by ReyOS's 1x / 2x / 4x choice.
 # Option names and values checked against the cores Arch ships.
@@ -117,6 +117,12 @@ RESOLUTION_OPTIONS = {
         "ppsspp_internal_resolution": "960x544", "melonds_opengl_renderer": "enabled",
         "melonds_opengl_resolution": "2x native (512x384)", "dolphin_efb_scale": "2",
         "reicast_internal_resolution": "1280x960"},
+    # Only per game (library right-click): Control Center offers 1x/2x/4x.
+    # Beetle PSX has no 3x, so PS1 gets 2x there.
+    3: {"mupen64plus-EnableNativeResFactor": "3", "beetle_psx_internal_resolution": "2x",
+        "ppsspp_internal_resolution": "1440x816", "melonds_opengl_renderer": "enabled",
+        "melonds_opengl_resolution": "3x native (768x576)", "dolphin_efb_scale": "3",
+        "reicast_internal_resolution": "1920x1440"},
     4: {"mupen64plus-EnableNativeResFactor": "4", "beetle_psx_internal_resolution": "4x",
         "ppsspp_internal_resolution": "1920x1088", "melonds_opengl_renderer": "enabled",
         "melonds_opengl_resolution": "4x native (1024x768)", "dolphin_efb_scale": "4",
@@ -136,7 +142,31 @@ def load_settings():
         settings["resolution"] = 1
     if not isinstance(settings["windowed_games"], list):
         settings["windowed_games"] = []
+    if not isinstance(settings["game_resolution"], dict):
+        settings["game_resolution"] = {}
+    for key in ("pad_types", "button_maps", "ps2_pad_written", "azahar_written"):
+        if not isinstance(settings[key], dict):
+            settings[key] = {}
     return settings
+
+
+# Systems whose games have a 3D resolution (the library's per-game choice).
+THREE_D_SYSTEMS = {"n64", "psx", "ps2", "psp", "nds", "dreamcast", "gamecube"}
+
+
+def game_resolution(path, settings=None):
+    """This game's own 3D resolution from the library's right-click menu,
+    or None to follow Control Center's."""
+    value = (settings or load_settings())["game_resolution"].get(str(path))
+    return value if value in RESOLUTION_OPTIONS else None
+
+
+def set_game_resolution(path, value):
+    games = dict(load_settings()["game_resolution"])
+    games.pop(str(path), None)
+    if value in RESOLUTION_OPTIONS:
+        games[str(path)] = value
+    save_settings({"game_resolution": games})
 
 
 def game_fullscreen(path, settings=None):
@@ -198,10 +228,11 @@ def gpu_is_weak():
     return not any(g["vendor"] == "amd" or (g["vendor"] == "nvidia" and g.get("nvidiaOpenSupported")) for g in gpus)
 
 
-def write_retroarch_cfg(settings=None, system_id=None, fullscreen=None):
+def write_retroarch_cfg(settings=None, system_id=None, fullscreen=None, resolution=None):
     """The small config ReyOS appends at launch (--appendconfig), so the
     user's own ~/.config/retroarch/retroarch.cfg is never rewritten. Core
-    options go to a ReyOS-owned file for the same reason."""
+    options go to a ReyOS-owned file for the same reason. resolution: the
+    game's own 3D resolution (library right-click), used as chosen."""
     settings = settings or load_settings()
     REYOS_CFG_DIR.mkdir(parents=True, exist_ok=True)
     picture = settings["picture"]
@@ -232,8 +263,35 @@ def write_retroarch_cfg(settings=None, system_id=None, fullscreen=None):
         "input_menu_toggle_gamepad_combo": "4",
         "global_core_options": "true",
         "core_options_path": CORE_OPTIONS_CFG,
+        # Player 1 = the controller chosen on the Gaming page, matched by
+        # vendor:product, whatever order the pads were connected in
+        # ("Preferred": another pad takes over when it isn't connected).
+        # Button layouts are Control Center's (per-core remap files it
+        # writes). RetroArch saving the remap it has loaded on exit wrote a
+        # just-reset swap back, unmarked, which then counted as "made in
+        # RetroArch" and blocked every later change.
+        "remap_save_on_exit": "false",
+        "input_player1_device_reservation_type": "0",
+        "input_player1_reserved_device": "",
     }
+    # Player 1's controller buttons come from the Control Center setup
+    # (the autoconfig profile). A controller bind left in retroarch.cfg
+    # (RetroArch saves its whole config on exit) would override it -- seen
+    # as a swapped A/B on a PlayStation-mode pad. Keyboard keys are other
+    # settings and stay.
+    for key in ("b", "y", "select", "start", "up", "down", "left", "right", "a", "x", "l", "r",
+                "l2", "r2", "l3", "r3", "l_x_plus", "l_x_minus", "l_y_plus", "l_y_minus",
+                "r_x_plus", "r_x_minus", "r_y_plus", "r_y_minus"):
+        values[f"input_player1_{key}_btn"] = "nul"
+        values[f"input_player1_{key}_axis"] = "nul"
+    pad = player1_pad()
+    if pad is not None:
+        values["input_player1_device_reservation_type"] = "1"
+        values["input_player1_reserved_device"] = f'{pad["vendor"]:04x}:{pad["product"]:04x} {pad["name"]}'
     RETROARCH_REYOS_CFG.write_text("".join(f'{k} = "{v}"\n' for k, v in values.items()))
+    if resolution in RESOLUTION_OPTIONS:
+        _set_cfg_values(CORE_OPTIONS_CFG, RESOLUTION_OPTIONS[resolution])
+        return
     resolution = settings["resolution"]
     options = dict(RESOLUTION_OPTIONS[2 if resolution > 2 and gpu_is_weak() else resolution])
     # PSP keeps the chosen resolution: PPSSPP at 4x ran God of War at a
@@ -278,16 +336,18 @@ def link_system_files():
         target.symlink_to(DOLPHIN_SYS)
 
 
-def prepare_flatpak(system):
+def prepare_flatpak(system, resolution=None):
     """PCSX2's Flatpak has no access to your files: give it ~/Games (the BIOS
     folder needs write access, PCSX2 keeps its NVRAM next to the BIOS), and
     point it at ~/Games/BIOS/ps2 and ~/Games/ROMs/ps2 so the setup wizard is
     skipped. Only adds settings that are missing, so changes made in PCSX2
     itself are kept."""
+    _grant_game_folders(system)
+    if system["id"] == "3ds":
+        _write_azahar_controls()
+        return
     if system["id"] != "ps2":
         return
-    subprocess.run(["flatpak", "override", "--user", f"--filesystem={GAMES_DIR}", system["flatpak"]],
-                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
     new = not PCSX2_INI.exists()
     lines = [] if new else PCSX2_INI.read_text(errors="replace").splitlines()
     before = list(lines)
@@ -312,12 +372,33 @@ def prepare_flatpak(system):
     for key in ("OsdShowFPS", "OsdShowSpeed", "OsdShowCPU", "OsdShowGPU"):
         _ini_set(lines, "EmuCore/GS", key, overlay)
     if settings["ps2_graphics"]:
-        _apply_pcsx2_graphics(lines, settings)
+        _apply_pcsx2_graphics(lines, settings, resolution)
     _map_pcsx2_controller(lines)
     if lines != before:
         PCSX2_INI.parent.mkdir(parents=True, exist_ok=True)
         PCSX2_INI.write_text("\n".join(lines) + "\n")
     sync_pcsx2_launcher()
+
+
+def _grant_game_folders(system):
+    """A Flatpak emulator only sees folders it's been given: ~/Games, the
+    "Added games are kept in" folder, and wherever the library's links
+    point (another partition, an external drive), read-only."""
+    folders = {f"{GAMES_DIR}"}
+    storage = load_settings()["game_storage"]
+    if storage and not Path(storage).is_relative_to(GAMES_DIR):
+        folders.add(f"{storage}:ro")
+    for folder in rom_dirs(system):
+        for link in (folder.iterdir() if folder.is_dir() else []):
+            if link.is_symlink():
+                target = Path(os.path.realpath(link)).parent
+                if not target.is_relative_to(GAMES_DIR):
+                    while not os.path.ismount(target) and target.parent != target:
+                        target = target.parent
+                    if target != Path("/"):
+                        folders.add(f"{target}:ro")
+    subprocess.run(["flatpak", "override", "--user", *[f"--filesystem={f}" for f in sorted(folders)], system["flatpak"]],
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
 
 
 def sync_pcsx2_launcher():
@@ -342,7 +423,7 @@ def sync_pcsx2_launcher():
         PCSX2_OVERRIDE.write_text(text)
 
 
-def _apply_pcsx2_graphics(lines, settings):
+def _apply_pcsx2_graphics(lines, settings, resolution=None):
     """Control Center's Display settings replace PCSX2's own graphics
     settings ("Also use for PlayStation 2" switch): 3D resolution, sharp
     (integer) scaling and full screen when PCSX2 is opened on its own. The
@@ -350,7 +431,9 @@ def _apply_pcsx2_graphics(lines, settings):
     No 4x -> 2x cap here: PCSX2 runs 4x fine on Intel HD 630, and the
     resolution the user picked is what they expect to see in PCSX2."""
     picture = settings["picture"]
-    _ini_set(lines, "EmuCore/GS", "upscale_multiplier", str(settings["resolution"]))
+    # A game's own resolution (library right-click) is written here at its
+    # launch; PCSX2's per-game files need a CRC known only once it runs.
+    _ini_set(lines, "EmuCore/GS", "upscale_multiplier", str(resolution or settings["resolution"]))
     _ini_set(lines, "EmuCore/GS", "IntegerScaling", "true" if picture in ("sharp", "lcd") else "false")
     _ini_set(lines, "UI", "StartFullscreen", "true" if settings["fullscreen"] else "false")
 
@@ -376,19 +459,142 @@ def controller_connected():
 def _map_pcsx2_controller(lines):
     """PCSX2 keeps Pad 1 on the keyboard even with a controller connected
     (seen with an Xbox pad on the real laptop). When a controller is plugged
-    in and no Pad 1 button is bound to anything but the keyboard (nothing
-    remapped in PCSX2), bind Pad 1 to the first controller. Without a
+    in and Pad 1 is still on the keyboard or bound the way ReyOS binds it
+    (nothing remapped in PCSX2), bind Pad 1 to the player 1 controller.
+    PCSX2 only knows controllers by number (SDL-<n>, in connection order),
+    so the chosen pad's place among the connected ones is used. Without a
     controller the keyboard keys stay."""
-    if not controller_connected():
+    pads = list_controllers()
+    if not pads:
         return
-    for key in PCSX2_PAD_SDL:
-        value = _ini_get(lines, "Pad1", key)
-        if value and not value.startswith("Keyboard/"):
-            return
+    settings = load_settings()
+    current = {key: _ini_get(lines, "Pad1", key) for key in PCSX2_PAD_SDL}
+    keyboard = all(not v or v.startswith("Keyboard/") for v in current.values())
+    written = settings["ps2_pad_written"]
+    ours = any(current == _pcsx2_pad_binds(i, m) for i in range(4) for m in (written, {}))
+    if not (keyboard or ours):
+        return  # remapped in PCSX2 itself: leave it
+    pad = player1_pad(pads)
+    index = pads.index(pad) if pad is not None else 0
+    m = {k: v for k, v in button_map("ps2", settings).items() if k != v}
     _ini_default(lines, "InputSources", "SDL", "true")
     _ini_default(lines, "Pad1", "Type", "DualShock2")
-    for key, control in PCSX2_PAD_SDL.items():
-        _ini_set(lines, "Pad1", key, "SDL-0/" + control)
+    for key, value in _pcsx2_pad_binds(index, m).items():
+        _ini_set(lines, "Pad1", key, value)
+    if m != written:
+        save_settings({"ps2_pad_written": m})
+
+
+# ---- Azahar (3DS) controls from the ReyOS controller setup ---------------
+AZAHAR_INI = Path.home() / ".var" / "app" / "org.azahar_emu.Azahar" / "config" / "azahar-emu" / "qt-config.ini"
+# Azahar's button names by the RetroPad key whose bind they take.
+AZAHAR_BUTTONS = {"button_a": "a", "button_b": "b", "button_x": "x", "button_y": "y", "button_l": "l",
+                  "button_r": "r", "button_zl": "l2", "button_zr": "r2", "button_start": "start",
+                  "button_select": "select", "button_home": "menu_toggle", "button_up": "up",
+                  "button_down": "down", "button_left": "left", "button_right": "right"}
+
+
+def sdl_guid(pad):
+    """The GUID SDL gives a Linux joystick (Azahar matches pads by it): bus,
+    CRC-16 of the name, vendor, product, version, little-endian."""
+    crc = 0
+    for byte in pad["name"].encode():
+        r, c = (crc ^ byte) & 0xFF, 0
+        for _ in range(8):
+            c = (0xA001 if (c ^ r) & 1 else 0) ^ (c >> 1)
+            r >>= 1
+        crc = c ^ (crc >> 8)
+    return struct.pack("<8H", pad["bus"], crc, pad["vendor"], 0, pad["product"], 0, pad["version"], 0).hex()
+
+
+def _profile_binds(name):
+    try:
+        text = profile_path(name).read_text(errors="replace")
+    except OSError:
+        return {}
+    return dict(re.findall(r'^input_(\w+) = "(.*)"', text, re.M))
+
+
+def _azahar_bind(binds, key, guid):
+    """One Azahar input string from the ReyOS profile's bind for RetroPad key."""
+    base = f"engine:sdl,guid:{guid},port:0"
+    if f"{key}_btn" in binds:
+        value = binds[f"{key}_btn"]
+        m = re.fullmatch(r"h(\d)(up|down|left|right)", value)
+        return f"direction:{m.group(2)},{base},hat:{m.group(1)}" if m else f"button:{value},{base}"
+    if f"{key}_axis" in binds:
+        value = binds[f"{key}_axis"]
+        return f"axis:{value[1:]},direction:{value[0]},{base},threshold:0.500000"
+    return None
+
+
+def _write_azahar_controls():
+    """Player 1 of Azahar = the player 1 controller, bound the way it was set
+    up in Control Center, with the Gaming page's 3DS button layout. Only
+    while Azahar's controls are its keyboard defaults or what ReyOS wrote
+    last: a layout made in Azahar itself is kept."""
+    pads = list_controllers()
+    pad = player1_pad(pads) or next((p for p in pads if p["configured"]), None)
+    if pad is None or not AZAHAR_INI.exists():
+        return
+    binds = _profile_binds(pad["name"])
+    if not binds:
+        return
+    guid = sdl_guid(pad)
+    m = button_map("3ds")
+    want = {}
+    for name, key in AZAHAR_BUTTONS.items():
+        value = _azahar_bind(binds, m.get(key, key), guid)
+        if value:
+            want[name] = value
+    for name, (x, y) in (("circle_pad", ("l_x_plus_axis", "l_y_plus_axis")), ("c_stick", ("r_x_plus_axis", "r_y_plus_axis"))):
+        if x in binds and y in binds:
+            want[name] = f"axis_x:{binds[x][1:]},axis_y:{binds[y][1:]},deadzone:0.100000,{f'engine:sdl,guid:{guid},port:0'}"
+    lines = AZAHAR_INI.read_text(errors="replace").splitlines()
+    settings = load_settings()
+    written = settings["azahar_written"]
+
+    def get(key):
+        for line in lines:
+            if line.startswith(f"profiles\\1\\{key}="):
+                return line.split("=", 1)[1].strip('"')
+        return None
+
+    def is_default(key):
+        return f"profiles\\1\\{key}\\default=true" in lines
+    for name in want:
+        if not (is_default(name) or get(name) in (None, written.get(name))):
+            return  # changed in Azahar itself
+    for name, value in want.items():
+        for suffix, text in (("", f'"{value}"'), ("\\default", "false")):
+            key = f"profiles\\1\\{name}{suffix}"
+            idx = next((i for i, l in enumerate(lines) if l.startswith(key + "=")), None)
+            if idx is None:
+                section = lines.index("[Controls]") if "[Controls]" in lines else None
+                if section is None:
+                    lines += ["", "[Controls]"]
+                    section = len(lines) - 1
+                lines.insert(section + 1, f"{key}={text}")
+            else:
+                lines[idx] = f"{key}={text}"
+    AZAHAR_INI.write_text("\n".join(lines) + "\n")
+    if want != written:
+        save_settings({"azahar_written": want})
+
+
+# PS2 pad buttons by RetroPad key (how SYSTEM_CONTROLS names them).
+PS2_PAD_KEYS = {"b": "Cross", "a": "Circle", "y": "Square", "x": "Triangle", "l": "L1", "r": "R1",
+                "l2": "L2", "r2": "R2", "select": "Select", "start": "Start", "l3": "L3", "r3": "R3"}
+
+
+def _pcsx2_pad_binds(index, m):
+    """PCSX2 Pad 1 bindings for controller SDL-<index>, with the Gaming
+    page's button layout m ({console key: pad key}) applied."""
+    binds = {key: f"SDL-{index}/{control}" for key, control in PCSX2_PAD_SDL.items()}
+    for console, pad in m.items():
+        if console in PS2_PAD_KEYS and pad in PS2_PAD_KEYS:
+            binds[PS2_PAD_KEYS[console]] = f"SDL-{index}/{PCSX2_PAD_SDL[PS2_PAD_KEYS[pad]]}"
+    return binds
 
 
 def _ini_find(lines, section, key):
@@ -489,6 +695,27 @@ def _launch_failure_reason():
     return f"{reason} (full log: {LAUNCH_LOG})"
 
 
+def running_game():
+    """Title of the game an emulator has open right now ("" if none), so
+    the Gaming page can say a changed setting needs a restart of it."""
+    exts = {e for s in EMU_SYSTEMS for e in s["exts"]} | {".bin"}
+    for pid in os.listdir("/proc"):
+        if not pid.isdigit():
+            continue
+        try:
+            args = Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\0")
+        except OSError:
+            continue
+        names = [os.path.basename(a.decode(errors="replace")) for a in args[:2]]
+        if not any(n in ("retroarch", "pcsx2-qt", "azahar", "azahar-qt") for n in names):
+            continue
+        for arg in reversed(args):
+            path = Path(arg.decode(errors="replace"))
+            if path.suffix.lower() in exts:
+                return game_title(path)
+    return ""
+
+
 def launch_game(system_id, path):
     """Starts a game detached from the caller. Returns (ok, message)."""
     system = next((s for s in EMU_SYSTEMS if s["id"] == system_id), None)
@@ -498,9 +725,10 @@ def launch_game(system_id, path):
         return False, f"The {system['name']} emulator isn't installed yet -- set it up in Control Center > Gaming."
     if not RETROARCH_REYOS_CFG.is_file():
         prepare_folders()
-    write_retroarch_cfg(system_id=system["id"], fullscreen=game_fullscreen(path))
+    resolution = game_resolution(path) if system["id"] in THREE_D_SYSTEMS else None
+    write_retroarch_cfg(system_id=system["id"], fullscreen=game_fullscreen(path), resolution=resolution)
     if "flatpak" in system:
-        prepare_flatpak(system)
+        prepare_flatpak(system, resolution)
     LAUNCH_LOG.parent.mkdir(parents=True, exist_ok=True)
     with LAUNCH_LOG.open("w") as log:
         proc = subprocess.Popen(launch_command(system, path), stdin=subprocess.DEVNULL, stdout=log,
@@ -713,13 +941,14 @@ def _open_pad(path):
     fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
     try:
         name = _ioctl_bytes(fd, 0x06, 256).split(b"\0", 1)[0].decode(errors="replace")
-        _bus, vendor, product, _ver = struct.unpack("4H", _ioctl_bytes(fd, 0x02, 8))
+        bus, vendor, product, version = struct.unpack("4H", _ioctl_bytes(fd, 0x02, 8))
         keys = _bits(_ioctl_bytes(fd, 0x20 + EV_KEY, (KEY_MAX + 1) // 8))
         axes = _bits(_ioctl_bytes(fd, 0x20 + EV_ABS, (ABS_MAX + 1) // 8))
     except OSError:
         os.close(fd)
         raise
-    return fd, {"name": name, "vendor": vendor, "product": product, "keys": keys, "axes": axes}
+    return fd, {"name": name, "vendor": vendor, "product": product, "bus": bus, "version": version,
+                "keys": keys, "axes": axes}
 
 
 def _is_gamepad(info):
@@ -765,7 +994,9 @@ def list_controllers():
         if _is_gamepad(info):
             pads.append({"path": str(path), "name": info["name"],
                          "vendor": info["vendor"], "product": info["product"],
-                         "brand": controller_brand(info["vendor"]),
+                         "bus": info["bus"], "version": info["version"],
+                         "brand": controller_brand(info["vendor"], info["name"]),
+                         "detected": controller_brand(info["vendor"]),
                          "configured": profile_path(info["name"]).is_file()})
     return pads
 
@@ -848,8 +1079,33 @@ BRAND_STEP_TEXT = {
 }
 
 
-def controller_brand(vendor):
+PAD_TYPES = ("xbox", "playstation", "nintendo", "generic")
+
+
+def controller_brand(vendor, name=None):
+    """The controller's type (button names, picture): the one chosen for it
+    on the Gaming page, else from its USB vendor id. 8BitDo pads, clones and
+    many Bluetooth pads report other vendors, so they need the choice."""
+    if name is not None:
+        chosen = load_settings()["pad_types"].get(name)
+        if chosen in PAD_TYPES:
+            return chosen
     return PAD_BRANDS.get(vendor, "generic")
+
+
+def set_pad_type(name, brand):
+    """brand "" = back to the type detected from the vendor id."""
+    types = dict(load_settings()["pad_types"])
+    types.pop(name, None)
+    if brand in PAD_TYPES:
+        types[name] = brand
+    save_settings({"pad_types": types})
+
+
+def player1_pad(pads=None):
+    """The connected controller chosen as player 1 (Gaming page), or None."""
+    name = load_settings()["player1"]
+    return next((p for p in (pads if pads is not None else list_controllers()) if p["name"] == name), None) if name else None
 
 
 def step_text(key, title, hint, brand):
@@ -902,8 +1158,11 @@ SYSTEM_CONTROLS = {
     "gamecube": {"pad": "GameCube controller", "map": [
         ("b", "B"), ("a", "A"), ("y", "Y"), ("x", "X"), ("dpad", "D-pad"), ("lstick", "Control stick"),
         ("rstick", "C-stick"), ("l2", "L"), ("r2", "R"), ("r", "Z"), ("start", "Start")]},
-    "3ds": {"pad": "Nintendo 3DS", "map": [],
-     "note": "3DS runs in Azahar, which has its own button setup. Change it in Open Azahar settings."},
+    "3ds": {"pad": "Nintendo 3DS", "map": [
+        ("b", "B"), ("a", "A"), ("y", "Y"), ("x", "X"), ("dpad", "D-pad"), ("l", "L"), ("r", "R"),
+        ("l2", "ZL"), ("r2", "ZR"), ("lstick", "Circle Pad"), ("rstick", "C-Stick"),
+        ("select", "Select"), ("start", "Start")],
+     "note": "Azahar (the 3DS emulator) gets these buttons from your controller setup when a game starts. Touch the bottom screen with the mouse."},
 }
 
 # The player's own button names, per brand.
@@ -925,25 +1184,121 @@ _COMMON_NAMES = {"dpad": "D-pad", "lstick": "Left stick", "rstick": "Right stick
 def saved_brand():
     """Brand of a controller set up earlier, for when none is connected."""
     for cfg in sorted(AUTOCONFIG_DIR.glob("ReyOS - *.cfg")):
-        m = re.search(r'^input_vendor_id = "(\d+)"', cfg.read_text(errors="replace"), re.M)
-        if m and controller_brand(int(m.group(1))) != "generic":
-            return controller_brand(int(m.group(1)))
+        text = cfg.read_text(errors="replace")
+        m = re.search(r'^input_vendor_id = "(\d+)"', text, re.M)
+        n = re.search(r'^input_device = "(.*)"', text, re.M)
+        brand = controller_brand(int(m.group(1)), n.group(1) if n else None) if m else "generic"
+        if brand != "generic":
+            return brand
     return "generic"
+
+
+# ---- Button layout per system (Gaming page / library right-click) --------
+# A console button can be moved to another button of the player's pad; the
+# choice is a swap within the buttons that system uses, so nothing is
+# doubled. RetroArch systems get a per-core remap file (loaded by itself,
+# auto_remaps_enable); PS2 gets PCSX2's Pad 1 bindings at launch.
+REMAPPABLE = ("b", "a", "y", "x", "l", "r", "l2", "r2", "select", "start", "l3", "r3")
+RETROPAD_ID = {"b": 0, "y": 1, "select": 2, "start": 3, "a": 8, "x": 9, "l": 10, "r": 11,
+               "l2": 12, "r2": 13, "l3": 14, "r3": 15}
+REMAP_DIR = Path.home() / ".config" / "retroarch" / "config" / "remaps"
+CORE_INFO_DIR = Path("/usr/share/libretro/info")
+_REMAP_MARK = "# Written by ReyOS Control Center > Gaming > Button layout"
+
+
+def _remappable_keys(system_id):
+    spec = SYSTEM_CONTROLS.get(system_id) or {"map": []}
+    return [key for key, _label in spec["map"] if key in REMAPPABLE]
+
+
+def button_map(system_id, settings=None):
+    """{console button key: pad button key} for every button the system can
+    move; unchanged ones map to themselves."""
+    saved = (settings or load_settings())["button_maps"].get(system_id, {})
+    keys = _remappable_keys(system_id)
+    m = {k: k for k in keys}
+    m.update({k: v for k, v in saved.items() if k in m and v in keys})
+    return m if sorted(m.values()) == sorted(keys) else {k: k for k in keys}
+
+
+def set_button(system_id, console_key, pad_key):
+    """Moves a console button to another pad button, swapping with the one
+    that had it."""
+    m = button_map(system_id)
+    if console_key not in m or pad_key not in m:
+        return
+    other = next(k for k, v in m.items() if v == pad_key)
+    m[other], m[console_key] = m[console_key], pad_key
+    _save_button_map(system_id, m)
+
+
+def reset_buttons(system_id):
+    _save_button_map(system_id, {})
+
+
+def _save_button_map(system_id, m):
+    maps = dict(load_settings()["button_maps"])
+    changed = {k: v for k, v in m.items() if k != v}
+    if changed:
+        maps[system_id] = changed
+    else:
+        maps.pop(system_id, None)
+    save_settings({"button_maps": maps})
+    _write_remap(system_id)
+
+
+def _core_name(system):
+    try:
+        text = (CORE_INFO_DIR / f"{system['core']}_libretro.info").read_text(errors="replace")
+    except (OSError, KeyError):
+        return None
+    m = re.search(r'^corename\s*=\s*"(.*)"', text, re.M)
+    return m.group(1) if m else None
+
+
+def _write_remap(system_id):
+    """The per-core remap RetroArch loads for this system's emulator; ours
+    is removed again when the layout is back to default. A remap file made
+    in RetroArch's own menu is left alone."""
+    system = next((s for s in EMU_SYSTEMS if s["id"] == system_id), None)
+    if system is None or "core" not in system:
+        return
+    name = _core_name(system)
+    if not name:
+        return
+    path = REMAP_DIR / name / f"{name}.rmp"
+    ours = not path.exists() or _REMAP_MARK in path.read_text(errors="replace")
+    if not ours:
+        return
+    m = button_map(system_id)
+    if all(k == v for k, v in m.items()):
+        path.unlink(missing_ok=True)
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = [_REMAP_MARK] + [f'input_player1_btn_{pad} = "{RETROPAD_ID[console]}"' for console, pad in m.items()]
+    path.write_text("\n".join(lines) + "\n")
 
 
 def system_controls(brand):
     """Per-system button layout for the Gaming page: which button on the
-    player's pad does what on each console."""
+    player's pad does what on each console, and what it can be moved to."""
     names = {**_COMMON_NAMES, **PAD_BUTTON_NAMES.get(brand, PAD_BUTTON_NAMES["generic"])}
+    settings = load_settings()
     out = []
     for system in EMU_SYSTEMS:
         spec = SYSTEM_CONTROLS.get(system["id"])
         if not spec:
             continue
-        rows = [{"key": key, "console": label, "yours": names[key]} for key, label in spec["map"]]
+        m = button_map(system["id"], settings)
+        rows = [{"key": key, "console": label, "yours": names[m.get(key, key)],
+                 "pad": m.get(key, key), "movable": key in m and ("core" in system or system["id"] in ("ps2", "3ds"))}
+                for key, label in spec["map"]]
         out.append({"id": system["id"], "name": system["name"], "pad": spec["pad"],
                     "note": spec.get("note", ""), "rows": rows,
-                    "labels": {key: label for key, label in spec["map"]}})
+                    "choices": [{"key": k, "label": names[k]} for k in m],
+                    "custom": any(k != v for k, v in m.items()),
+                    # Where each console button now sits on the pad picture.
+                    "labels": {m.get(key, key): label for key, label in spec["map"]}})
     return out
 
 

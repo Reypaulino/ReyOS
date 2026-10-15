@@ -31,6 +31,7 @@ from looks import (  # Qt-free Look / Light-Dark helpers, also run at login
     _recolor_look_assets,
 )
 import emulation  # Qt-free emulation helpers (systems, settings, BIOS, controllers)
+import game_shrink  # Qt-free: add downloaded games, shrink them to CHD
 import steam_options  # Qt-free: GameMode/MangoHud in Steam games' launch options
 import flatpak_updates  # Qt-free: pending Flatpak updates, readable update errors
 from emulation import EMU_SYSTEMS, GAMES_DIR, RETROARCH_REYOS_CFG
@@ -732,7 +733,7 @@ class ControllerSetupWorker(_Worker):
             self.done.emit(False, f"Couldn't read the controller ({e.strerror}). Unplug it, plug it back in and try again.")
             return
         name = reader.info["name"]
-        brand = emulation.controller_brand(reader.info["vendor"])
+        brand = emulation.controller_brand(reader.info["vendor"], name)
         binds = {}
         steps = emulation.CONTROLLER_STEPS
         try:
@@ -1125,6 +1126,37 @@ class Backend(QObject):
         subprocess.Popen([str(APP_DIR / "games.py")], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                          stderr=subprocess.DEVNULL, start_new_session=True)
 
+    @Slot(result=str)
+    def startWith(self):
+        """What a launcher opened Control Center for ("controller-setup"
+        from ReyOS Games), once."""
+        return os.environ.pop("REYOS_CC_START", "")
+
+    @Slot(result=str)
+    def runningGame(self):
+        return emulation.running_game()
+
+    @Slot()
+    def addGames(self):
+        """"Add games" lives in ReyOS Games (progress, results): open it
+        straight into the file picker."""
+        self._open_library("add")
+
+    @Slot()
+    def shrinkGames(self):
+        """Shrink every library game that isn't yet, in ReyOS Games."""
+        self._open_library("shrink")
+
+    def _open_library(self, start):
+        env = dict(os.environ, REYOS_GAMES_START=start)
+        subprocess.Popen([str(APP_DIR / "games.py")], env=env, stdin=subprocess.DEVNULL,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+
+    @Slot(result="QVariantMap")
+    def shrinkableGames(self):
+        games = game_shrink.shrinkable_games()
+        return {"count": len(games), "size": sum(g["size"] for g in games)}
+
     @Slot(str)
     def openGamesFolder(self, system_id):
         self._emu_prepare_folders()
@@ -1170,6 +1202,10 @@ class Backend(QObject):
     def setEmulationSettings(self, settings):
         try:
             emulation.save_settings(dict(settings))
+            # A new "Added games are kept in" folder: PCSX2 needs to read it.
+            ps2 = next(s for s in EMU_SYSTEMS if s["id"] == "ps2")
+            if settings.get("game_storage") and emulation.system_installed(ps2):
+                emulation.prepare_flatpak(ps2)
         except OSError as e:
             self.actionFinished.emit(False, f"Couldn't save game settings: {e}")
             return
@@ -1215,6 +1251,27 @@ class Backend(QObject):
     @Slot(result="QVariantList")
     def gameControllers(self):
         return emulation.list_controllers()
+
+    @Slot(str, str, str)
+    def setButton(self, system_id, console_key, pad_key):
+        emulation.set_button(system_id, console_key, pad_key)
+
+    @Slot(str)
+    def resetButtons(self, system_id):
+        emulation.reset_buttons(system_id)
+
+    @Slot(str, str)
+    def setPadType(self, name, brand):
+        """"" = the type detected from the controller's vendor id."""
+        emulation.set_pad_type(name, brand)
+
+    @Slot(result=str)
+    def player1(self):
+        return emulation.load_settings()["player1"]
+
+    @Slot(str)
+    def setPlayer1(self, name):
+        emulation.save_settings({"player1": name})
 
     @Slot(result=str)
     def savedControllerBrand(self):

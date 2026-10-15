@@ -19,6 +19,7 @@ except ImportError:
 APP_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(APP_DIR))
 import emulation  # noqa: E402
+import game_shrink  # noqa: E402
 from emulation import EMU_SYSTEMS  # noqa: E402
 
 
@@ -44,14 +45,60 @@ class CoverWorker(QThread):
                 self.coverReady.emit(str(rom), cover)
 
 
+class AddGamesWorker(QThread):
+    """Asks for game files (or takes a library game to shrink), installs the
+    shrinking tool if needed (one password prompt), then adds and shrinks
+    each game."""
+    progress = Signal(str, float)
+    finished_ok = Signal(bool, str, "QVariantList")
+
+    def __init__(self, paths=None):
+        super().__init__()
+        self.paths = paths
+        self.beside_original = paths is not None
+
+    def run(self):
+        paths = self.paths
+        if paths is None:
+            picked = subprocess.run(
+                ["kdialog", "--title", "Add Games", "--getopenfilename", str(Path.home() / "Downloads"),
+                 game_shrink.FILE_FILTER, "--multiple", "--separate-output"],
+                capture_output=True, text=True)
+            paths = [p for p in picked.stdout.splitlines() if p.strip()]
+        if not paths:  # Cancel
+            self.finished_ok.emit(True, "", [])
+            return
+        if not game_shrink.tool_installed():
+            self.progress.emit("Installing the game shrinking tool (about 20 MB; ReyOS asks for your password)...", -1)
+            rc = subprocess.run(["pkexec", str(game_shrink.INSTALL_HELPER), "shrink"],
+                                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL).returncode
+            if not game_shrink.tool_installed():
+                self.finished_ok.emit(False, "Install cancelled -- the password prompt was closed." if rc in (126, 127)
+                                      else "Couldn't install the game shrinking tool -- check your network connection.", [])
+                return
+        messages, originals, ok_all = [], [], True
+        for n, path in enumerate(paths, 1):
+            prefix = f"({n} of {len(paths)}) " if len(paths) > 1 else ""
+            ok, message, done = game_shrink.add_game(path, lambda text, pct: self.progress.emit(prefix + text, pct),
+                                                     beside_original=self.beside_original)
+            ok_all &= ok
+            messages.append(message)
+            originals += done
+        self.finished_ok.emit(ok_all, " ".join(messages), originals)
+
+
 class GamesBackend(QObject):
     coverReady = Signal(str, str)
     message = Signal(bool, str)
     gamesChanged = Signal()
+    addProgress = Signal(str, float)
+    addFinished = Signal(bool, str, "QVariantList")
 
     def __init__(self):
         super().__init__()
         self._cover_worker = None
+        self._add_worker = None
         # Games copied into ~/Games/ROMs show up by themselves: watch every
         # ROM folder (and their subfolders), and reload shortly after a
         # change, since a big copy fires many change events.
@@ -85,7 +132,8 @@ class GamesBackend(QObject):
     @Slot(result="QVariantList")
     def emulationGames(self):
         games = []
-        windowed = set(emulation.load_settings()["windowed_games"])
+        settings = emulation.load_settings()
+        windowed = set(settings["windowed_games"])
         for system in EMU_SYSTEMS:
             playable = emulation.system_installed(system)
             for path in emulation.scan_games(system):
@@ -95,6 +143,13 @@ class GamesBackend(QObject):
                     "path": str(path), "playable": playable,
                     "windowed": str(path) in windowed,
                     "cover": emulation.local_cover(system, path),
+                    "shrinkable": game_shrink.shrinkable(system["id"], path),
+                    "has3d": system["id"] in emulation.THREE_D_SYSTEMS,
+                    # PS2 follows ReyOS's resolution only with the Gaming
+                    # page's "Use these for PlayStation 2 too" switch on.
+                    "resolutionSettable": system["id"] in emulation.THREE_D_SYSTEMS
+                                          and (system["id"] != "ps2" or settings["ps2_graphics"]),
+                    "resolution": emulation.game_resolution(path, settings) or 0,
                 })
         games.sort(key=lambda g: (g["title"].lower(), g["system"]))
         return games
@@ -132,10 +187,24 @@ class GamesBackend(QObject):
             worker.cancelled = True
             if not worker.wait(2000):
                 os._exit(0)
+        # Shrinking a game takes minutes; closing the window ends it. The
+        # .part file is ignored and replaced on the next try.
+        if self._add_worker is not None and self._add_worker.isRunning():
+            game_shrink.cancel()
+            os._exit(0)
 
     @Slot(str, bool)
     def setGameWindowed(self, path, windowed):
         emulation.set_game_windowed(path, windowed)
+
+    @Slot(str, int)
+    def setGameResolution(self, path, value):
+        """0 = follow Control Center's 3D resolution."""
+        emulation.set_game_resolution(path, value or None)
+
+    @Slot(result=int)
+    def defaultResolution(self):
+        return emulation.load_settings()["resolution"]
 
     @Slot(str, str)
     def launchGame(self, system_id, path):
@@ -148,6 +217,78 @@ class GamesBackend(QObject):
         folder.mkdir(parents=True, exist_ok=True)
         subprocess.Popen(["xdg-open", str(folder)], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                          stderr=subprocess.DEVNULL, start_new_session=True)
+
+    @Slot()
+    def addGames(self):
+        self._start_add(None)
+
+    @Slot(str)
+    def shrinkGame(self, path):
+        """Right-click > Shrink to save space, for a game already listed."""
+        self._start_add([path])
+
+    def _start_add(self, paths):
+        if self._add_worker is not None and self._add_worker.isRunning():
+            return
+        self._add_worker = AddGamesWorker(paths)
+        self._add_worker.progress.connect(self.addProgress.emit)
+        self._add_worker.finished_ok.connect(self._games_added)
+        self._add_worker.start()
+
+    def _games_added(self, ok, message, originals):
+        self.addFinished.emit(ok, message, originals)
+        self.gamesChanged.emit()
+
+    @Slot("QVariantList", result=int)
+    def deleteOriginals(self, paths):
+        return game_shrink.delete_originals(paths)
+
+    @Slot(result=str)
+    def startWith(self):
+        """What Control Center opened the library for: "add" (Add games),
+        "shrink" (Shrink them) or ""."""
+        return os.environ.pop("REYOS_GAMES_START", "")
+
+    @Slot()
+    def shrinkAll(self):
+        paths = [g["path"] for g in game_shrink.shrinkable_games()]
+        if paths:
+            self._start_add(paths)
+
+    @Slot(result="QVariantList")
+    def controllers(self):
+        return emulation.list_controllers()
+
+    @Slot(str, result="QVariantMap")
+    def buttonLayout(self, system_id):
+        """One system's buttons for the library's own button window."""
+        pads = emulation.list_controllers()
+        brand = pads[0]["brand"] if pads else emulation.saved_brand()
+        layout = next((l for l in emulation.system_controls(brand) if l["id"] == system_id), None)
+        return dict(layout, brand=brand) if layout else {}
+
+    @Slot(str, str, str)
+    def setButton(self, system_id, console_key, pad_key):
+        emulation.set_button(system_id, console_key, pad_key)
+
+    @Slot(str)
+    def resetButtons(self, system_id):
+        emulation.reset_buttons(system_id)
+
+    @Slot(str)
+    def openButtonLayout(self, system_id):
+        """Control Center's "Button layout" for this game's system."""
+        env = dict(os.environ, REYOS_CC_INITIAL_PAGE="GamingPage.qml", REYOS_CC_START="buttons:" + system_id)
+        subprocess.Popen([str(APP_DIR / "main.py")], env=env, stdin=subprocess.DEVNULL,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+
+    @Slot()
+    def setUpController(self):
+        """The step-by-step setup is Control Center's: open its Gaming page
+        straight into it."""
+        env = dict(os.environ, REYOS_CC_INITIAL_PAGE="GamingPage.qml", REYOS_CC_START="controller-setup")
+        subprocess.Popen([str(APP_DIR / "main.py")], env=env, stdin=subprocess.DEVNULL,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
 
     @Slot()
     def openSetup(self):
