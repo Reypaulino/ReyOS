@@ -422,6 +422,25 @@ def _ini_default(lines, section, key, value):
         lines.insert(start + 1, f"{key} = {value}")
 
 
+def _ps2_disc(rom):
+    """PCSX2 can't open a .cue ("Unable to identify the ISO image type") but
+    reads the .bin it points to, so hand it the first FILE of the cue. The
+    library still lists the .cue, so a bin/cue game shows up once."""
+    rom = Path(rom)
+    if rom.suffix.lower() != ".cue":
+        return str(rom)
+    try:
+        text = rom.read_text(errors="replace")
+    except OSError:
+        return str(rom)
+    match = re.search(r'^\s*FILE\s+(?:"([^"]+)"|(\S+))', text, re.MULTILINE | re.IGNORECASE)
+    if match:
+        disc = rom.parent / (match.group(1) or match.group(2))
+        if disc.is_file():
+            return str(disc)
+    return str(rom)
+
+
 def launch_command(system, rom):
     settings = load_settings()
     # GameMode (installed with Steam on this page) for every game. For the
@@ -431,7 +450,7 @@ def launch_command(system, rom):
     fullscreen = game_fullscreen(rom, settings)
     if system["id"] == "ps2":
         return gamemode + ["flatpak", "run", system["flatpak"], "-batch",
-                           "-fullscreen" if fullscreen else "-nofullscreen", "--", rom]
+                           "-fullscreen" if fullscreen else "-nofullscreen", "--", _ps2_disc(rom)]
     if system["id"] == "3ds":
         return gamemode + ["flatpak", "run", system["flatpak"], "-f" if fullscreen else "-w", rom]
     cmd = ["retroarch", f"--appendconfig={RETROARCH_REYOS_CFG}", "-L", str(core_path(system)), rom]
