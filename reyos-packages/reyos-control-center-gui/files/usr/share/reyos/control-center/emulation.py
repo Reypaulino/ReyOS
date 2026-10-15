@@ -336,12 +336,10 @@ def _apply_pcsx2_graphics(lines, settings):
     settings ("Also use for PlayStation 2" switch): 3D resolution, sharp
     (integer) scaling and full screen when PCSX2 is opened on its own. The
     aspect ratio stays PCSX2's (stretching PS2 games to 16:9 distorts them).
-    Same 4x -> 2x cap as the RetroArch cores without a strong GPU."""
-    resolution = settings["resolution"]
-    if resolution > 2 and gpu_is_weak():
-        resolution = 2
+    No 4x -> 2x cap here: PCSX2 runs 4x fine on Intel HD 630, and the
+    resolution the user picked is what they expect to see in PCSX2."""
     picture = settings["picture"]
-    _ini_set(lines, "EmuCore/GS", "upscale_multiplier", str(resolution))
+    _ini_set(lines, "EmuCore/GS", "upscale_multiplier", str(settings["resolution"]))
     _ini_set(lines, "EmuCore/GS", "IntegerScaling", "true" if picture in ("sharp", "lcd") else "false")
     _ini_set(lines, "UI", "StartFullscreen", "true" if settings["fullscreen"] else "false")
 
