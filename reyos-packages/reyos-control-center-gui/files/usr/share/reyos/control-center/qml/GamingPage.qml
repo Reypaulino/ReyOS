@@ -403,7 +403,7 @@ Kirigami.ScrollablePage {
                     Layout.fillWidth: true
                     wrapMode: Text.Wrap
                     opacity: 0.7
-                    text: "3D resolution applies to Nintendo 64, Dreamcast, PlayStation, PSP, Nintendo DS and GameCube / Wii. It does not change NES, SNES, Game Boy, GBA or Genesis games, which are drawn at their original size (use Picture for those; Clean and LCD need the shader pack, installed with the emulators). On computers without a dedicated graphics card, 4× runs as 2× (except PlayStation 2, which uses the resolution you pick). If a game stutters, go back to Original."
+                    text: "3D resolution applies to Nintendo 64, Dreamcast, PlayStation, PSP, Nintendo DS and GameCube / Wii. It does not change NES, SNES, Game Boy, GBA or Genesis games, which are drawn at their original size (use Picture for those; Clean and LCD need the shader pack, installed with the emulators). On computers without a dedicated graphics card, 4× runs as 2× (except PlayStation 2 and PSP, which use the resolution you pick). If a game stutters, go back to Original."
                 }
                 Controls.Switch {
                     visible: flatpakSystems.some(function(s) { return s.id === "ps2" })

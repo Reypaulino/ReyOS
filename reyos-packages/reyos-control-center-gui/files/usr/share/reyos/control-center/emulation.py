@@ -235,9 +235,11 @@ def write_retroarch_cfg(settings=None, system_id=None, fullscreen=None):
     }
     RETROARCH_REYOS_CFG.write_text("".join(f'{k} = "{v}"\n' for k, v in values.items()))
     resolution = settings["resolution"]
-    if resolution > 2 and gpu_is_weak():
-        resolution = 2
-    _set_cfg_values(CORE_OPTIONS_CFG, RESOLUTION_OPTIONS[resolution])
+    options = dict(RESOLUTION_OPTIONS[2 if resolution > 2 and gpu_is_weak() else resolution])
+    # PSP keeps the chosen resolution: PPSSPP at 4x ran God of War at a
+    # steady 60 FPS with the Intel HD 630 about half busy.
+    options["ppsspp_internal_resolution"] = RESOLUTION_OPTIONS[resolution]["ppsspp_internal_resolution"]
+    _set_cfg_values(CORE_OPTIONS_CFG, options)
 
 
 def prepare_folders():
