@@ -88,6 +88,7 @@ openpgp-card-tools
 openssh
 openvpn
 wireguard-tools
+partitionmanager
 partclone
 parted
 partimage
