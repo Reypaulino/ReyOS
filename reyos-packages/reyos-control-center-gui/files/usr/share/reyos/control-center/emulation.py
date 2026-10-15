@@ -65,6 +65,9 @@ SHADER_DIR = Path("/usr/share/libretro/shaders/shaders_slang")
 PICTURE_SHADERS = {"clean": "pixel-art-scaling/sharp-bilinear.slangp", "lcd": "handheld/lcd3x.slangp"}
 TWO_D_SYSTEMS = {"nes", "snes", "gb", "gba", "genesis"}
 LAUNCH_LOG = Path.home() / ".cache" / "reyos" / "retroarch-last.log"
+MANGOHUD_USER_CFG = Path.home() / ".config" / "MangoHud" / "MangoHud.conf"
+MANGOHUD_COMPACT = ("legacy_layout=0,hud_compact,position=top-right,font_size=18,background_alpha=0.3,"
+                    "fps,cpu_stats,gpu_stats,frame_timing=0,custom_text=Right Shift+F12 hides this")
 AUTOCONFIG_DIR = Path.home() / ".config" / "retroarch" / "autoconfig" / "udev"
 DOLPHIN_SYS = Path("/usr/share/dolphin-emu/sys")
 FLATHUB_URL = "https://flathub.org/repo/flathub.flatpakrepo"
@@ -463,9 +466,14 @@ def launch_command(system, rom):
         # Only the command line loads a preset at start-up; a video_shader
         # line in the config is ignored.
         cmd.insert(1, f"--set-shader={shader}")
-    # MangoHud performance overlay (also installed with Steam); Shift+F12
-    # hides it during a game.
+    # MangoHud performance overlay (also installed with Steam); Right
+    # Shift+F12 hides it during a game. Compact, in PCSX2's corner, with the
+    # hide key on screen (no emulator can toggle it from a controller;
+    # custom_text only shows with legacy_layout=0). A
+    # user's own MangoHud.conf wins: MANGOHUD_CONFIG would replace it.
     mangohud = ["mangohud"] if settings["overlay"] and shutil.which("mangohud") else []
+    if mangohud and not MANGOHUD_USER_CFG.is_file():
+        mangohud = ["env", f"MANGOHUD_CONFIG={MANGOHUD_COMPACT}"] + mangohud
     return gamemode + mangohud + cmd
 
 

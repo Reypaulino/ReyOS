@@ -376,7 +376,7 @@ Kirigami.ScrollablePage {
                     text: "To keep one game in a window, right-click it in the game library and choose \"Always play this game in a window\"."
                 }
                 Controls.Switch {
-                    text: "Show a performance overlay while playing (FPS, CPU and GPU; Shift+F12 hides it in a game)"
+                    text: "Show a performance overlay while playing (FPS, CPU and GPU; Right Shift + F12 hides it in a game, except PlayStation 2 and 3DS)"
                     checked: emuSettings.overlay !== false
                     onToggled: saveSettings({ overlay: checked })
                 }
