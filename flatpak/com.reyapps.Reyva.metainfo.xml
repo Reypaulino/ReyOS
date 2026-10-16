@@ -67,6 +67,11 @@
   </requires>
 
   <releases>
+    <release version="0.1.7" date="2026-10-15">
+      <description>
+        <p>Show in Folder and Open Downloads Folder in the downloads list open the file manager again, with the downloaded file selected.</p>
+      </description>
+    </release>
     <release version="0.1.6" date="2026-10-14">
       <description>
         <p>Print preview like other browsers: see the pages before printing, and pick the printer, pages, copies, layout, paper size, color and two-sided printing, or save as PDF.</p>

@@ -17,6 +17,8 @@ finish-args:
   - --filesystem=xdg-download
   - --talk-name=org.freedesktop.Notifications
   - --talk-name=org.freedesktop.secrets
+  # "Show in Folder": the file manager opens the folder with the file selected
+  - --talk-name=org.freedesktop.FileManager1
 
 build-options:
   env:

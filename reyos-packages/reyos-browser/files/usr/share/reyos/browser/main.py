@@ -18,7 +18,7 @@ from pathlib import Path
 
 # Reyva's own version, shown in Settings. Bump it with every release (and the
 # Flatpak metainfo <release>); the .deb/Windows package numbers are separate.
-APP_VERSION = "0.1.6"
+APP_VERSION = "0.1.7"
 
 IS_WINDOWS = sys.platform == "win32"
 IS_FLATPAK = os.path.exists("/.flatpak-info")
@@ -46,7 +46,7 @@ except ModuleNotFoundError:
     setproctitle = None
 
 from PySide6.QtCore import QBuffer, QByteArray, QFile, QIODevice, QObject, Property, QRectF, QSize, Qt, QThread, QTimer, QUrl, QUrlQuery, Signal, Slot
-from PySide6.QtGui import QIcon, QImage, QPainter, QPixmap
+from PySide6.QtGui import QDesktopServices, QIcon, QImage, QPainter, QPixmap
 from PySide6.QtQml import QQmlApplicationEngine, QQmlImageProviderBase
 from PySide6.QtQuick import QQuickImageProvider
 from PySide6.QtWebEngineCore import QWebEngineUrlRequestInfo, QWebEngineUrlRequestInterceptor
@@ -1381,6 +1381,32 @@ class BrowserBackend(QObject):
             self._print_pdf(pdf_path, title)
         except Exception as error:
             self.notify("Couldn't print", str(error))
+
+    @Slot(str)
+    def showInFolder(self, path: str) -> None:
+        """Opens the file manager at a downloaded file (selected) or, for a
+        folder, at the folder itself. Qt's openUrl on a folder goes through
+        the portal's OpenFile in the Flatpak, which opened nothing on a real
+        ReyOS install; the file manager's own D-Bus service (FileManager1,
+        what Dolphin and Nautilus implement) opens it and selects the file."""
+        is_dir = os.path.isdir(path)
+        if not is_dir and not os.path.exists(path):
+            path, is_dir = os.path.dirname(path), True
+        if IS_WINDOWS:
+            target = os.path.normpath(path)
+            subprocess.Popen(["explorer", target] if is_dir else f'explorer /select,"{target}"')
+            return
+        try:
+            from PySide6.QtDBus import QDBusConnection, QDBusInterface, QDBusMessage
+
+            manager = QDBusInterface("org.freedesktop.FileManager1", "/org/freedesktop/FileManager1",
+                                     "org.freedesktop.FileManager1", QDBusConnection.sessionBus())
+            reply = manager.call("ShowFolders" if is_dir else "ShowItems", [QUrl.fromLocalFile(path).toString()], "")
+            if reply.type() != QDBusMessage.MessageType.ErrorMessage:
+                return
+        except Exception:
+            pass
+        QDesktopServices.openUrl(QUrl.fromLocalFile(path if is_dir else os.path.dirname(path)))
 
     @Slot(str, str)
     def notify(self, title: str, message: str) -> None:

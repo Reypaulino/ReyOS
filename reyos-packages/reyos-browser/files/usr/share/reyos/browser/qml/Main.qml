@@ -2158,12 +2158,12 @@ ApplicationWindow {
                             }
                             Button { visible: !finished; text: "Cancel"; onClicked: window.cancelDownload(downloadId) }
                             Button { visible: completed; text: "Open"; onClicked: window.openDownload(name) }
-                            Button { visible: completed; text: "Show in Folder"; onClicked: Qt.openUrlExternally("file://" + window.downloadsPath) }
+                            Button { visible: completed; text: "Show in Folder"; onClicked: browserBackend.showInFolder(window.downloadsPath + "/" + name) }
                         }
                     }
                 }
             }
-            Button { text: "Open Downloads Folder"; Layout.alignment: Qt.AlignRight; onClicked: Qt.openUrlExternally("file://" + window.downloadsPath) }
+            Button { text: "Open Downloads Folder"; Layout.alignment: Qt.AlignRight; onClicked: browserBackend.showInFolder(window.downloadsPath) }
         }
     }
 
