@@ -6,6 +6,10 @@ This file was rewritten from scratch on 2026-08-18 after a full audit of the wor
 
 **2026-10-08 verification pass:** see `BUG_VERIFICATION_REPORT.md` for what was re-tested and how. Entries below carry a "Status 2026-10-08" line where they were checked; resolved entries moved to the "Resolved" section at the end.
 
+## Installer: the live ISO's recovery autostart is copied into new installs
+
+Added 2026-10-16 (ISO 2026.10.16 test install). `~/.config/autostart/reyos-recovery-launch.desktop` ends up in the installed user's home (from the live `/etc/skel`). Harmless: `reyos-recovery-launch.sh` exits unless booted with `reyos.recovery`. Fix: add it to `shellprocess_live_cleanup.conf` like the live wallpaper/panel autostarts.
+
 ## Games: PCSX2 swaps face buttons for third-party pads in Xbox mode
 
 Added 2026-10-15 (laptop). The user's pad switches between Xbox mode (`045e:02e0`) and PlayStation mode (`054c:05c4`, DualShock 4). In Xbox mode, PCSX2's `SDLControllerEnhancedMode = true` (HIDAPI, "Xbox One Controller") mixes up the face buttons; host SDL3 sees them right. PlayStation mode is fine. Not changed in code: decide whether ReyOS should turn Enhanced Mode off for non-Microsoft "Xbox" pads. The laptop's PCSX2.ini has it off now (set by hand during testing).

@@ -2,6 +2,16 @@
 
 Real bugs found and fixed, with root cause. Newest first. See `bugs.md` for what's still open.
 
+## 2026-10-16 (night) — ISO 2026.10.16 (calamares 52; ISO leaves the LTS kernel out of the live /boot)
+
+Built in RAM on the Dev VM (16 GB, 13 GB tmpfs) from the 2026/10/10 stable snapshot with everything published through Phase 1a: control-center-gui 127, welcome 33, reyos-boot 1.0.0-1 (+ linux-lts 6.18.55), reyos-base 1.1.0-8, update-channel 2026.10.10-2, reyos-calamares 52. 3,191,439,360 bytes, sha256 `d30c62f2…a222c39`.
+
+- **First build failed** at the last step (xorriso: "Image size 1813584s exceeds free space"): the image had grown ~700 MB. archiso copies every kernel/initramfs in the live `/boot` onto the ISO twice (the ISO tree and the 539 MB EFI image), and reyos-boot's `linux-lts` brought its own kernel plus a 245 MB all-drivers live initramfs. The live session only boots `linux`, so `customize_airootfs.sh` now removes the LTS kernel and images from the live `/boot`; **calamares 52** puts the kernel back on the target from `/usr/lib/modules/*-lts/vmlinuz` before initcpio (in `shellprocess_fix_mkinitcpio_preset.conf`, written with `find -exec`, since Calamares substitutes `$NAME` in these scripts and fails the install on unknown names). The ISO grew 160 MB over 2026.10.14 (the LTS modules) instead of 700 MB.
+
+Tested in a throwaway UEFI VM (Secure Boot off, 34 GB raw disk in /dev/shm, 8 GB): Calamares erase-disk ext4 install → "All done" in ~4 min. The target before first boot had `/boot/vmlinuz-linux-lts` (copied by the new step), `initramfs-linux-lts.img` (18 MB), the three Limine entries with `default_entry: 1` (calamares 51's step), current packages, and no live wallpaper autostart in the user's home. First boot: the menu counted down on "ReyOS" by itself → SDDM → login → Welcome; ticking btop + ReyOS Reader installed them as one `pacman -Su --needed` transaction each (`install-apps`, then `install-reyos` with `reyos-local/reyos-reader`); Finish → ReyOS desktop. Reboot → "ReyOS (LTS kernel, backup)" selected on screen → desktop with a slideshow wallpaper (not the single ReyOS image: the 0013 fix on a fresh install). The installed system's own journal: boot 1 `Linux version 7.2.9-arch1-1`, boot 2 `6.18.55-1-lts`. Not tested: Update everything on this install, real hardware. Written to the user's USB stick (read-back sha256 matches); GitHub Release `reyos-2026.10.16` (Latest), website + README updated.
+
+Leftover seen: the installed home still has the live ISO's `reyos-recovery-launch.desktop` autostart; harmless (its script exits unless booted with `reyos.recovery`), but Calamares' live cleanup should remove it too.
+
 ## 2026-10-16 (later) — Phase 1a: backup kernel and a boot menu that keeps up (reyos-boot 1.0.0-1, reyos-base 1.1.0-8, control-center-gui 127, calamares 51)
 
 From `docs/architecture-audit-2026-10-16.md`, Phase 1 (rollback that works by default). Installed systems had one Limine entry and one kernel: an update that broke `linux` left no way in.
