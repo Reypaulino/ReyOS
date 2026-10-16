@@ -70,13 +70,21 @@ persist_swappiness() {
 }
 
 pkg_check_updates() { checkupdates 2>/dev/null; }
-is_live_session() { mountpoint -q /run/archiso/airootfs; }
+# /run/archiso/airootfs no longer exists on current archiso builds; the boot
+# command line is the reliable live-session marker (same check as Control Center).
+is_live_session() { grep -qE 'archisobasedir=|archisolabel=' /proc/cmdline; }
 pkg_full() {
   if is_live_session; then
     printf "  ${YLW}Updates are disabled in the live session. Install ReyOS first, then update the installed system.${RST}\n"
     return 2
   fi
-  sudo pacman -Syu
+  # Through the update channel: on Stable that also keeps Arch packages on the
+  # tested snapshot, which a plain pacman -Syu doesn't.
+  if command -v reyos-channel >/dev/null; then
+    sudo reyos-channel upgrade
+  else
+    sudo pacman -Syu
+  fi
 }
 pkg_clean() {
   local -a ORPHANS=()
@@ -365,7 +373,7 @@ show_network() {
 system_updates() {
   local updates update_rc confirm log_before
   while true; do
-    printf "\n  System Updates (pacman)\n\n  [1] Check for updates (no changes)\n  [2] Install updates (atomic sync + upgrade)\n  [3] Remove old packages\n  [0] Back\n\n  Select: "
+    printf "\n  System Updates (pacman)\n\n  [1] Check for updates (no changes)\n  [2] Install updates (whole system, from your update channel)\n  [3] Remove old packages\n  [0] Back\n\n  Select: "
     read -r upd_choice
     case $upd_choice in
       1) updates=$(pkg_check_updates); update_rc=$?

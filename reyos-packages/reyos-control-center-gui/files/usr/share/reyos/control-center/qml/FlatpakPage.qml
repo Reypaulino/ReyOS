@@ -39,10 +39,13 @@ Kirigami.ScrollablePage {
             statusLabel.text = ok ? "" : message  // success is shown by Main.qml's toast
             statusLabel.color = Kirigami.Theme.negativeTextColor
             if (ok) refresh()
+            remoteApps = backend.remoteApps()
         }
     }
 
-    Component.onCompleted: refresh()
+    property var remoteApps: []
+
+    Component.onCompleted: { refresh(); remoteApps = backend.remoteApps() }
 
     ListModel { id: appsModel }
 
@@ -131,6 +134,40 @@ Kirigami.ScrollablePage {
                     visible: appsModel.count === 0
                     text: "No Flatpak apps installed."
                     opacity: 0.7
+                }
+            }
+        }
+
+        Kirigami.AbstractCard {
+            Layout.fillWidth: true
+            padding: Kirigami.Units.gridUnit
+            contentItem: ColumnLayout {
+                spacing: Kirigami.Units.largeSpacing
+                Kirigami.Heading { text: "Remote help"; level: 3 }
+                Controls.Label {
+                    Layout.fillWidth: true
+                    wrapMode: Text.Wrap
+                    opacity: 0.7
+                    text: "Apps to get help on this computer from someone else, or to help them. Installed from Flathub for your account; no password needed."
+                }
+                Repeater {
+                    model: remoteApps
+                    delegate: RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Kirigami.Units.largeSpacing
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 2
+                            Controls.Label { text: modelData.name; font.bold: true }
+                            Controls.Label { Layout.fillWidth: true; text: modelData.desc; wrapMode: Text.Wrap; opacity: 0.8 }
+                        }
+                        Controls.Button {
+                            text: modelData.installed ? "Installed" : "Install"
+                            icon.name: modelData.installed ? "checkmark" : "download"
+                            enabled: !busy && !modelData.installed
+                            onClicked: { busy = true; backend.installRemoteApp(modelData.appId) }
+                        }
+                    }
                 }
             }
         }

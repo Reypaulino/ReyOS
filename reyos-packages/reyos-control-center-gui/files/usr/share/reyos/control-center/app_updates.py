@@ -3,7 +3,8 @@ it opens: ReyOS's own packages with a newer version in the reyos-local repo,
 plus Flatpak apps (Reyva, emulators) with a newer version on their remote.
 Reads the repo database over HTTPS like reyos-check-updates (the login
 notifier) does, so it needs no password and doesn't touch pacman's own sync
-databases."""
+databases. "Update all" then installs everything through the update channel
+in one transaction."""
 import io
 import re
 import subprocess
@@ -40,7 +41,7 @@ def _repo_db_url():
     return server.rstrip("/") + "/reyos-local.db.tar.gz"
 
 
-def _repo_versions():
+def repo_versions():
     url = _repo_db_url()
     if not url:
         return {}
@@ -72,10 +73,10 @@ def _newer(remote, local):
         return False
 
 
-def reyos_updates():
+def reyos_updates(remote=None):
     """[{"package", "name", "installed", "version"}] for installed reyos-*
     packages the repo has a newer version of."""
-    remote = _repo_versions()
+    remote = repo_versions() if remote is None else remote
     if not remote:
         return []
     out = subprocess.run(["pacman", "-Q", *remote], capture_output=True, text=True).stdout
@@ -88,13 +89,24 @@ def reyos_updates():
     return found
 
 
+def system_update_count():
+    """Waiting updates for the rest of the system (not reyos-*), from
+    `checkupdates`, which syncs into a temporary database: pacman's own sync
+    databases stay untouched, so this can never set up a partial upgrade."""
+    try:
+        out = subprocess.run(["checkupdates"], capture_output=True, text=True, timeout=120).stdout
+    except (OSError, subprocess.SubprocessError):
+        return 0
+    return sum(1 for line in out.splitlines() if line.strip() and not line.startswith("reyos-"))
+
+
 def check():
-    """What the dialog lists: {"reyos": [...], "flatpaks": [...]}, each item
-    with a "text" line ready to show."""
+    """What the dialog lists: {"reyos": [...], "flatpaks": [...], "system": N},
+    each item with a "text" line ready to show."""
     reyos = reyos_updates()
     for u in reyos:
         u["text"] = f"{u['name']} {u['installed']} → {u['version']}"
     flatpaks = flatpak_updates.available_updates()
     for u in flatpaks:
         u["text"] = flatpak_updates.describe(u)
-    return {"reyos": reyos, "flatpaks": flatpaks}
+    return {"reyos": reyos, "flatpaks": flatpaks, "system": system_update_count()}

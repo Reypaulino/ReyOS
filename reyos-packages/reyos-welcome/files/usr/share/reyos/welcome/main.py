@@ -11,6 +11,7 @@ from PySide6.QtQml import QQmlApplicationEngine
 
 APP_DIR = Path(__file__).resolve().parent
 LOG_FILE = Path.home() / ".cache" / "reyos-welcome.log"
+REYOS_ADMIN = "/usr/share/reyos/bin/reyos-admin"  # from reyos-control-center-gui
 LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
 
 
@@ -62,6 +63,9 @@ APP_FLATPAK = {
     "brave": "com.brave.Browser",
     # Opera GX specifically is AUR-only (not on Flathub); regular Opera stands in for it.
     "opera": "com.opera.Opera",
+    # Remote help. AnyDesk can't share a Wayland screen yet; RustDesk can.
+    "rustdesk": "com.rustdesk.RustDesk",
+    "anydesk": "com.anydesk.Anydesk",
 }
 
 
@@ -119,31 +123,29 @@ class InstallWorker(QThread):
                 joined = " ".join(self.pacman_groups)
                 if "wine" in joined or "steam" in joined:
                     self._ensure_multilib()
-                # The live session never runs `pacman -Sy` on its own, so the
-                # sync databases don't exist yet — any -S install fails
-                # outright (even for an already-installed package) until
-                # this runs at least once.
-                self.progress.emit("Syncing package databases...")
-                self._run(["sudo", "-n", "pacman", "-Sy", "--noconfirm"])
-                # One `pacman -S` call per selected app, not all combined into
-                # one -- each call's argv then matches a fixed, individually
-                # listed NOPASSWD sudoers line (see
-                # shellprocess_sudoers_reyos_menu.conf) instead of an
-                # unpredictable combined argv sudoers could never match.
-                for group in self.pacman_groups:
-                    if group.split()[0] == "steam":
-                        # Steam needs a 32-bit Vulkan driver. Without one pacman
-                        # picks a provider itself and has pulled in nvidia-utils
-                        # on non-NVIDIA machines, so install the matching one first.
-                        vk = subprocess.run(["/usr/share/reyos/bin/reyos-gpu-detect", "--lib32-vulkan"],
-                                            capture_output=True, text=True).stdout.strip()
-                        if vk:
-                            self.progress.emit(f"Installing: {vk}")
-                            self._run(["sudo", "-n", "pacman", "-S", "--needed", "--noconfirm", vk])
-                    self.progress.emit(f"Installing: {group}")
-                    rc = self._run(["sudo", "-n", "pacman", "-S", "--needed", "--noconfirm"] + group.split())
+                pkgs = joined.split()
+                if "steam" in pkgs:
+                    # Steam needs a 32-bit Vulkan driver. Without one pacman
+                    # picks a provider itself and has pulled in nvidia-utils
+                    # on non-NVIDIA machines, so ask for the matching one.
+                    vk = subprocess.run(["/usr/share/reyos/bin/reyos-gpu-detect", "--lib32-vulkan"],
+                                        capture_output=True, text=True).stdout.strip()
+                    if vk:
+                        pkgs.insert(0, vk)
+                # reyos-admin installs them together with the system's
+                # pending updates in one transaction. The old `pacman -Sy`
+                # followed by `pacman -S <app>` was a partial upgrade, which
+                # Arch doesn't support (the app could need newer libraries
+                # than the installed system had).
+                reyos_pkgs = [p for p in pkgs if p.startswith("reyos-")]
+                app_pkgs = [p for p in pkgs if not p.startswith("reyos-")]
+                self.progress.emit("Installing " + ", ".join(pkgs) + " with any waiting system updates...")
+                for action, group in (("install-apps", app_pkgs), ("install-reyos", reyos_pkgs)):
+                    if not group:
+                        continue
+                    rc = self._run(["sudo", "-n", REYOS_ADMIN, action] + group)
                     if rc != 0:
-                        self.finished_ok.emit(False, f"Package install failed ({group}) — see log.")
+                        self.finished_ok.emit(False, f"Package install failed ({' '.join(group)}) — see log.")
                         return
                 if "wine" in joined:
                     self._run(["sudo", "-n", "systemctl", "restart", "systemd-binfmt"])

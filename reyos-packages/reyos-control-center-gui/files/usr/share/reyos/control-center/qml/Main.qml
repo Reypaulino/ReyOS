@@ -77,7 +77,7 @@ Kirigami.ApplicationWindow {
                 { text: "Users", icon: "system-users", page: "UsersPage.qml" }
             ]},
             { group: "Advanced", items: [
-                { text: "Flatpak", icon: "package-x-generic", page: "FlatpakPage.qml" },
+                { text: "Flatpak", icon: "package-x-generic", page: "FlatpakPage.qml", keywords: "apps remote help rustdesk anydesk" },
                 { text: "Bluetooth", icon: "network-bluetooth", page: "BluetoothPage.qml" },
                 { text: "Mouse", icon: "input-mouse", page: "MousePage.qml" },
                 { text: "Keyboard", icon: "input-keyboard", page: "KeyboardPage.qml" },
@@ -105,7 +105,7 @@ Kirigami.ApplicationWindow {
         }
         function itemMatches(item) {
             return searchField.text.length === 0
-                || drawer.normalize(item.text).includes(drawer.normalize(searchField.text))
+                || drawer.normalize(item.text + " " + (item.keywords || "")).includes(drawer.normalize(searchField.text))
         }
         function groupHasMatch(group) {
             if (searchField.text.length === 0) return true
@@ -300,19 +300,27 @@ Kirigami.ApplicationWindow {
         target: backend
         function onUpdateOfferReady(offer) {
             if (backend.pkgActionRunning()) return
-            if (offer.reyos.length + offer.flatpaks.length === 0) return
+            if (offer.reyos.length + offer.flatpaks.length + offer.system === 0) return
             updateOffer.reyosItems = offer.reyos
             updateOffer.flatpakItems = offer.flatpaks
+            updateOffer.systemCount = offer.system
             updateOffer.open()
         }
         function onPkgProgress(line) { if (updateOffer.installing && line.trim().length) updateOffer.lastLine = line }
         function onPkgFinished(ok, message) { if (updateOffer.installing) { updateOffer.installing = false; updateOffer.close() } }
+        // The Updates page shows its own restart dialog; elsewhere (the
+        // "Updates are ready" dialog) say it in the popup instead.
+        function onRestartRecommended() {
+            if (drawer.currentPage !== "UpdatesPage.qml")
+                changePopup.show("Updates installed. Restart your computer to finish updating.", true)
+        }
     }
 
     Controls.Dialog {
         id: updateOffer
         property var reyosItems: []
         property var flatpakItems: []
+        property int systemCount: 0
         property bool installing: false
         property string lastLine: ""
         title: "Updates are ready"
@@ -360,11 +368,21 @@ Kirigami.ApplicationWindow {
                 Controls.Label { Layout.fillWidth: true; Layout.leftMargin: Kirigami.Units.largeSpacing; text: modelData.text; wrapMode: Text.Wrap }
             }
             Controls.Label {
+                visible: updateOffer.systemCount > 0
+                text: "System"
+                font.bold: true
+            }
+            Controls.Label {
+                visible: updateOffer.systemCount > 0
+                Layout.leftMargin: Kirigami.Units.largeSpacing
+                text: updateOffer.systemCount === 1 ? "1 package update" : updateOffer.systemCount + " package updates"
+            }
+            Controls.Label {
                 Layout.fillWidth: true
                 visible: !updateOffer.installing
                 opacity: 0.7
                 wrapMode: Text.Wrap
-                text: "System updates (the rest of ReyOS) stay on Updates > Update everything."
+                text: "Everything is updated together, so the system stays consistent. Restart afterwards if asked."
             }
             RowLayout {
                 visible: updateOffer.installing

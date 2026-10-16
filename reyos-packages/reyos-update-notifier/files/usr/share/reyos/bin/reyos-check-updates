@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
 """Checks the reyos-local package repo (GitHub Pages) for newer versions of
-installed reyos-* packages and sends a desktop notification if any are
-found. Fetches the repo database over plain HTTPS instead of `pacman -Sy`
+installed reyos-* packages, and Flatpak apps for updates, and sends a
+desktop notification if any are found. Fetches the repo database over plain HTTPS instead of `pacman -Sy`
 (which needs root) so this can run unprivileged as a per-user systemd timer.
 """
 import io
+import shutil
 import subprocess
 import tarfile
 import urllib.error
 import urllib.request
+import time
+from pathlib import Path
 
 REPO_DB_URL = "https://reypaulino.github.io/ReyOS/reyos-local.db.tar.gz"
 
@@ -55,28 +58,63 @@ def is_newer(remote_version, local_version):
         return False
 
 
+def flatpak_updates():
+    """Names of Flatpak apps (Reyva, emulators...) with an update, user and
+    system installs. Reads the remotes' summaries; no password needed."""
+    names = []
+    for scope in ("--user", "--system"):
+        try:
+            out = subprocess.run(["flatpak", "remote-ls", scope, "--updates", "--app", "--columns=name"],
+                                 capture_output=True, text=True, timeout=90).stdout
+        except (OSError, subprocess.SubprocessError):
+            continue
+        names += [line.strip() for line in out.splitlines() if line.strip()]
+    return names
+
+
+def already_told(key):
+    """True when this same set of updates was announced in the last day, so
+    the 30-minute timer doesn't repeat one notification all day."""
+    stamp = Path.home() / ".cache" / "reyos" / "update-notified"
+    try:
+        if stamp.read_text() == key and time.time() - stamp.stat().st_mtime < 86400:
+            return True
+    except OSError:
+        pass
+    try:
+        stamp.parent.mkdir(parents=True, exist_ok=True)
+        stamp.write_text(key)
+    except OSError:
+        pass
+    return False
+
+
 def main():
-    remote = fetch_repo_versions()
-    if not remote:
-        return
+    remote = fetch_repo_versions() or {}
 
     updates = []
     for name, remote_ver in remote.items():
         local_ver = installed_version(name)
         if local_ver and is_newer(remote_ver, local_ver):
             updates.append(name)
+    flatpaks = flatpak_updates() if shutil.which("flatpak") else []
 
-    if not updates:
+    if not updates and not flatpaks:
+        return
+    if already_told("\n".join(sorted(updates) + sorted(flatpaks))):
         return
 
-    if len(updates) == 1:
-        body = f"{updates[0]} has an update available."
-    else:
-        body = f"{len(updates)} ReyOS apps have updates: {', '.join(updates)}"
+    parts = []
+    if updates:
+        parts.append("ReyOS apps: " + ", ".join(updates) + ".")
+    if flatpaks:
+        parts.append("Flatpak apps: " + ", ".join(flatpaks) + ".")
+    # Control Center offers all of these in one "Updates are ready" dialog.
+    parts.append("Open Control Center to install them in one click.")
 
     subprocess.Popen([
         "notify-send", "-a", "ReyOS", "-i", "system-software-update",
-        "ReyOS update available", body,
+        "ReyOS updates are ready", " ".join(parts),
     ])
 
 

@@ -48,6 +48,13 @@ Kirigami.Page {
             ]
         },
         {
+            label: "Remote Help",
+            apps: [
+                { id: "rustdesk", label: "RustDesk", desc: "Get or give remote help (works on ReyOS's desktop)", checked: false },
+                { id: "anydesk", label: "AnyDesk", desc: "Connect to other computers (can't share this screen yet)", checked: false },
+            ]
+        },
+        {
             label: "Creative",
             apps: [
                 { id: "gimp", label: "GIMP", desc: "Image editor", checked: false },

@@ -71,15 +71,6 @@ REYOS_DEFAULT_APPS = ["reyos-reader", "reyos-shortcuts-cheatsheet"]
 # users add their own under ~/Games/ROMs/<id>/ and ~/Games/BIOS/.
 
 
-PKG_ACTIONS = {
-    "check":   (["sudo", "-n", "pacman", "-Sy"], None),
-    "upgrade": (["sudo", "-n", "pacman", "-Syu", "--noconfirm"], None),
-    # "full" and "clean" are handled specially in PkgWorker (multiple commands).
-    "full":    (None, None),
-    "clean":   (None, None),
-}
-
-
 DEFAULT_APP_CATEGORIES = [
     {"key": "documents", "label": "Documents / PDF", "mimetypes": ["application/pdf"]},
     {"key": "browser", "label": "Web Browser", "mimetypes": ["x-scheme-handler/http", "x-scheme-handler/https", "text/html"]},
@@ -574,31 +565,30 @@ class PkgWorker(_Worker):
             if self._log is not None:
                 self._log.close()
 
+    def _missing_default_apps(self, repo_names):
+        installed = set(subprocess.run(["pacman", "-Qq"], capture_output=True, text=True).stdout.split())
+        return [p for p in REYOS_DEFAULT_APPS if p in repo_names and p not in installed]
+
     def _update_reyos_apps(self, emit):
         """Upgrades installed reyos-* packages (and installs missing default
-        ReyOS apps). Returns (ok, message)."""
-        _wait_for_pacman_lock(emit)
-        emit("$ sudo pacman -Sy")
-        rc = _run(["sudo", "-n", "pacman", "-Sy"], emit)
-        if rc != 0:
-            return False, "Could not sync package databases."
+        ReyOS apps) together with the rest of the system's waiting updates,
+        in one transaction -- never `pacman -Sy` + a partial `-S`. Which
+        ReyOS apps are new is read from the repo over HTTPS, like the login
+        notifier, so nothing is synced unless something is installed.
+        Returns (ok, message)."""
         emit("Checking for ReyOS app updates...")
-        repo_out = subprocess.run(["pacman", "-Sl", "reyos-local"], capture_output=True, text=True).stdout
-        reyos_pkgs = {line.split()[1] for line in repo_out.splitlines() if len(line.split()) >= 2}
-        upgradable_out = subprocess.run(["pacman", "-Qu"], capture_output=True, text=True).stdout
-        to_upgrade = [line.split()[0] for line in upgradable_out.splitlines() if line.split() and line.split()[0] in reyos_pkgs]
-
-        installed_out = subprocess.run(["pacman", "-Qq"], capture_output=True, text=True).stdout
-        installed = set(installed_out.split())
-        to_backfill = [p for p in REYOS_DEFAULT_APPS if p in reyos_pkgs and p not in installed]
-
-        to_install = to_upgrade + to_backfill
+        repo = app_updates.repo_versions()
+        if not repo:
+            return False, "Couldn't reach the ReyOS package repository. Check your network connection."
+        to_install = [u["package"] for u in app_updates.reyos_updates(repo)] + self._missing_default_apps(set(repo))
         if not to_install:
             return True, "ReyOS apps are already up to date."
-        emit("Updating: " + ", ".join(to_install))
+        emit("Updating " + ", ".join(to_install) + " with the system's other waiting updates...")
         _wait_for_pacman_lock(emit)
         rc = _run(["sudo", "-n", REYOS_ADMIN, "install-reyos"] + to_install, emit)
-        return rc == 0, (f"Updated {len(to_install)} ReyOS app(s)." if rc == 0 else "Update failed.")
+        if rc == 0:
+            _record_successful_update(emit)
+        return rc == 0, (f"Updated {len(to_install)} ReyOS app(s) and the rest of the system." if rc == 0 else "Update failed.")
 
     def _run_action(self):
         try:
@@ -670,19 +660,30 @@ class PkgWorker(_Worker):
             elif self.action == "reyos":
                 self.finished_ok.emit(*self._update_reyos_apps(emit))
             elif self.action == "apps":
-                # The "Updates are ready" dialog: ReyOS apps, then Flatpak
-                # apps (Reyva, emulators), in one go.
-                reyos_ok, reyos_message = self._update_reyos_apps(emit)
+                # The "Updates are ready" dialog: the whole system through the
+                # update channel (ReyOS apps included), missing default ReyOS
+                # apps, then Flatpak apps (Reyva, emulators).
+                _wait_for_pacman_lock(emit)
+                emit("$ sudo " + " ".join(_upgrade_cmd()))
+                system_ok = _run(["sudo", "-n"] + _upgrade_cmd(), emit) == 0
+                if system_ok:
+                    _record_successful_update(emit)
+                    repo = app_updates.repo_versions()
+                    missing = self._missing_default_apps(set(repo)) if repo else []
+                    if missing:
+                        emit("Installing " + ", ".join(missing) + "...")
+                        _wait_for_pacman_lock(emit)
+                        _run(["sudo", "-n", REYOS_ADMIN, "install-reyos"] + missing, emit)
                 emit("Updating Flatpak apps...")
                 flatpak_ok, flatpak_message = _flatpak_update(emit)
-                if reyos_ok and flatpak_ok:
-                    self.finished_ok.emit(True, "Updates installed: ReyOS apps and Flatpak apps are up to date.")
-                elif reyos_ok:
-                    self.finished_ok.emit(False, "ReyOS apps are up to date, but " + flatpak_message[0].lower() + flatpak_message[1:])
+                if system_ok and flatpak_ok:
+                    self.finished_ok.emit(True, "Updates installed: the system, ReyOS apps and Flatpak apps are up to date.")
+                elif system_ok:
+                    self.finished_ok.emit(False, "The system is up to date, but " + flatpak_message[0].lower() + flatpak_message[1:])
                 elif flatpak_ok:
-                    self.finished_ok.emit(False, "Flatpak apps are up to date, but updating ReyOS apps failed: " + reyos_message)
+                    self.finished_ok.emit(False, "Flatpak apps are up to date, but the system update failed — see Updates for the log.")
                 else:
-                    self.finished_ok.emit(False, reyos_message + " " + flatpak_message)
+                    self.finished_ok.emit(False, "The system update failed — see Updates for the log. " + flatpak_message)
             elif self.action in ("channel-stable", "channel-rolling"):
                 target = self.action.split("-", 1)[1]
                 _wait_for_pacman_lock(emit)
@@ -1016,32 +1017,20 @@ class Backend(QObject):
                 emit("Enabling multilib repository...")
                 _run(["sudo", "-n", "/usr/share/reyos/welcome/enable-multilib.sh"], emit)
 
-            emit("$ sudo pacman -Sy --noconfirm")
-            rc = _run(["sudo", "-n", "pacman", "-Sy", "--noconfirm"], emit)
-            if rc != 0:
-                return False, "Could not sync package databases — check your network connection."
-
-            # One `pacman -S` call per fixed package group, not combined --
-            # each call's argv must match one of the fixed, individually
-            # listed NOPASSWD sudoers lines Calamares writes for this user
-            # (see shellprocess_sudoers_reyos_menu.conf), same reasoning as
-            # reyos-welcome's InstallWorker. A combined "steam gamemode
-            # lib32-gamemode" argv matches neither fixed line and silently
-            # fails with "a password is required" (no controlling terminal
-            # to prompt on from a GUI subprocess).
             # Steam needs a 32-bit Vulkan driver. With none installed, pacman picks
             # a provider on its own and has pulled in nvidia-utils on non-NVIDIA
-            # machines, so install the one matching this GPU first.
-            groups = [["steam"], ["gamemode", "lib32-gamemode", "mangohud", "lib32-mangohud"]]
+            # machines, so install the one matching this GPU too.
+            pkgs = ["steam", "gamemode", "lib32-gamemode", "mangohud", "lib32-mangohud"]
             vk = subprocess.run(["/usr/share/reyos/bin/reyos-gpu-detect", "--lib32-vulkan"],
                                 capture_output=True, text=True).stdout.strip()
             if vk:
-                groups.insert(0, [vk])
-            for group in groups:
-                emit("$ sudo pacman -S --needed --noconfirm " + " ".join(group))
-                rc = _run(["sudo", "-n", "pacman", "-S", "--needed", "--noconfirm"] + group, emit)
-                if rc != 0:
-                    return False, f"Install failed ({' '.join(group)}) — check your network connection and try again."
+                pkgs.insert(0, vk)
+            # Together with any waiting system updates, in one transaction
+            # (a `pacman -Sy` + `pacman -S steam` was a partial upgrade).
+            emit("Installing " + ", ".join(pkgs) + " with any waiting system updates...")
+            rc = _run(["sudo", "-n", REYOS_ADMIN, "install-apps", *pkgs], emit)
+            if rc != 0:
+                return False, "Install failed — check your network connection and try again."
 
             return True, "Steam, GameMode, and MangoHud installed."
         self._gaming_worker = ActionWorker(task)
@@ -1412,7 +1401,9 @@ class Backend(QObject):
     def availableGovernors(self):
         # Only what this CPU offers: intel_pstate has no "ondemand", and
         # picking it from a fixed list just failed.
-        return Backend._available_governors() or ["performance", "powersave"]
+        # Empty when the CPU has no frequency control (VMs): the page then says
+        # so instead of showing "Fast" for a setting that can't apply.
+        return Backend._available_governors()
 
     @staticmethod
     def _available_governors():
@@ -2038,8 +2029,10 @@ class Backend(QObject):
             # ReyOS runs the standard `linux` kernel this ships against.
             if not any(g["nvidiaOpenSupported"] for g in self._compute_driver_status()["gpus"]):
                 return False, "This NVIDIA card is not supported by the current proprietary driver. Keep the open-source nouveau driver."
+            # With any waiting system updates, in one transaction: the DKMS
+            # module must build against the kernel that will actually boot.
             result = subprocess.run(
-                ["sudo", "-n", "pacman", "-S", "--noconfirm", "--needed", "nvidia-open-dkms", "nvidia-utils"],
+                ["sudo", "-n", REYOS_ADMIN, "install-apps", "nvidia-open-dkms", "nvidia-utils"],
                 capture_output=True, text=True,
             )
             ok = result.returncode == 0
@@ -2257,6 +2250,37 @@ class Backend(QObject):
     @Slot()
     def updateFlatpaks(self):
         self._run_action(_flatpak_update)
+
+    # Apps to get or give remote help, offered on the Flatpak page. Only
+    # these IDs can be installed through installRemoteApp().
+    REMOTE_APPS = [
+        {"appId": "com.rustdesk.RustDesk", "name": "RustDesk",
+         "desc": "Open-source remote desktop. Lets someone help you on this computer, or you help them. Works with ReyOS's desktop (Wayland)."},
+        {"appId": "com.anydesk.Anydesk", "name": "AnyDesk",
+         "desc": "Connect to other computers that use AnyDesk. It can't share this computer's screen on ReyOS yet (Wayland isn't supported). Packaged by the community on Flathub."},
+    ]
+
+    @Slot(result="QVariantList")
+    def remoteApps(self):
+        installed = flatpak_updates.installed_apps()
+        return [dict(app, installed=app["appId"] in installed) for app in self.REMOTE_APPS]
+
+    @Slot(str)
+    def installRemoteApp(self, app_id):
+        app = next((a for a in self.REMOTE_APPS if a["appId"] == app_id), None)
+        if app is None:
+            self.actionFinished.emit(False, "That app can't be installed from here.")
+            return
+        def task(emit):
+            # Per-user like ReyOS Welcome: no password; a fresh account has no
+            # --user flathub remote until it's added.
+            emit(f"Downloading {app['name']} from Flathub...")
+            _run(["flatpak", "remote-add", "--user", "--if-not-exists", "flathub", emulation.FLATHUB_URL], emit)
+            rc = _run(["flatpak", "install", "-y", "--user", "--noninteractive", "flathub", app_id], emit)
+            if rc != 0:
+                return False, f"Couldn't install {app['name']}. Check your network connection and try again."
+            return True, f"{app['name']} is installed. Find it in the app menu."
+        self._run_action(task)
 
     # --- systemd services ---------------------------------------------------
 

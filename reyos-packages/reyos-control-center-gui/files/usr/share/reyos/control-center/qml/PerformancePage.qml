@@ -117,8 +117,14 @@ Kirigami.ScrollablePage {
                 RowLayout {
                     spacing: Kirigami.Units.largeSpacing
                     Kirigami.FormData.label: "CPU mode:"
+                    Controls.Label {
+                        visible: govBox.count === 0
+                        text: "Not available on this computer"
+                        opacity: 0.7
+                    }
                     Controls.ComboBox {
                         id: govBox
+                        visible: count > 0
                         // The CPU's own governors, in words; picking one applies it.
                         readonly property var names: ({ performance: "Fast", powersave: "Power saving", ondemand: "Balanced", schedutil: "Balanced", conservative: "Quiet" })
                         model: backend.availableGovernors().map(function (g) { return { value: g, label: (names[g] || g) + "  (" + g + ")" } })

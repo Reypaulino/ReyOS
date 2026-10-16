@@ -23,6 +23,9 @@ Usage: reyos-channel [status]
        reyos-channel stable [--yes]    switch to the tested Arch snapshot (default)
        reyos-channel rolling [--yes]   switch to Arch's live mirrors
        reyos-channel upgrade [--yes]   install updates for the current channel
+       reyos-channel install [--yes] PKG...
+                                       install packages together with the
+                                       channel's updates (never a partial upgrade)
        reyos-channel regenerate        rewrite /etc/pacman.d/reyos-mirrorlist
 EOF
 }
@@ -103,8 +106,13 @@ newer_than_snapshot() {
 }
 
 pacman_upgrade() {
+    # pacman_upgrade YES [PKG...]: sync, then upgrade everything -- and install
+    # PKG... in the same transaction, so a new package never lands on top of
+    # older installed libraries (Arch doesn't support partial upgrades).
     local yes=$1 opts=() back=()
+    shift
     if [ "$yes" = 1 ]; then opts=(--noconfirm); fi
+    if [ $# -gt 0 ]; then opts+=(--needed); fi
     pacman -Sy "${opts[@]}"
     # On stable, Arch packages newer than the snapshot go back to its versions
     # in the same transaction, so the system is the tested set. Not -uu: that
@@ -115,7 +123,7 @@ pacman_upgrade() {
             echo ":: Moving ${#back[@]} package(s) back to the tested snapshot versions"
         fi
     fi
-    pacman -Su "${opts[@]}" "${back[@]}"
+    pacman -Su "${opts[@]}" "${back[@]}" "$@"
 }
 
 switch_to() {
@@ -146,6 +154,24 @@ upgrade() {
     fi
 }
 
+install_pkgs() {
+    local yes=$1 before after p
+    shift
+    need_root install
+    [ $# -gt 0 ] || { echo "reyos-channel install: no packages given" >&2; exit 2; }
+    for p in "$@"; do
+        # NAME or REPO/NAME (reyos-admin asks for reyos-local/... explicitly).
+        [[ $p =~ ^([a-z0-9-]+/)?[a-z0-9@_+][a-z0-9@._+-]*$ ]] || { echo "reyos-channel: invalid package name: $p" >&2; exit 2; }
+    done
+    before=$(cat "$MIRRORLIST" 2>/dev/null || true)
+    pacman_upgrade "$yes" "$@"
+    after=$(cat "$MIRRORLIST" 2>/dev/null || true)
+    if [ "$before" != "$after" ]; then
+        echo ":: The stable snapshot moved forward to $(snapshot); updating from it..."
+        pacman_upgrade "$yes"
+    fi
+}
+
 yes=0
 if [ "${2:-}" = "--yes" ]; then yes=1; fi
 
@@ -154,6 +180,10 @@ case "${1:-status}" in
         if [ "$(channel)" = stable ]; then echo "stable $(snapshot)"; else echo rolling; fi ;;
     stable|rolling) switch_to "$1" "$yes" ;;
     upgrade) upgrade "$yes" ;;
+    install)
+        shift
+        if [ "${1:-}" = "--yes" ]; then shift; else yes=0; fi
+        install_pkgs "$yes" "$@" ;;
     regenerate) regenerate ;;
     migrate-conf) migrate_conf ;;
     restore-conf) restore_conf ;;

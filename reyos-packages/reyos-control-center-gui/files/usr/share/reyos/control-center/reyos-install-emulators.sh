@@ -38,9 +38,15 @@ for system in "$@"; do
     retroarch=""
 done
 
-echo "\$ pacman -Sy --noconfirm"
-pacman -Sy --noconfirm
-echo "\$ pacman -S --needed --noconfirm $pkgs"
+# Installed together with any waiting system updates, in one transaction:
+# `pacman -Sy` followed by `pacman -S <cores>` was a partial upgrade (the
+# cores could need newer libraries than the installed system had).
 # $pkgs is built only from the fixed names above; word splitting is intended.
+if [ -x /usr/bin/reyos-channel ] && grep -q install_pkgs /usr/bin/reyos-channel; then
+    echo "\$ reyos-channel install --yes$pkgs"
+    # shellcheck disable=SC2086
+    exec /usr/bin/reyos-channel install --yes $pkgs
+fi
+echo "\$ pacman -Syu --needed --noconfirm$pkgs"
 # shellcheck disable=SC2086
-exec pacman -S --needed --noconfirm $pkgs
+exec pacman -Syu --needed --noconfirm $pkgs
