@@ -1,0 +1,11 @@
+# mkinitcpio preset for linux-lts, shipped by reyos-boot.
+# The LTS kernel is ReyOS's backup way in when an update breaks the normal
+# kernel. One image only (no "fallback" with every driver): on machines whose
+# EFI partition is shared with another system (1 GB), a fallback image with
+# all GPU firmware can be over 200 MB. The normal kernel keeps its fallback.
+
+ALL_kver="/boot/vmlinuz-linux-lts"
+
+PRESETS=('default')
+
+default_image="/boot/initramfs-linux-lts.img"

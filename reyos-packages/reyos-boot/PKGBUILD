@@ -1,0 +1,21 @@
+# Maintainer: Rey Paulino
+pkgname=reyos-boot
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="ReyOS boot safety: LTS backup kernel and a Limine boot menu kept in step with the installed kernels"
+arch=('any')
+license=('MIT')
+depends=('linux-lts' 'python' 'mkinitcpio')
+backup=('etc/mkinitcpio.d/linux-lts.preset')
+install=reyos-boot.install
+source=()
+sha256sums=()
+
+package() {
+    cp -a "$startdir/files/etc" "$pkgdir/"
+    cp -a "$startdir/files/usr" "$pkgdir/"
+    chmod -R go-w "$pkgdir"
+    chmod 644 "$pkgdir/etc/mkinitcpio.d/linux-lts.preset"
+    chmod 644 "$pkgdir/usr/share/libalpm/hooks/95-reyos-limine-entries.hook"
+    chmod 755 "$pkgdir/usr/share/reyos/bin/reyos-limine-entries"
+}

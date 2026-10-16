@@ -129,6 +129,8 @@ APP_PACKAGES = {
     "gimp", "krita", "obs-studio", "libreoffice-fresh", "btop", "partitionmanager", "fwupd",
     "filelight", "bleachbit", "nvidia-open-dkms", "nvidia-utils", "lib32-nvidia-utils",
     "lib32-vulkan-intel", "lib32-vulkan-radeon", "lib32-vulkan-nouveau",
+    # The NVIDIA driver is built per kernel; the LTS backup kernel (reyos-boot) needs its headers.
+    "linux-lts-headers",
 }
 
 

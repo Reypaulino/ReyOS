@@ -1,0 +1,14 @@
+# After mkinitcpio (90-mkinitcpio-install) has written the kernel images:
+# refresh ReyOS's Limine boot menu so every installed kernel has an entry.
+[Trigger]
+Type = Path
+Operation = Install
+Operation = Upgrade
+Operation = Remove
+Target = usr/lib/modules/*/vmlinuz
+Target = usr/share/reyos/bin/reyos-limine-entries
+
+[Action]
+Description = Updating the ReyOS boot menu...
+When = PostTransaction
+Exec = /usr/share/reyos/bin/reyos-limine-entries

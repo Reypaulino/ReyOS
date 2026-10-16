@@ -2031,8 +2031,13 @@ class Backend(QObject):
                 return False, "This NVIDIA card is not supported by the current proprietary driver. Keep the open-source nouveau driver."
             # With any waiting system updates, in one transaction: the DKMS
             # module must build against the kernel that will actually boot.
+            pkgs = ["nvidia-open-dkms", "nvidia-utils"]
+            # DKMS builds the module for every kernel that has its headers;
+            # without these the LTS backup kernel would boot without it.
+            if any(Path("/usr/lib/modules").glob("*-lts/vmlinuz")):
+                pkgs.append("linux-lts-headers")
             result = subprocess.run(
-                ["sudo", "-n", REYOS_ADMIN, "install-apps", "nvidia-open-dkms", "nvidia-utils"],
+                ["sudo", "-n", REYOS_ADMIN, "install-apps", *pkgs],
                 capture_output=True, text=True,
             )
             ok = result.returncode == 0
