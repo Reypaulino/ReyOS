@@ -201,6 +201,14 @@ ApplicationWindow {
                 }
                 downloads.setProperty(i, "finished", true)
                 downloads.setProperty(i, "completed", completed)
+                downloads.setProperty(i, "path", download.downloadDirectory + "/" + download.downloadFileName)
+                if (completed && downloads.get(i).target !== "") {
+                    // Picked another place in the save dialog: move it there.
+                    downloads.setProperty(i, "status", "Moving…")
+                    downloads.setProperty(i, "completed", false)
+                    browserBackend.moveDownload(download.id, downloads.get(i).path, downloads.get(i).target)
+                    break
+                }
                 downloads.setProperty(i, "status", completed ? "Completed" : (cancelled ? "Cancelled" : "Failed: " + download.interruptReasonString))
                 if (completed) {
                     browserBackend.notify("Download finished", download.downloadFileName + " is ready in Downloads")
@@ -221,7 +229,9 @@ ApplicationWindow {
             receivedBytes: download.receivedBytes,
             totalBytes: download.totalBytes,
             finished: false,
-            completed: false
+            completed: false,
+            path: downloadsPath + "/" + download.downloadFileName,
+            target: ""
         })
         downloadRequests[download.id] = download
         activeDownloadCount += 1
@@ -232,8 +242,42 @@ ApplicationWindow {
                 window.finishDownload(download)
             }
         })
-        browserBackend.notify("Download started", download.downloadFileName + " is saving to Downloads")
         download.accept()
+        if (!browserBackend.askDownloadLocation) {
+            browserBackend.notify("Download started", download.downloadFileName + " is saving to Downloads")
+            return
+        }
+        // "Ask where to save each file": it keeps downloading into
+        // Downloads while the dialog is open, then moves to the pick.
+        var target = browserBackend.chooseDownloadLocation(download.downloadFileName)
+        var row = window.downloadRow(download.id)
+        if (target === "") {
+            download.cancel()
+            return
+        }
+        if (row < 0 || target === downloads.get(row).path) return
+        downloads.setProperty(row, "target", target)
+        if (download.isFinished) window.finishDownload(download)
+    }
+
+    function downloadRow(downloadId) {
+        for (var i = 0; i < downloads.count; ++i)
+            if (downloads.get(i).downloadId === downloadId) return i
+        return -1
+    }
+
+    Connections {
+        target: browserBackend
+        function onDownloadMoved(downloadId, path, ok) {
+            var row = window.downloadRow(downloadId)
+            if (row < 0) return
+            downloads.setProperty(row, "path", path)
+            downloads.setProperty(row, "completed", true)
+            downloads.setProperty(row, "status", ok ? "Completed" : "Couldn't move it; it's in Downloads")
+            var name = path.split("/").pop()
+            if (ok) browserBackend.notify("Download finished", name + " is saved")
+            else browserBackend.notify("Download finished", name + " couldn't be moved, so it's in Downloads")
+        }
     }
 
     function cancelDownload(downloadId) {
@@ -243,8 +287,8 @@ ApplicationWindow {
         }
     }
 
-    function openDownload(name) {
-        Qt.openUrlExternally("file://" + downloadsPath + "/" + encodeURIComponent(name))
+    function openDownload(path) {
+        Qt.openUrlExternally("file://" + path.split("/").map(encodeURIComponent).join("/"))
     }
 
     function requestPermission(request) {
@@ -946,65 +990,128 @@ ApplicationWindow {
                                 }
                                 onClicked: folderPopup.visible ? folderPopup.close() : folderPopup.open()
 
+                                // A folder's bookmarks: header with the folder name and
+                                // count, rows like the Bookmarks window (letter tile,
+                                // title, site), then Open all / Manage.
                                 Popup {
                                     id: folderPopup
-                                    y: folderChip.height + 4
-                                    width: 300
-                                    height: Math.min(420, modelData.items.length * 46 + 16)
-                                    padding: 6
+                                    y: folderChip.height + 6
+                                    // Keep it inside the window for folders near the right edge
+                                    // (worked out on open: mapToItem isn't a live binding).
+                                    onAboutToShow: x = Math.min(0, window.width - folderChip.mapToItem(null, 0, 0).x - width - 8)
+                                    width: 320
+                                    height: Math.min(460, modelData.items.length * 50 + 108)
+                                    padding: 0
                                     modal: false
                                     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
                                     background: Rectangle {
                                         color: accentSurfaceRaised
                                         border.color: accentBorder
                                         border.width: 1
-                                        radius: 10
+                                        radius: 12
                                     }
-                                    contentItem: ScrollView {
-                                        clip: true
-                                        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
-                                        contentWidth: availableWidth
-                                        ColumnLayout {
-                                            width: parent.width
-                                            spacing: 2
-                                            Repeater {
-                                                model: modelData.items
-                                                delegate: Button {
-                                                    required property var modelData
-                                                    Layout.fillWidth: true
-                                                    implicitHeight: 44
-                                                    flat: true
-                                                    background: Rectangle {
-                                                        color: parent.hovered ? accentSurfaceHover : "transparent"
-                                                        radius: 6
-                                                    }
-                                                    contentItem: ColumnLayout {
-                                                        spacing: 0
-                                                        Label {
-                                                            text: modelData.title && modelData.title.length ? modelData.title : modelData.url
-                                                            color: "#FFF3E6"
-                                                            elide: Text.ElideRight
-                                                            Layout.fillWidth: true
-                                                            font.pixelSize: 13
+                                    contentItem: ColumnLayout {
+                                        spacing: 0
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            Layout.preferredHeight: 46
+                                            Layout.leftMargin: 14
+                                            Layout.rightMargin: 14
+                                            spacing: 8
+                                            Label { text: modelData.folder; color: "#FFF3E6"; font.bold: true; font.pixelSize: 14; elide: Text.ElideRight; Layout.fillWidth: true }
+                                            Label { text: modelData.items.length + (modelData.items.length === 1 ? " bookmark" : " bookmarks"); color: "#D7C1AA"; font.pixelSize: 12 }
+                                        }
+                                        Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Qt.rgba(accentBorder.r, accentBorder.g, accentBorder.b, 0.6) }
+                                        ScrollView {
+                                            Layout.fillWidth: true
+                                            Layout.fillHeight: true
+                                            clip: true
+                                            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+                                            contentWidth: availableWidth
+                                            ColumnLayout {
+                                                width: parent.width
+                                                spacing: 0
+                                                Item { implicitHeight: 4 }
+                                                Repeater {
+                                                    model: modelData.items
+                                                    delegate: Rectangle {
+                                                        id: folderItem
+                                                        required property var modelData
+                                                        readonly property string host: (folderItem.modelData.url.match(/^[a-z]+:\/\/(?:www\.)?([^\/?#]+)/i) || ["", folderItem.modelData.url])[1]
+                                                        readonly property string subfolder: {
+                                                            var folder = folderItem.modelData.folder || ""
+                                                            var slash = folder.indexOf("/")
+                                                            return slash >= 0 ? folder.slice(slash + 1) : ""
                                                         }
-                                                        Label {
-                                                            text: {
-                                                                var folder = modelData.folder || ""
-                                                                var slash = folder.indexOf("/")
-                                                                return slash >= 0 ? folder.slice(slash + 1) : ""
+                                                        Layout.fillWidth: true
+                                                        Layout.leftMargin: 6
+                                                        Layout.rightMargin: 6
+                                                        implicitHeight: 50
+                                                        radius: 8
+                                                        color: folderItemMouse.containsMouse ? accentSurfaceHover : "transparent"
+                                                        MouseArea {
+                                                            id: folderItemMouse
+                                                            anchors.fill: parent
+                                                            hoverEnabled: true
+                                                            cursorShape: Qt.PointingHandCursor
+                                                            onClicked: {
+                                                                window.openBookmarkUrl(folderItem.modelData.url)
+                                                                folderPopup.close()
                                                             }
-                                                            visible: text.length > 0
-                                                            color: "#9F8873"
-                                                            font.pixelSize: 10
-                                                            elide: Text.ElideRight
-                                                            Layout.fillWidth: true
                                                         }
-                                                    }
-                                                    onClicked: {
-                                                        window.openBookmarkUrl(modelData.url)
-                                                        folderPopup.close()
+                                                        RowLayout {
+                                                            anchors.fill: parent
+                                                            anchors.leftMargin: 8
+                                                            anchors.rightMargin: 8
+                                                            spacing: 10
+                                                            Rectangle {
+                                                                Layout.preferredWidth: 30
+                                                                Layout.preferredHeight: 30
+                                                                radius: 8
+                                                                color: accentSurfaceBase
+                                                                border.color: accentBorder
+                                                                Label { anchors.centerIn: parent; text: (folderItem.host || "?").charAt(0).toUpperCase(); color: accentGlow; font.bold: true; font.pixelSize: 13 }
+                                                            }
+                                                            ColumnLayout {
+                                                                Layout.fillWidth: true
+                                                                spacing: 1
+                                                                Label {
+                                                                    text: folderItem.modelData.title && folderItem.modelData.title.length ? folderItem.modelData.title : folderItem.modelData.url
+                                                                    color: "#FFF3E6"; font.pixelSize: 13; elide: Text.ElideRight; Layout.fillWidth: true
+                                                                }
+                                                                Label {
+                                                                    text: folderItem.host + (folderItem.subfolder.length ? "  ·  " + folderItem.subfolder : "")
+                                                                    color: "#D7C1AA"; font.pixelSize: 11; elide: Text.ElideRight; Layout.fillWidth: true
+                                                                }
+                                                            }
+                                                        }
                                                     }
                                                 }
+                                                Item { implicitHeight: 4 }
+                                            }
+                                        }
+                                        Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Qt.rgba(accentBorder.r, accentBorder.g, accentBorder.b, 0.6) }
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            Layout.preferredHeight: 44
+                                            Layout.leftMargin: 6
+                                            Layout.rightMargin: 6
+                                            spacing: 4
+                                            ToolButton {
+                                                implicitHeight: 32
+                                                onClicked: {
+                                                    for (var i = 0; i < modelData.items.length; i++) window.openInNewTab(modelData.items[i].url)
+                                                    folderPopup.close()
+                                                }
+                                                contentItem: Text { text: "Open all in tabs"; color: "#FFF3E6"; font.pixelSize: 12; verticalAlignment: Text.AlignVCenter; leftPadding: 8; rightPadding: 8 }
+                                                background: Rectangle { radius: 7; color: parent.hovered ? accentSurfaceHover : "transparent" }
+                                            }
+                                            Item { Layout.fillWidth: true }
+                                            ToolButton {
+                                                implicitHeight: 32
+                                                onClicked: { folderPopup.close(); bookmarksDialog.open() }
+                                                contentItem: Text { text: "Manage…"; color: "#D7C1AA"; font.pixelSize: 12; verticalAlignment: Text.AlignVCenter; leftPadding: 8; rightPadding: 8 }
+                                                background: Rectangle { radius: 7; color: parent.hovered ? accentSurfaceHover : "transparent" }
                                             }
                                         }
                                     }
@@ -1100,22 +1207,27 @@ ApplicationWindow {
         }
     }
 
+    // Bookmarks: header with a count and ✕, a search box, then one card per
+    // folder. A row opens the page; ✕ on the row removes the bookmark.
     Dialog {
         id: bookmarksDialog
-        title: "Bookmarks"
         modal: true
-        width: 460
-        height: Math.min(560, window.height - 80)
+        parent: Overlay.overlay
+        width: Math.min(560, window.width - 48)
+        height: Math.min(640, window.height - 72)
         anchors.centerIn: parent
-        padding: 18
+        padding: 0
         property string importMessage: ""
+        onOpened: bookmarkSearch.text = ""
         property var groupedBookmarks: {
             browserBackend.bookmarksVersion
             var groups = {}
             var order = []
             var list = browserBackend.bookmarks
+            var q = bookmarkSearch.text.toLowerCase()
             for (var i = 0; i < list.length; i++) {
                 var item = list[i]
+                if (q.length > 0 && (item.title + " " + item.url + " " + (item.folder || "")).toLowerCase().indexOf(q) < 0) continue
                 var folder = item.folder || ""
                 if (!(folder in groups)) {
                     groups[folder] = []
@@ -1130,78 +1242,192 @@ ApplicationWindow {
             }
             return result
         }
-        background: Rectangle {
-            color: accentSurfaceRaised
-            border.color: accentBorder
-            border.width: 1
-            radius: 12
-        }
+        background: Rectangle { color: accentSurfaceRaised; border.color: accentBorder; border.width: 1; radius: 14 }
         Connections {
             target: browserBackend
             function onBookmarkImportFinished(count, message) {
                 bookmarksDialog.importMessage = message
             }
         }
-        contentItem: ColumnLayout {
-            spacing: 10
-            Label {
-                visible: browserBackend.bookmarks.length === 0
-                text: "No bookmarks yet. Select the bookmark icon beside the address bar to save a page."
-                wrapMode: Text.Wrap
-                color: "#D7C1AA"
-                Layout.fillWidth: true
+        header: Item {
+            implicitHeight: 118
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 20
+                anchors.rightMargin: 12
+                anchors.topMargin: 12
+                anchors.bottomMargin: 12
+                spacing: 10
+                RowLayout {
+                    Layout.fillWidth: true
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 2
+                        Label { text: "Bookmarks"; font.bold: true; font.pixelSize: 19; color: "#FFF3E6"; Layout.fillWidth: true }
+                        Label {
+                            text: browserBackend.bookmarks.length === 1 ? "1 bookmark" : browserBackend.bookmarks.length + " bookmarks"
+                            color: "#D7C1AA"; font.pixelSize: 12
+                        }
+                    }
+                    ToolButton {
+                        Layout.alignment: Qt.AlignTop
+                        implicitWidth: 34
+                        implicitHeight: 34
+                        onClicked: bookmarksDialog.close()
+                        contentItem: Text { text: "✕"; color: "#FFF3E6"; font.pixelSize: 15; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                        background: Rectangle { radius: 17; color: parent.hovered ? accentSurfaceHover : "transparent" }
+                    }
+                }
+                TextField {
+                    id: bookmarkSearch
+                    Layout.fillWidth: true
+                    Layout.rightMargin: 8
+                    placeholderText: "Search bookmarks"
+                    placeholderTextColor: "#9F8873"
+                    color: "#FFF3E6"
+                    leftPadding: 12
+                    background: Rectangle { implicitHeight: 34; radius: 8; color: accentSurfaceBase; border.color: bookmarkSearch.activeFocus ? accentColor : accentBorder }
+                }
+            }
+            Rectangle { anchors.bottom: parent.bottom; anchors.left: parent.left; anchors.right: parent.right; height: 1; color: Qt.rgba(accentBorder.r, accentBorder.g, accentBorder.b, 0.6) }
+        }
+        footer: Item {
+            implicitHeight: 58
+            Rectangle { anchors.top: parent.top; anchors.left: parent.left; anchors.right: parent.right; height: 1; color: Qt.rgba(accentBorder.r, accentBorder.g, accentBorder.b, 0.6) }
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 20
+                anchors.rightMargin: 20
+                spacing: 10
+                ThemedButton { text: "Import…"; onClicked: browserBackend.chooseBookmarkImport()
+                    ToolTip.visible: hovered; ToolTip.text: "Import an HTML bookmarks file exported from another browser" }
+                Label {
+                    Layout.fillWidth: true
+                    text: bookmarksDialog.importMessage
+                    color: "#9AD8AE"
+                    font.pixelSize: 12
+                    elide: Text.ElideRight
+                }
+                ThemedButton { text: "Delete all…"; visible: browserBackend.bookmarks.length > 0; onClicked: resetBookmarksConfirmDialog.open() }
+            }
+        }
+        contentItem: Item {
+            ColumnLayout {
+                anchors.centerIn: parent
+                width: parent.width - 60
+                visible: bookmarksDialog.groupedBookmarks.length === 0
+                spacing: 6
+                Label {
+                    text: browserBackend.bookmarks.length === 0 ? "No bookmarks yet" : "No bookmarks match"
+                    color: "#FFF3E6"; font.pixelSize: 14; Layout.alignment: Qt.AlignHCenter
+                }
+                Label {
+                    visible: browserBackend.bookmarks.length === 0
+                    text: "Press the star beside the address bar to save a page, or Import… bookmarks from another browser."
+                    color: "#D7C1AA"; font.pixelSize: 12; wrapMode: Text.Wrap
+                    horizontalAlignment: Text.AlignHCenter; Layout.fillWidth: true
+                }
             }
             ScrollView {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
+                anchors.fill: parent
+                anchors.margins: 14
+                visible: bookmarksDialog.groupedBookmarks.length > 0
                 clip: true
                 ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
                 contentWidth: availableWidth
 
                 ColumnLayout {
                     width: parent.width
-                    spacing: 4
+                    spacing: 14
                     Repeater {
                         model: bookmarksDialog.groupedBookmarks
                         delegate: ColumnLayout {
+                            id: folderGroup
                             required property var modelData
                             Layout.fillWidth: true
-                            spacing: 4
+                            spacing: 6
                             Label {
-                                visible: modelData.folder.length > 0
-                                text: modelData.folder
-                                color: "#F4D5A8"
+                                text: (folderGroup.modelData.folder.length > 0 ? folderGroup.modelData.folder : "Bookmarks").toUpperCase()
+                                      + "  ·  " + folderGroup.modelData.items.length
+                                font.pixelSize: 11
                                 font.bold: true
-                                font.pixelSize: 12
-                                Layout.topMargin: 6
+                                font.letterSpacing: 1
+                                color: "#D7C1AA"
+                                Layout.leftMargin: 4
                             }
-                            Repeater {
-                                model: modelData.items
-                                delegate: Rectangle {
-                                    id: bookmarkEntry
-                                    required property var modelData
-                                    Layout.fillWidth: true
-                                    implicitHeight: 66
-                                    radius: 7
-                                    color: accentSurfaceBase
-                                    RowLayout {
-                                        anchors.fill: parent
-                                        anchors.margins: 9
-                                        spacing: 8
-                                        ColumnLayout {
+                            Rectangle {
+                                Layout.fillWidth: true
+                                implicitHeight: folderRows.implicitHeight + 8
+                                radius: 10
+                                color: accentSurfaceBase
+                                border.color: Qt.rgba(accentBorder.r, accentBorder.g, accentBorder.b, 0.6)
+                                ColumnLayout {
+                                    id: folderRows
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.top: parent.top
+                                    anchors.margins: 4
+                                    spacing: 0
+                                    Repeater {
+                                        model: folderGroup.modelData.items
+                                        delegate: Rectangle {
+                                            id: bookmarkEntry
+                                            required property var modelData
+                                            required property int index
+                                            readonly property string host: (bookmarkEntry.modelData.url.match(/^[a-z]+:\/\/(?:www\.)?([^\/?#]+)/i) || ["", bookmarkEntry.modelData.url])[1]
                                             Layout.fillWidth: true
-                                            spacing: 2
-                                            Label { text: bookmarkEntry.modelData.title; color: "#FFF3E6"; elide: Text.ElideRight; Layout.fillWidth: true }
-                                            Label { text: bookmarkEntry.modelData.url; color: "#D7C1AA"; font.pixelSize: 11; elide: Text.ElideRight; Layout.fillWidth: true }
-                                        }
-                                        Button {
-                                            text: "Open"
-                                            onClicked: {
-                                                window.openHistoryPage(bookmarkEntry.modelData.url)
-                                                bookmarksDialog.close()
+                                            implicitHeight: 54
+                                            radius: 8
+                                            color: rowMouse.containsMouse ? accentSurfaceHover : "transparent"
+                                            Rectangle {
+                                                visible: bookmarkEntry.index > 0 && !rowMouse.containsMouse
+                                                anchors.top: parent.top; anchors.left: parent.left; anchors.right: parent.right
+                                                anchors.leftMargin: 12; anchors.rightMargin: 12
+                                                height: 1
+                                                color: Qt.rgba(accentBorder.r, accentBorder.g, accentBorder.b, 0.35)
+                                            }
+                                            MouseArea {
+                                                id: rowMouse
+                                                anchors.fill: parent
+                                                hoverEnabled: true
+                                                cursorShape: Qt.PointingHandCursor
+                                                onClicked: {
+                                                    window.openHistoryPage(bookmarkEntry.modelData.url)
+                                                    bookmarksDialog.close()
+                                                }
+                                            }
+                                            RowLayout {
+                                                anchors.fill: parent
+                                                anchors.leftMargin: 10
+                                                anchors.rightMargin: 8
+                                                spacing: 12
+                                                // First letter of the site, in place of a favicon.
+                                                Rectangle {
+                                                    Layout.preferredWidth: 32
+                                                    Layout.preferredHeight: 32
+                                                    radius: 8
+                                                    color: accentSurfaceHover
+                                                    border.color: accentBorder
+                                                    Label { anchors.centerIn: parent; text: (bookmarkEntry.host || "?").charAt(0).toUpperCase(); color: accentGlow; font.bold: true; font.pixelSize: 14 }
+                                                }
+                                                ColumnLayout {
+                                                    Layout.fillWidth: true
+                                                    spacing: 1
+                                                    Label { text: bookmarkEntry.modelData.title; color: "#FFF3E6"; font.pixelSize: 14; elide: Text.ElideRight; Layout.fillWidth: true }
+                                                    Label { text: bookmarkEntry.host; color: "#D7C1AA"; font.pixelSize: 12; elide: Text.ElideRight; Layout.fillWidth: true }
+                                                }
+                                                ToolButton {
+                                                    implicitWidth: 30
+                                                    implicitHeight: 30
+                                                    opacity: rowMouse.containsMouse || hovered ? 1 : 0.35
+                                                    onClicked: browserBackend.removeBookmark(bookmarkEntry.modelData.url)
+                                                    contentItem: Text { text: "✕"; color: "#FFF3E6"; font.pixelSize: 13; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                                                    background: Rectangle { radius: 15; color: parent.hovered ? "#5A2E24" : "transparent" }
+                                                    ToolTip.visible: hovered
+                                                    ToolTip.text: "Remove bookmark"
+                                                }
                                             }
                                         }
-                                        Button { text: "Remove"; onClicked: browserBackend.removeBookmark(bookmarkEntry.modelData.url) }
                                     }
                                 }
                             }
@@ -1209,26 +1435,12 @@ ApplicationWindow {
                     }
                 }
             }
-            Label {
-                visible: bookmarksDialog.importMessage.length > 0
-                text: bookmarksDialog.importMessage
-                color: "#F4D5A8"
-                wrapMode: Text.Wrap
-                Layout.fillWidth: true
-            }
-            RowLayout {
-                Layout.fillWidth: true
-                Button { text: "Import HTML…"; onClicked: browserBackend.chooseBookmarkImport() }
-                Item { Layout.fillWidth: true }
-                Button { text: "Reset…"; onClicked: resetBookmarksConfirmDialog.open() }
-                Button { text: "Close"; onClicked: bookmarksDialog.close() }
-            }
         }
     }
 
     Dialog {
         id: resetBookmarksConfirmDialog
-        title: "Reset Bookmarks"
+        title: "Delete all bookmarks?"
         modal: true
         width: 360
         anchors.centerIn: parent
@@ -1237,7 +1449,7 @@ ApplicationWindow {
         contentItem: ColumnLayout {
             spacing: 14
             Label {
-                text: "This deletes every saved bookmark. This can't be undone."
+                text: "Every saved bookmark is deleted. This can't be undone."
                 color: "#D7C1AA"
                 wrapMode: Text.Wrap
                 Layout.fillWidth: true
@@ -1247,7 +1459,7 @@ ApplicationWindow {
                 Item { Layout.fillWidth: true }
                 Button { text: "Cancel"; onClicked: resetBookmarksConfirmDialog.close() }
                 Button {
-                    text: "Reset Bookmarks"
+                    text: "Delete all"
                     onClicked: {
                         browserBackend.resetBookmarks()
                         resetBookmarksConfirmDialog.close()
@@ -1257,116 +1469,224 @@ ApplicationWindow {
         }
     }
 
+    // Saved passwords: same look as Bookmarks. One card per site, a row per
+    // account with Delete; search by site or user name.
     Dialog {
         id: passwordsDialog
-        title: "Saved Passwords"
         modal: true
-        width: 560
-        height: 470
+        parent: Overlay.overlay
+        width: Math.min(560, window.width - 48)
+        height: Math.min(600, window.height - 72)
         anchors.centerIn: parent
-        padding: 18
+        padding: 0
         property var originsModel: []
+        property var entries: []
         property string importMessage: ""
-        onOpened: {
+        function refresh() {
             originsModel = browserBackend.passwordOrigins
+            var list = []
+            for (var i = 0; i < originsModel.length; i++) {
+                var accounts = browserBackend.getPasswordsForOrigin(originsModel[i])
+                for (var j = 0; j < accounts.length; j++)
+                    list.push({ origin: accounts[j].origin, username: accounts[j].username })
+            }
+            entries = list
+        }
+        // Sites with their accounts, filtered by the search box.
+        readonly property var groups: {
+            var q = passwordSearch.text.toLowerCase()
+            var by = {}
+            var order = []
+            for (var i = 0; i < entries.length; i++) {
+                var e = entries[i]
+                if (q.length > 0 && (e.origin + " " + e.username).toLowerCase().indexOf(q) < 0) continue
+                if (!(e.origin in by)) { by[e.origin] = []; order.push(e.origin) }
+                by[e.origin].push(e)
+            }
+            // By site name, ignoring https:// and www.
+            var bare = function (o) { return o.replace(/^[a-z]+:\/\/(www\.)?/i, "").toLowerCase() }
+            order.sort(function (a, b) { return bare(a).localeCompare(bare(b)) })
+            return order.map(function (o) { return { origin: o, accounts: by[o] } })
+        }
+        onOpened: {
+            refresh()
             importMessage = ""
+            passwordSearch.text = ""
         }
         onClosed: {
             originsModel = []
+            entries = []
             importMessage = ""
         }
-        background: Rectangle {
-            color: accentSurfaceRaised
-            border.color: accentBorder
-            border.width: 1
-            radius: 12
-        }
+        background: Rectangle { color: accentSurfaceRaised; border.color: accentBorder; border.width: 1; radius: 14 }
         Connections {
             target: browserBackend
             function onPasswordsChanged() {
-                if (passwordsDialog.visible) {
-                    passwordsDialog.originsModel = browserBackend.passwordOrigins
-                }
+                if (passwordsDialog.visible) passwordsDialog.refresh()
             }
             function onPasswordImportFinished(imported, message) {
                 passwordsDialog.importMessage = message
-                if (passwordsDialog.visible) {
-                    passwordsDialog.originsModel = browserBackend.passwordOrigins
-                }
+                if (passwordsDialog.visible) passwordsDialog.refresh()
             }
         }
-        contentItem: ColumnLayout {
-            spacing: 10
-            Label {
-                text: "Passwords are stored in your KDE wallet and offered only when you revisit the same origin. You can also import a CSV exported from Opera, Chrome, Edge, or Firefox."
-                color: "#D7C1AA"
-                wrapMode: Text.Wrap
-                Layout.fillWidth: true
+        header: Item {
+            implicitHeight: 118
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 20
+                anchors.rightMargin: 12
+                anchors.topMargin: 12
+                anchors.bottomMargin: 12
+                spacing: 10
+                RowLayout {
+                    Layout.fillWidth: true
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 2
+                        Label { text: "Passwords"; font.bold: true; font.pixelSize: 19; color: "#FFF3E6"; Layout.fillWidth: true }
+                        Label {
+                            text: (passwordsDialog.entries.length === 1 ? "1 saved password" : passwordsDialog.entries.length + " saved passwords") + " · kept in your KDE Wallet"
+                            color: "#D7C1AA"; font.pixelSize: 12; elide: Text.ElideRight; Layout.fillWidth: true
+                        }
+                    }
+                    ToolButton {
+                        Layout.alignment: Qt.AlignTop
+                        implicitWidth: 34
+                        implicitHeight: 34
+                        onClicked: passwordsDialog.close()
+                        contentItem: Text { text: "✕"; color: "#FFF3E6"; font.pixelSize: 15; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                        background: Rectangle { radius: 17; color: parent.hovered ? accentSurfaceHover : "transparent" }
+                    }
+                }
+                TextField {
+                    id: passwordSearch
+                    Layout.fillWidth: true
+                    Layout.rightMargin: 8
+                    placeholderText: "Search sites or user names"
+                    placeholderTextColor: "#9F8873"
+                    color: "#FFF3E6"
+                    leftPadding: 12
+                    background: Rectangle { implicitHeight: 34; radius: 8; color: accentSurfaceBase; border.color: passwordSearch.activeFocus ? accentColor : accentBorder }
+                }
             }
-            Label {
-                visible: passwordsDialog.originsModel.length === 0
-                text: "No saved passwords yet."
-                color: "#F4D5A8"
-                Layout.fillWidth: true
+            Rectangle { anchors.bottom: parent.bottom; anchors.left: parent.left; anchors.right: parent.right; height: 1; color: Qt.rgba(accentBorder.r, accentBorder.g, accentBorder.b, 0.6) }
+        }
+        footer: Item {
+            implicitHeight: 58
+            Rectangle { anchors.top: parent.top; anchors.left: parent.left; anchors.right: parent.right; height: 1; color: Qt.rgba(accentBorder.r, accentBorder.g, accentBorder.b, 0.6) }
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 20
+                anchors.rightMargin: 20
+                spacing: 10
+                ThemedButton { text: "Import…"; onClicked: browserBackend.choosePasswordImport()
+                    ToolTip.visible: hovered; ToolTip.text: "Import a CSV exported from Opera, Chrome, Edge or Firefox" }
+                ThemedButton { text: "Open Wallet"; visible: !browserBackend.sandboxed; onClicked: browserBackend.openSystemPasswordManager()
+                    ToolTip.visible: hovered; ToolTip.text: "Open the system password manager" }
+                Label {
+                    Layout.fillWidth: true
+                    text: passwordsDialog.importMessage
+                    color: "#9AD8AE"
+                    font.pixelSize: 12
+                    elide: Text.ElideRight
+                }
+                ThemedButton { text: "Delete all…"; visible: passwordsDialog.entries.length > 0; onClicked: resetPasswordsConfirmDialog.open() }
             }
-            Label {
-                visible: passwordsDialog.importMessage.length > 0
-                text: passwordsDialog.importMessage
-                color: "#F4D5A8"
-                wrapMode: Text.Wrap
-                Layout.fillWidth: true
+        }
+        contentItem: Item {
+            ColumnLayout {
+                anchors.centerIn: parent
+                width: parent.width - 60
+                visible: passwordsDialog.groups.length === 0
+                spacing: 6
+                Label {
+                    text: passwordsDialog.entries.length === 0 ? "No saved passwords yet" : "No passwords match"
+                    color: "#FFF3E6"; font.pixelSize: 14; Layout.alignment: Qt.AlignHCenter
+                }
+                Label {
+                    visible: passwordsDialog.entries.length === 0
+                    text: "Reyva offers to save a password when you sign in to a site, and fills it in only on that same site. You can also Import… a CSV from another browser."
+                    color: "#D7C1AA"; font.pixelSize: 12; wrapMode: Text.Wrap
+                    horizontalAlignment: Text.AlignHCenter; Layout.fillWidth: true
+                }
             }
             ScrollView {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
+                anchors.fill: parent
+                anchors.margins: 14
+                visible: passwordsDialog.groups.length > 0
                 clip: true
+                ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
                 contentWidth: availableWidth
-                Column {
-                    id: passwordsContent
+
+                ColumnLayout {
                     width: parent.width
-                    spacing: 8
+                    spacing: 14
                     Repeater {
-                        model: passwordsDialog.originsModel
-                        delegate: Rectangle {
-                            required property string modelData
-                            width: passwordsContent.width
-                            radius: 8
-                            color: accentSurfaceBase
-                            border.color: accentBorder
-                            border.width: 1
-                            implicitHeight: passwordColumn.implicitHeight + 18
-                            ColumnLayout {
-                                id: passwordColumn
-                                anchors.fill: parent
-                                anchors.margins: 9
-                                spacing: 8
-                                Label {
-                                    text: modelData
-                                    color: "#FFF3E6"
-                                    font.bold: true
-                                    elide: Text.ElideMiddle
-                                    Layout.fillWidth: true
-                                }
-                                Repeater {
-                                    model: browserBackend.getPasswordsForOrigin(modelData)
-                                    delegate: Rectangle {
-                                        required property string username
-                                        required property string origin
-                                        Layout.fillWidth: true
-                                        implicitHeight: 52
-                                        radius: 7
-                                        color: accentSurfaceRaised
-                                        RowLayout {
-                                            anchors.fill: parent
-                                            anchors.margins: 8
-                                            spacing: 8
-                                            ColumnLayout {
-                                                Layout.fillWidth: true
-                                                spacing: 2
-                                                Label { text: username; color: "#FFF3E6"; elide: Text.ElideRight; Layout.fillWidth: true }
-                                                Label { text: "Stored in KWallet"; color: "#D7C1AA"; font.pixelSize: 11; Layout.fillWidth: true }
+                        model: passwordsDialog.groups
+                        delegate: ColumnLayout {
+                            id: siteGroup
+                            required property var modelData
+                            readonly property string host: (siteGroup.modelData.origin.match(/^[a-z]+:\/\/(?:www\.)?([^\/?#:]+)/i) || ["", siteGroup.modelData.origin])[1]
+                            Layout.fillWidth: true
+                            spacing: 6
+                            Label {
+                                text: siteGroup.host + "  ·  " + siteGroup.modelData.accounts.length
+                                font.pixelSize: 12
+                                font.bold: true
+                                color: "#D7C1AA"
+                                elide: Text.ElideMiddle
+                                Layout.fillWidth: true
+                                Layout.leftMargin: 4
+                            }
+                            Rectangle {
+                                Layout.fillWidth: true
+                                implicitHeight: accountRows.implicitHeight + 8
+                                radius: 10
+                                color: accentSurfaceBase
+                                border.color: Qt.rgba(accentBorder.r, accentBorder.g, accentBorder.b, 0.6)
+                                ColumnLayout {
+                                    id: accountRows
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.top: parent.top
+                                    anchors.margins: 4
+                                    spacing: 0
+                                    Repeater {
+                                        model: siteGroup.modelData.accounts
+                                        delegate: Item {
+                                            id: accountRow
+                                            required property var modelData
+                                            required property int index
+                                            Layout.fillWidth: true
+                                            implicitHeight: 54
+                                            Rectangle {
+                                                visible: accountRow.index > 0
+                                                anchors.top: parent.top; anchors.left: parent.left; anchors.right: parent.right
+                                                anchors.leftMargin: 12; anchors.rightMargin: 12
+                                                height: 1
+                                                color: Qt.rgba(accentBorder.r, accentBorder.g, accentBorder.b, 0.35)
                                             }
-                                            Button { text: "Delete"; onClicked: browserBackend.deletePassword(origin, username) }
+                                            RowLayout {
+                                                anchors.fill: parent
+                                                anchors.leftMargin: 10
+                                                anchors.rightMargin: 8
+                                                spacing: 12
+                                                Rectangle {
+                                                    Layout.preferredWidth: 32
+                                                    Layout.preferredHeight: 32
+                                                    radius: 8
+                                                    color: accentSurfaceHover
+                                                    border.color: accentBorder
+                                                    Label { anchors.centerIn: parent; text: (siteGroup.host || "?").charAt(0).toUpperCase(); color: accentGlow; font.bold: true; font.pixelSize: 14 }
+                                                }
+                                                ColumnLayout {
+                                                    Layout.fillWidth: true
+                                                    spacing: 1
+                                                    Label { text: accountRow.modelData.username || "(no user name)"; color: "#FFF3E6"; font.pixelSize: 14; elide: Text.ElideRight; Layout.fillWidth: true }
+                                                    Label { text: "••••••••"; color: "#D7C1AA"; font.pixelSize: 12; Layout.fillWidth: true }
+                                                }
+                                                ThemedButton { text: "Delete"; onClicked: browserBackend.deletePassword(accountRow.modelData.origin, accountRow.modelData.username) }
+                                            }
                                         }
                                     }
                                 }
@@ -1375,20 +1695,12 @@ ApplicationWindow {
                     }
                 }
             }
-            RowLayout {
-                Layout.fillWidth: true
-                Button { text: "Import CSV…"; onClicked: browserBackend.choosePasswordImport() }
-                Button { text: "System Password Manager"; visible: !browserBackend.sandboxed; onClicked: browserBackend.openSystemPasswordManager() }
-                Item { Layout.fillWidth: true }
-                Button { text: "Reset…"; onClicked: resetPasswordsConfirmDialog.open() }
-                Button { text: "Close"; onClicked: passwordsDialog.close() }
-            }
         }
     }
 
     Dialog {
         id: resetPasswordsConfirmDialog
-        title: "Reset Passwords"
+        title: "Delete all passwords?"
         modal: true
         width: 360
         anchors.centerIn: parent
@@ -1397,7 +1709,7 @@ ApplicationWindow {
         contentItem: ColumnLayout {
             spacing: 14
             Label {
-                text: "This deletes every saved password from your KDE wallet. This can't be undone."
+                text: "Every password Reyva saved is deleted from your KDE Wallet. This can't be undone."
                 color: "#D7C1AA"
                 wrapMode: Text.Wrap
                 Layout.fillWidth: true
@@ -1407,7 +1719,7 @@ ApplicationWindow {
                 Item { Layout.fillWidth: true }
                 Button { text: "Cancel"; onClicked: resetPasswordsConfirmDialog.close() }
                 Button {
-                    text: "Reset Passwords"
+                    text: "Delete all"
                     onClicked: {
                         browserBackend.resetPasswords()
                         resetPasswordsConfirmDialog.close()
@@ -1523,67 +1835,119 @@ ApplicationWindow {
         }
     }
 
+    // Web Apps: the sites installed as apps, each with its icon, address
+    // and Remove. Same look as Settings.
     Dialog {
         id: manageAppsDialog
-        title: "Installed Apps"
         modal: true
-        width: 460
-        height: Math.min(480, window.height - 80)
+        parent: Overlay.overlay
+        width: Math.min(520, window.width - 48)
+        height: Math.min(Math.max(220, browserBackend.installedWebApps.length * 66 + 112), window.height - 72)
         anchors.centerIn: parent
-        padding: 18
-        background: Rectangle { color: accentSurfaceRaised; border.color: accentBorder; border.width: 1; radius: 12 }
-        contentItem: ColumnLayout {
-            spacing: 10
-            Label {
+        padding: 0
+        background: Rectangle { color: accentSurfaceRaised; border.color: accentBorder; border.width: 1; radius: 14 }
+        header: Item {
+            implicitHeight: 66
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 20
+                anchors.rightMargin: 12
+                spacing: 8
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 2
+                    Label { text: "Web Apps"; font.bold: true; font.pixelSize: 19; color: "#FFF3E6" }
+                    Label { text: "Sites you installed as apps. Each opens in its own window."; color: "#D7C1AA"; font.pixelSize: 12; elide: Text.ElideRight; Layout.fillWidth: true }
+                }
+                ToolButton {
+                    implicitWidth: 34
+                    implicitHeight: 34
+                    onClicked: manageAppsDialog.close()
+                    contentItem: Text { text: "✕"; color: "#FFF3E6"; font.pixelSize: 15; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    background: Rectangle { radius: 17; color: parent.hovered ? accentSurfaceHover : "transparent" }
+                }
+            }
+            Rectangle { anchors.bottom: parent.bottom; anchors.left: parent.left; anchors.right: parent.right; height: 1; color: Qt.rgba(accentBorder.r, accentBorder.g, accentBorder.b, 0.6) }
+        }
+        contentItem: Item {
+            ColumnLayout {
+                anchors.centerIn: parent
+                width: parent.width - 60
                 visible: browserBackend.installedWebApps.length === 0
-                text: "No apps installed yet. Use \"Install this site as an app\" on any page to add one."
-                wrapMode: Text.Wrap
-                color: "#D7C1AA"
-                Layout.fillWidth: true
+                spacing: 6
+                Label { text: "No web apps yet"; color: "#FFF3E6"; font.pixelSize: 14; Layout.alignment: Qt.AlignHCenter }
+                Label {
+                    text: "On any site, open the menu and choose \"Install this site as an app\"."
+                    color: "#D7C1AA"; font.pixelSize: 12; wrapMode: Text.Wrap
+                    horizontalAlignment: Text.AlignHCenter; Layout.fillWidth: true
+                }
             }
             ScrollView {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
+                anchors.fill: parent
+                anchors.margins: 14
+                visible: browserBackend.installedWebApps.length > 0
                 clip: true
                 ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
                 contentWidth: availableWidth
 
-                ColumnLayout {
+                Rectangle {
                     width: parent.width
-                    spacing: 4
-                    Repeater {
-                        model: browserBackend.installedWebApps
-                        delegate: Rectangle {
-                            id: webAppEntry
-                            required property var modelData
-                            Layout.fillWidth: true
-                            implicitHeight: 60
-                            radius: 7
-                            color: accentSurfaceBase
-                            RowLayout {
-                                anchors.fill: parent
-                                anchors.margins: 9
-                                spacing: 10
-                                Image {
-                                    source: webAppEntry.modelData.icon ? Qt.resolvedUrl("file://" + webAppEntry.modelData.icon) : Qt.resolvedUrl("../assets/reyos-browser-logo.png")
-                                    sourceSize.width: 36
-                                    sourceSize.height: 36
-                                    Layout.preferredWidth: 36
-                                    Layout.preferredHeight: 36
+                    implicitHeight: appRows.implicitHeight + 8
+                    radius: 10
+                    color: accentSurfaceBase
+                    border.color: Qt.rgba(accentBorder.r, accentBorder.g, accentBorder.b, 0.6)
+                    ColumnLayout {
+                        id: appRows
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.top: parent.top
+                        anchors.margins: 4
+                        spacing: 0
+                        Repeater {
+                            model: browserBackend.installedWebApps
+                            delegate: Item {
+                                id: webAppEntry
+                                required property var modelData
+                                required property int index
+                                Layout.fillWidth: true
+                                implicitHeight: 66
+                                Rectangle {
+                                    visible: webAppEntry.index > 0
+                                    anchors.top: parent.top; anchors.left: parent.left; anchors.right: parent.right
+                                    anchors.leftMargin: 12; anchors.rightMargin: 12
+                                    height: 1
+                                    color: Qt.rgba(accentBorder.r, accentBorder.g, accentBorder.b, 0.45)
                                 }
-                                ColumnLayout {
-                                    Layout.fillWidth: true
-                                    spacing: 2
-                                    Label { text: webAppEntry.modelData.name; color: "#FFF3E6"; elide: Text.ElideRight; Layout.fillWidth: true }
-                                    Label { text: webAppEntry.modelData.comment; color: "#D7C1AA"; font.pixelSize: 11; elide: Text.ElideRight; Layout.fillWidth: true }
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.leftMargin: 12
+                                    anchors.rightMargin: 12
+                                    spacing: 12
+                                    Rectangle {
+                                        Layout.preferredWidth: 42
+                                        Layout.preferredHeight: 42
+                                        radius: 10
+                                        color: accentSurfaceHover
+                                        Image {
+                                            anchors.centerIn: parent
+                                            source: webAppEntry.modelData.icon ? Qt.resolvedUrl("file://" + webAppEntry.modelData.icon) : Qt.resolvedUrl("../assets/reyos-browser-logo.png")
+                                            sourceSize.width: 32
+                                            sourceSize.height: 32
+                                        }
+                                    }
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 2
+                                        Label { text: webAppEntry.modelData.name; color: "#FFF3E6"; font.pixelSize: 14; elide: Text.ElideRight; Layout.fillWidth: true }
+                                        Label { text: webAppEntry.modelData.comment; color: "#D7C1AA"; font.pixelSize: 12; elide: Text.ElideRight; Layout.fillWidth: true }
+                                    }
+                                    ThemedButton { text: "Remove"; onClicked: browserBackend.uninstallWebApp(webAppEntry.modelData.id) }
                                 }
-                                Button { text: "Remove"; onClicked: browserBackend.uninstallWebApp(webAppEntry.modelData.id) }
                             }
                         }
                     }
                 }
             }
-            Button { text: "Close"; Layout.alignment: Qt.AlignRight; onClicked: manageAppsDialog.close() }
         }
     }
 
@@ -1893,31 +2257,89 @@ ApplicationWindow {
         }
     }
 
+    // Settings: a header that stays put (title, version, ✕), then cards of
+    // rows: what a setting is on the left, its control on the right.
     Dialog {
         id: settingsDialog
-        title: "Reyva Settings"
         modal: true
-        width: Math.min(480, window.width - 32)
-        height: Math.min(settingsColumn.implicitHeight + topPadding + bottomPadding + implicitHeaderHeight + implicitFooterHeight, window.height - 48)
+        parent: Overlay.overlay
+        width: Math.min(600, window.width - 48)
+        height: Math.min(settingsColumn.implicitHeight + settingsHeader.implicitHeight + 44, window.height - 72)
         anchors.centerIn: parent
-        padding: 18
-        background: Rectangle { color: accentSurfaceRaised; border.color: accentBorder; border.width: 1; radius: 12 }
+        padding: 0
+        background: Rectangle { color: accentSurfaceRaised; border.color: accentBorder; border.width: 1; radius: 14 }
 
-        component SettingsSection: Rectangle {
+        component SettingsSection: ColumnLayout {
             id: section
             property string title
-            default property alias content: sectionBody.data
+            default property alias content: sectionCard.data
             Layout.fillWidth: true
-            implicitHeight: sectionBody.implicitHeight + 28
-            radius: 10
-            color: accentSurfaceBase
-            border.color: Qt.rgba(accentBorder.r, accentBorder.g, accentBorder.b, 0.6)
+            spacing: 6
+            Label {
+                text: section.title.toUpperCase()
+                font.pixelSize: 11
+                font.bold: true
+                font.letterSpacing: 1
+                color: "#D7C1AA"
+                Layout.leftMargin: 4
+            }
+            Rectangle {
+                Layout.fillWidth: true
+                implicitHeight: sectionCard.implicitHeight + 8
+                radius: 10
+                color: accentSurfaceBase
+                border.color: Qt.rgba(accentBorder.r, accentBorder.g, accentBorder.b, 0.6)
+                ColumnLayout {
+                    id: sectionCard
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.margins: 4
+                    spacing: 0
+                }
+            }
+        }
+
+        // One setting: name + explanation on the left, its control on the
+        // right; a hairline above every row but the first.
+        component SettingRow: Item {
+            id: row
+            property string label
+            property string description
+            property bool first: false
+            default property alias control: controlSlot.data
+            Layout.fillWidth: true
+            implicitHeight: Math.max(rowText.implicitHeight, controlSlot.implicitHeight) + 24
+            Rectangle {
+                visible: !row.first
+                anchors.top: parent.top
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.leftMargin: 12
+                anchors.rightMargin: 12
+                height: 1
+                color: Qt.rgba(accentBorder.r, accentBorder.g, accentBorder.b, 0.45)
+            }
             ColumnLayout {
-                id: sectionBody
-                anchors.fill: parent
-                anchors.margins: 14
-                spacing: 8
-                Label { text: section.title; font.bold: true; font.pixelSize: 15; color: "#FFF3E6" }
+                id: rowText
+                anchors.left: parent.left
+                anchors.right: controlSlot.left
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.leftMargin: 12
+                anchors.rightMargin: 16
+                spacing: 3
+                Label { text: row.label; color: "#FFF3E6"; font.pixelSize: 14; Layout.fillWidth: true; wrapMode: Text.Wrap }
+                Label { visible: row.description.length > 0; text: row.description; color: "#D7C1AA"; font.pixelSize: 12; Layout.fillWidth: true; wrapMode: Text.Wrap }
+            }
+            Item {
+                id: controlSlot
+                anchors.right: parent.right
+                anchors.rightMargin: 12
+                anchors.verticalCenter: parent.verticalCenter
+                implicitWidth: childrenRect.width
+                implicitHeight: childrenRect.height
+                width: implicitWidth
+                height: implicitHeight
             }
         }
 
@@ -1941,119 +2363,164 @@ ApplicationWindow {
             }
         }
 
+        // A real on/off switch: accent track with the knob on the right when
+        // on, a dark track with the knob on the left when off.
         component ThemedSwitch: Switch {
             id: themedSwitch
-            Layout.fillWidth: true
-            contentItem: Text { text: themedSwitch.text; color: "#FFF3E6"; verticalAlignment: Text.AlignVCenter; leftPadding: themedSwitch.indicator.width + 8 }
+            padding: 0
+            spacing: 0
+            text: ""
+            implicitWidth: 42
+            implicitHeight: 24
+            indicator: Rectangle {
+                x: 0
+                y: (themedSwitch.height - height) / 2
+                implicitWidth: 42
+                implicitHeight: 24
+                radius: 12
+                color: themedSwitch.checked ? accentColor : accentHoverStrong
+                border.color: themedSwitch.checked ? accentColor : accentBorder
+                Behavior on color { ColorAnimation { duration: 120 } }
+                Rectangle {
+                    width: 18
+                    height: 18
+                    radius: 9
+                    y: 3
+                    x: themedSwitch.checked ? parent.width - width - 3 : 3
+                    color: themedSwitch.checked ? "#FFF3E6" : "#D7C1AA"
+                    Behavior on x { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+                }
+            }
+            contentItem: Item {}
+        }
+
+        header: Item {
+            id: settingsHeader
+            implicitHeight: 84
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 20
+                anchors.rightMargin: 12
+                spacing: 14
+                Image {
+                    source: Qt.resolvedUrl("../assets/reyos-browser-logo.png")
+                    sourceSize.width: 44
+                    sourceSize.height: 44
+                    Layout.preferredWidth: 44
+                    Layout.preferredHeight: 44
+                }
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 2
+                    Label { text: "Settings"; font.bold: true; font.pixelSize: 19; color: "#FFF3E6" }
+                    Label { text: "Reyva " + browserBackend.appVersion + " · " + browserBackend.installKind; color: "#D7C1AA"; font.pixelSize: 12; elide: Text.ElideRight; Layout.fillWidth: true }
+                }
+                ToolButton {
+                    Layout.alignment: Qt.AlignTop
+                    Layout.topMargin: 10
+                    implicitWidth: 34
+                    implicitHeight: 34
+                    onClicked: settingsDialog.close()
+                    contentItem: Text { text: "✕"; color: "#FFF3E6"; font.pixelSize: 15; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    background: Rectangle { radius: 17; color: parent.hovered ? accentSurfaceHover : "transparent" }
+                    ToolTip.visible: hovered
+                    ToolTip.text: "Close"
+                }
+            }
+            Rectangle { anchors.bottom: parent.bottom; anchors.left: parent.left; anchors.right: parent.right; height: 1; color: Qt.rgba(accentBorder.r, accentBorder.g, accentBorder.b, 0.6) }
         }
 
         contentItem: Flickable {
             id: settingsFlick
             clip: true
-            contentHeight: settingsColumn.implicitHeight
+            contentHeight: settingsColumn.implicitHeight + 40
             boundsBehavior: Flickable.StopAtBounds
             ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
             ColumnLayout {
                 id: settingsColumn
-                // Leave room for the scrollbar when the dialog has to scroll.
-                width: settingsFlick.width - (settingsFlick.contentHeight > settingsFlick.height ? 14 : 0)
-                spacing: 12
+                x: 20
+                y: 18
+                width: settingsFlick.width - 40
+                spacing: 18
 
-                // About
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 14
-                    Image {
-                        source: Qt.resolvedUrl("../assets/reyos-browser-logo.png")
-                        sourceSize.width: 56
-                        sourceSize.height: 56
-                        Layout.preferredWidth: 56
-                        Layout.preferredHeight: 56
-                    }
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: 2
-                        Label { text: "Reyva " + browserBackend.appVersion; font.bold: true; font.pixelSize: 19; color: "#FFF3E6" }
-                        Label { text: browserBackend.installKind; color: "#F4D5A8" }
-                        Label { text: browserBackend.engineVersion; color: "#9F8873"; font.pixelSize: 12; wrapMode: Text.Wrap; Layout.fillWidth: true }
-                    }
-                }
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 8
-                    ThemedButton { text: "What's new"; onClicked: { settingsDialog.close(); window.openInNewTab("https://reyos.reyapps.com/#browser") } }
-                    ThemedButton { text: "Report a problem"; onClicked: { settingsDialog.close(); window.openInNewTab("https://github.com/Reypaulino/ReyOS/issues") } }
-                }
                 Label {
-                    text: "Browsing history, cookies and site data are cleared when Reyva closes. The settings below are kept."
+                    text: "History, cookies and site data are cleared when Reyva closes. These settings are kept."
                     wrapMode: Text.Wrap
                     color: "#D7C1AA"
+                    font.pixelSize: 13
                     Layout.fillWidth: true
                 }
 
                 SettingsSection {
                     title: "Search"
-                    Label { text: "Search engine for the address bar and New Tab page"; color: "#D7C1AA"; wrapMode: Text.Wrap; Layout.fillWidth: true }
-                    ComboBox {
-                        id: searchEnginePicker
-                        model: ["DuckDuckGo", "Startpage"]
-                        currentIndex: browserBackend.searchEngine === "Startpage" ? 1 : 0
-                        Layout.fillWidth: true
-                        contentItem: Text {
-                            leftPadding: 10
-                            rightPadding: searchEnginePicker.indicator.width + 10
-                            text: searchEnginePicker.displayText
-                            color: "#FFF3E6"
-                            verticalAlignment: Text.AlignVCenter
-                            elide: Text.ElideRight
-                        }
-                        background: Rectangle { implicitHeight: 34; color: accentSurfaceRaised; border.color: accentBorder; radius: 7 }
-                        popup: Popup {
-                            y: searchEnginePicker.height - 1
-                            width: searchEnginePicker.width
-                            implicitHeight: contentItem.implicitHeight
-                            padding: 4
-                            background: Rectangle { color: accentSurfaceRaised; border.color: accentBorder; radius: 7 }
-                            contentItem: ListView {
-                                clip: true
-                                implicitHeight: contentHeight
-                                model: searchEnginePicker.popup.visible ? searchEnginePicker.delegateModel : null
-                                currentIndex: searchEnginePicker.highlightedIndex
+                    SettingRow {
+                        first: true
+                        label: "Search engine"
+                        description: "For the address bar and the New Tab page."
+                        ComboBox {
+                            id: searchEnginePicker
+                            model: ["DuckDuckGo", "Startpage"]
+                            currentIndex: browserBackend.searchEngine === "Startpage" ? 1 : 0
+                            Layout.preferredWidth: 170
+                            contentItem: Text {
+                                leftPadding: 10
+                                rightPadding: searchEnginePicker.indicator.width + 10
+                                text: searchEnginePicker.displayText
+                                color: "#FFF3E6"
+                                verticalAlignment: Text.AlignVCenter
+                                elide: Text.ElideRight
                             }
+                            background: Rectangle { implicitHeight: 34; color: accentSurfaceRaised; border.color: accentBorder; radius: 7 }
+                            popup: Popup {
+                                y: searchEnginePicker.height - 1
+                                width: searchEnginePicker.width
+                                implicitHeight: contentItem.implicitHeight
+                                padding: 4
+                                background: Rectangle { color: accentSurfaceRaised; border.color: accentBorder; radius: 7 }
+                                contentItem: ListView {
+                                    clip: true
+                                    implicitHeight: contentHeight
+                                    model: searchEnginePicker.popup.visible ? searchEnginePicker.delegateModel : null
+                                    currentIndex: searchEnginePicker.highlightedIndex
+                                }
+                            }
+                            delegate: ItemDelegate {
+                                required property var modelData
+                                required property int index
+                                width: searchEnginePicker.width - 8
+                                height: 34
+                                highlighted: searchEnginePicker.highlightedIndex === index
+                                contentItem: Text { text: modelData; color: "#FFF3E6"; verticalAlignment: Text.AlignVCenter; leftPadding: 8 }
+                                background: Rectangle { color: highlighted ? accentSurfaceHover : "transparent"; radius: 5 }
+                            }
+                            onActivated: browserBackend.setSearchEngine(currentText)
                         }
-                        delegate: ItemDelegate {
-                            required property var modelData
-                            required property int index
-                            width: searchEnginePicker.width - 8
-                            height: 34
-                            highlighted: searchEnginePicker.highlightedIndex === index
-                            contentItem: Text { text: modelData; color: "#FFF3E6"; verticalAlignment: Text.AlignVCenter; leftPadding: 8 }
-                            background: Rectangle { color: highlighted ? accentSurfaceHover : "transparent"; radius: 5 }
-                        }
-                        onActivated: browserBackend.setSearchEngine(currentText)
                     }
                 }
 
                 SettingsSection {
                     title: "Privacy & Shields"
-                    ThemedSwitch {
-                        text: "Block ads and trackers"
-                        checked: browserBackend.shieldsEnabled
-                        onToggled: {
-                            if (checked !== browserBackend.shieldsEnabled) {
-                                browserBackend.toggleShields()
+                    SettingRow {
+                        first: true
+                        label: "Block ads and trackers"
+                        description: browserBackend.blockedRequestCount + " blocked this session"
+                        ThemedSwitch {
+                            checked: browserBackend.shieldsEnabled
+                            onToggled: {
+                                if (checked !== browserBackend.shieldsEnabled) {
+                                    browserBackend.toggleShields()
+                                }
                             }
                         }
                     }
-                    Label { text: browserBackend.blockedRequestCount + " requests blocked this session"; wrapMode: Text.Wrap; color: "#F4D5A8"; Layout.fillWidth: true }
-                    Label { text: "Filter list: " + browserBackend.shieldsDomainCount + " domains · updated " + browserBackend.shieldsLastUpdated; wrapMode: Text.Wrap; color: "#D7C1AA"; Layout.fillWidth: true }
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 10
-                        ThemedButton { text: browserBackend.shieldsUpdating ? "Updating…" : "Update filter list"; enabled: !browserBackend.shieldsUpdating; onClicked: browserBackend.updateShieldsFilterList() }
-                        Label { id: shieldsUpdateStatus; visible: text.length > 0; wrapMode: Text.Wrap; Layout.fillWidth: true; color: "#F4D5A8" }
+                    SettingRow {
+                        label: "Filter list"
+                        description: (shieldsUpdateStatus.text.length > 0 ? shieldsUpdateStatus.text + " · " : "")
+                                     + browserBackend.shieldsDomainCount + " domains · updated " + browserBackend.shieldsLastUpdated
+                        ThemedButton { text: browserBackend.shieldsUpdating ? "Updating…" : "Update"; enabled: !browserBackend.shieldsUpdating; onClicked: browserBackend.updateShieldsFilterList() }
                     }
+                    Item { visible: false; Label { id: shieldsUpdateStatus } }
                     Connections {
                         target: browserBackend
                         function onShieldsUpdateFinished(ok, message) {
@@ -2063,63 +2530,150 @@ ApplicationWindow {
                 }
 
                 SettingsSection {
-                    title: "Performance"
-                    ThemedSwitch {
-                        text: "Low Memory Mode"
-                        checked: browserBackend.lowMemoryMode
-                        onToggled: {
-                            if (checked !== browserBackend.lowMemoryMode) {
-                                browserBackend.toggleLowMemoryMode()
+                    title: "Downloads"
+                    SettingRow {
+                        first: true
+                        label: "Ask where to save each file"
+                        description: browserBackend.askDownloadLocation ? "You pick a folder for every download." : "Off: downloads go to your Downloads folder."
+                        ThemedSwitch {
+                            checked: browserBackend.askDownloadLocation
+                            onToggled: {
+                                if (checked !== browserBackend.askDownloadLocation) {
+                                    browserBackend.toggleAskDownloadLocation()
+                                }
                             }
                         }
                     }
-                    Label { text: "Freezes tabs you haven't used for a few minutes, and unloads long-unused ones, to save memory. Pinned tabs keep running."; wrapMode: Text.Wrap; color: "#D7C1AA"; Layout.fillWidth: true }
+                }
+
+                SettingsSection {
+                    title: "Performance"
+                    SettingRow {
+                        first: true
+                        label: "Low Memory Mode"
+                        description: "Freezes tabs you haven't used for a few minutes and unloads long-unused ones. Pinned tabs keep running."
+                        ThemedSwitch {
+                            checked: browserBackend.lowMemoryMode
+                            onToggled: {
+                                if (checked !== browserBackend.lowMemoryMode) {
+                                    browserBackend.toggleLowMemoryMode()
+                                }
+                            }
+                        }
+                    }
                 }
 
                 SettingsSection {
                     title: "Your data"
-                    Flow {
-                        Layout.fillWidth: true
-                        spacing: 8
-                        ThemedButton { text: "Bookmarks"; onClicked: { settingsDialog.close(); bookmarksDialog.open() } }
-                        ThemedButton { text: "Passwords"; onClicked: { settingsDialog.close(); passwordsDialog.open() } }
-                        ThemedButton { text: "Web Apps"; visible: browserBackend.webAppsSupported; onClicked: { settingsDialog.close(); manageAppsDialog.open() } }
+                    SettingRow {
+                        first: true
+                        label: "Bookmarks"
+                        ThemedButton { text: "Open"; onClicked: { settingsDialog.close(); bookmarksDialog.open() } }
+                    }
+                    SettingRow {
+                        label: "Passwords"
+                        ThemedButton { text: "Open"; onClicked: { settingsDialog.close(); passwordsDialog.open() } }
+                    }
+                    SettingRow {
+                        visible: browserBackend.webAppsSupported
+                        label: "Web Apps"
+                        description: "Sites you installed as apps."
+                        ThemedButton { text: "Open"; onClicked: { settingsDialog.close(); manageAppsDialog.open() } }
                     }
                 }
 
-                ThemedButton {
-                    Layout.alignment: Qt.AlignRight
-                    text: "Close"
-                    onClicked: settingsDialog.close()
+                SettingsSection {
+                    title: "About"
+                    SettingRow {
+                        first: true
+                        label: "Reyva " + browserBackend.appVersion
+                        description: browserBackend.engineVersion
+                        ThemedButton { text: "What's new"; onClicked: { settingsDialog.close(); window.openInNewTab("https://reyos.reyapps.com/#browser") } }
+                    }
+                    SettingRow {
+                        label: "Something not working?"
+                        ThemedButton { text: "Report a problem"; onClicked: { settingsDialog.close(); window.openInNewTab("https://github.com/Reypaulino/ReyOS/issues") } }
+                    }
                 }
             }
         }
     }
 
+    function humanSize(bytes) {
+        if (bytes <= 0) return "0 B"
+        var units = ["B", "KB", "MB", "GB", "TB"]
+        var i = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)))
+        var v = bytes / Math.pow(1024, i)
+        return (i === 0 ? v : v.toFixed(v < 10 ? 1 : 0)) + " " + units[i]
+    }
+
+    // Downloads: a panel under the toolbar button. Each file shows its
+    // type, name, progress in MB/GB, and Open / Show in Folder when done.
     Dialog {
         id: downloadsDialog
-        title: "Downloads"
         parent: window.contentItem
         modal: false
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-        width: Math.min(420, window.width - 24)
-        height: Math.max(190, Math.min(440, downloads.count * 86 + 125))
+        width: Math.min(460, window.width - 24)
+        height: Math.max(230, Math.min(520, downloads.count * 96 + 120))
         x: Math.max(12, window.contentItem.width - width - 12)
         y: 4
-        padding: 16
-        background: Rectangle { color: accentSurfaceRaised; border.color: accentBorder; radius: 12 }
-        contentItem: ColumnLayout {
-            spacing: 10
-            Label { visible: downloads.count === 0; text: "No downloads in this private session"; color: "#D7C1AA"; Layout.fillWidth: true; Layout.fillHeight: true }
+        padding: 0
+        background: Rectangle { color: accentSurfaceRaised; border.color: accentBorder; radius: 14 }
+        header: Item {
+            implicitHeight: 58
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 18
+                anchors.rightMargin: 10
+                spacing: 8
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 1
+                    Label { text: "Downloads"; font.bold: true; font.pixelSize: 17; color: "#FFF3E6" }
+                    Label {
+                        text: window.activeDownloadCount > 0 ? window.activeDownloadCount + " in progress"
+                              : (browserBackend.askDownloadLocation ? "Asks where to save each file" : "Saved to your Downloads folder")
+                        color: "#D7C1AA"; font.pixelSize: 12
+                    }
+                }
+                ThemedButton { text: "Open folder"; onClicked: browserBackend.showInFolder(window.downloadsPath) }
+                ToolButton {
+                    implicitWidth: 34
+                    implicitHeight: 34
+                    onClicked: downloadsDialog.close()
+                    contentItem: Text { text: "✕"; color: "#FFF3E6"; font.pixelSize: 15; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    background: Rectangle { radius: 17; color: parent.hovered ? accentSurfaceHover : "transparent" }
+                }
+            }
+            Rectangle { anchors.bottom: parent.bottom; anchors.left: parent.left; anchors.right: parent.right; height: 1; color: Qt.rgba(accentBorder.r, accentBorder.g, accentBorder.b, 0.6) }
+        }
+        contentItem: Item {
+            ColumnLayout {
+                anchors.centerIn: parent
+                visible: downloads.count === 0
+                spacing: 6
+                Image {
+                    source: Qt.resolvedUrl("../icons/reyos-download.svg")
+                    visible: status === Image.Ready
+                    sourceSize.width: 36
+                    sourceSize.height: 36
+                    opacity: 0.6
+                    Layout.alignment: Qt.AlignHCenter
+                }
+                Label { text: "No downloads yet"; color: "#FFF3E6"; font.pixelSize: 14; Layout.alignment: Qt.AlignHCenter }
+                Label { text: "Files you download in this session show up here."; color: "#D7C1AA"; font.pixelSize: 12; Layout.alignment: Qt.AlignHCenter }
+            }
             ListView {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
+                anchors.fill: parent
+                anchors.margins: 12
                 visible: downloads.count > 0
                 clip: true
                 spacing: 8
                 model: downloads
                 ScrollBar.vertical: ScrollBar {}
                 delegate: Rectangle {
+                    id: dlRow
                     required property int downloadId
                     required property string name
                     required property string status
@@ -2127,43 +2681,65 @@ ApplicationWindow {
                     required property double totalBytes
                     required property bool finished
                     required property bool completed
+                    required property string path
+                    readonly property bool failed: finished && !completed && status.indexOf("Moving") !== 0
+                    readonly property string ext: name.indexOf(".") > 0 ? name.split(".").pop().toUpperCase().slice(0, 4) : "FILE"
                     width: ListView.view.width
-                    height: 76
-                    radius: 7
+                    height: 84
+                    radius: 10
                     color: accentSurfaceBase
-                    ColumnLayout {
+                    border.color: Qt.rgba(accentBorder.r, accentBorder.g, accentBorder.b, 0.5)
+                    RowLayout {
                         anchors.fill: parent
-                        anchors.margins: 8
-                        spacing: 4
-                        RowLayout {
-                            Layout.fillWidth: true
-                            Label { text: name; color: "#FFF3E6"; elide: Text.ElideRight; Layout.fillWidth: true }
-                            Label { text: status; color: completed ? "#9AD8AE" : "#D7C1AA"; font.pixelSize: 12 }
+                        anchors.margins: 12
+                        spacing: 12
+                        Rectangle {
+                            Layout.preferredWidth: 42
+                            Layout.preferredHeight: 50
+                            radius: 6
+                            color: accentSurfaceHover
+                            border.color: dlRow.failed ? "#E07A6A" : accentBorder
+                            Label { anchors.centerIn: parent; text: dlRow.ext; color: dlRow.failed ? "#E07A6A" : accentGlow; font.bold: true; font.pixelSize: 11 }
                         }
-                        ProgressBar {
-                            visible: !finished
-                            from: 0
-                            to: totalBytes > 0 ? totalBytes : 1
-                            value: totalBytes > 0 ? receivedBytes : 0
-                            indeterminate: totalBytes <= 0
+                        ColumnLayout {
                             Layout.fillWidth: true
-                        }
-                        RowLayout {
-                            Layout.fillWidth: true
-                            Label {
-                                text: totalBytes > 0 ? Math.round(receivedBytes / 1024) + " / " + Math.round(totalBytes / 1024) + " KiB" : (finished ? "" : "Preparing download…")
-                                color: "#D7C1AA"
-                                font.pixelSize: 11
+                            spacing: 5
+                            Label { text: dlRow.name; color: "#FFF3E6"; font.pixelSize: 14; elide: Text.ElideMiddle; Layout.fillWidth: true }
+                            // Thin accent bar while downloading.
+                            Rectangle {
+                                visible: !dlRow.finished
                                 Layout.fillWidth: true
+                                implicitHeight: 4
+                                radius: 2
+                                color: accentHoverStrong
+                                Rectangle {
+                                    height: parent.height
+                                    radius: 2
+                                    color: accentColor
+                                    width: dlRow.totalBytes > 0 ? parent.width * Math.min(1, dlRow.receivedBytes / dlRow.totalBytes) : parent.width * 0.15
+                                }
                             }
-                            Button { visible: !finished; text: "Cancel"; onClicked: window.cancelDownload(downloadId) }
-                            Button { visible: completed; text: "Open"; onClicked: window.openDownload(name) }
-                            Button { visible: completed; text: "Show in Folder"; onClicked: browserBackend.showInFolder(window.downloadsPath + "/" + name) }
+                            Label {
+                                Layout.fillWidth: true
+                                elide: Text.ElideRight
+                                font.pixelSize: 12
+                                color: dlRow.completed ? "#9AD8AE" : (dlRow.failed ? "#E07A6A" : "#D7C1AA")
+                                text: !dlRow.finished
+                                      ? (dlRow.totalBytes > 0 ? window.humanSize(dlRow.receivedBytes) + " of " + window.humanSize(dlRow.totalBytes)
+                                                                + " · " + Math.round(100 * dlRow.receivedBytes / dlRow.totalBytes) + "%"
+                                                              : "Starting…")
+                                      : (dlRow.completed ? window.humanSize(dlRow.totalBytes > 0 ? dlRow.totalBytes : dlRow.receivedBytes) + " · "
+                                                           + (dlRow.path.indexOf(window.downloadsPath + "/") === 0 ? "in Downloads" : "saved in " + dlRow.path.split("/").slice(-2, -1)[0])
+                                                         : dlRow.status)
+                            }
                         }
+                        ThemedButton { visible: !dlRow.finished; text: "Cancel"; onClicked: window.cancelDownload(dlRow.downloadId) }
+                        ThemedButton { visible: dlRow.completed; text: "Open"; onClicked: window.openDownload(dlRow.path) }
+                        ThemedButton { visible: dlRow.completed; text: "Show"; onClicked: browserBackend.showInFolder(dlRow.path)
+                            ToolTip.visible: hovered; ToolTip.text: "Show in Folder" }
                     }
                 }
             }
-            Button { text: "Open Downloads Folder"; Layout.alignment: Qt.AlignRight; onClicked: browserBackend.showInFolder(window.downloadsPath) }
         }
     }
 

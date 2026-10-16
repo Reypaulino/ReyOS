@@ -115,6 +115,12 @@ _PASSWORD_CSV_USERNAME_HEADERS = {"username", "usernamevalue", "user", "email", 
 _PASSWORD_CSV_PASSWORD_HEADERS = {"password", "passwordvalue", "pass", "loginpassword"}
 
 
+ROOT_BOOKMARK_FOLDERS = {
+    "bookmarks bar", "bookmarks toolbar", "other bookmarks", "bookmarks menu",
+    "mobile bookmarks", "favorites bar", "favourites bar", "speed dial", "bookmarks",
+}
+
+
 class BookmarkImportParser(HTMLParser):
     """Read standard Netscape bookmark-export HTML without executing it."""
 
@@ -125,6 +131,7 @@ class BookmarkImportParser(HTMLParser):
         self._text: list[str] = []
         self._folder_stack: list[str] = []
         self._pending_folder_name: str | None = None
+        self._pending_is_root = False
         self._in_h3 = False
 
     def handle_starttag(self, tag, attrs) -> None:
@@ -135,9 +142,19 @@ class BookmarkImportParser(HTMLParser):
         elif tag == "h3":
             self._in_h3 = True
             self._text = []
+            # Chrome/Edge/Opera mark the bookmarks bar, Firefox the toolbar
+            # and "Other bookmarks" folders, with these attributes.
+            names = {name.lower() for name, _ in attrs}
+            self._pending_is_root = bool(names & {"personal_toolbar_folder", "unfiled_bookmarks_folder"})
         elif tag == "dl":
-            self._folder_stack.append(self._pending_folder_name or "")
+            name = self._pending_folder_name or ""
+            # A browser's own container (Bookmarks bar, Other bookmarks...)
+            # isn't a folder the user made: keep its bookmarks at the top.
+            if self._pending_is_root or (len([p for p in self._folder_stack if p]) == 0 and name.lower() in ROOT_BOOKMARK_FOLDERS):
+                name = ""
+            self._folder_stack.append(name)
             self._pending_folder_name = None
+            self._pending_is_root = False
 
     def handle_data(self, data) -> None:
         if self._href or self._in_h3:
@@ -146,10 +163,11 @@ class BookmarkImportParser(HTMLParser):
     def handle_endtag(self, tag) -> None:
         tag = tag.lower()
         if tag == "a" and self._href:
-            # The outermost named folder is the browser's own root container
-            # (Bookmarks bar, Other bookmarks, etc., not a folder the user made).
+            # Root containers were blanked when their list opened (above), so
+            # every name left is a folder the user made. It used to drop the
+            # first name always, which lost top-level folders like "Gaming".
             parts = [part for part in self._folder_stack if part]
-            folder = "/".join(parts[1:])
+            folder = "/".join(parts)
             self.entries.append((self._href, "".join(self._text).strip(), folder))
             self._href = ""
             self._text = []
@@ -576,6 +594,8 @@ class PasswordBridge(QObject):
 class BrowserBackend(QObject):
     shieldsChanged = Signal()
     lowMemoryChanged = Signal()
+    askDownloadLocationChanged = Signal()
+    downloadMoved = Signal(int, str, bool)
     blockedRequestCountChanged = Signal()
     currentSiteChanged = Signal()
     currentSiteShieldsChanged = Signal()
@@ -603,6 +623,7 @@ class BrowserBackend(QObject):
         self._fingerprint_script_source = load_fingerprint_protection_script_source(secrets.token_hex(16))
         self._password_bridge = PasswordBridge(self)
         self._low_memory_mode = load_low_memory_mode()
+        self._ask_download_location = load_setting("askDownloadLocation", False)
         self._blocked_request_count = 0
         self._current_site = ""
         self._print_files: set[str] = set()
@@ -1164,6 +1185,54 @@ class BrowserBackend(QObject):
         self._low_memory_mode = not self._low_memory_mode
         save_low_memory_mode(self._low_memory_mode)
         self.lowMemoryChanged.emit()
+
+    # Downloads can go somewhere other than Downloads. The Flatpak can only
+    # write to Downloads by itself, and Chromium writes a download to a
+    # temporary name next to it, so the file is always downloaded there and
+    # then moved to the place picked in the save dialog (the file-chooser
+    # portal in the Flatpak grants write access to exactly that file).
+    @Property(bool, notify=askDownloadLocationChanged)
+    def askDownloadLocation(self) -> bool:
+        return self._ask_download_location
+
+    @Slot()
+    def toggleAskDownloadLocation(self) -> None:
+        self._ask_download_location = not self._ask_download_location
+        save_setting("askDownloadLocation", self._ask_download_location)
+        self.askDownloadLocationChanged.emit()
+
+    @Slot(str, result=str)
+    def chooseDownloadLocation(self, name: str) -> str:
+        """Where to save a download: a path, or "" when cancelled."""
+        downloads = Path.home() / "Downloads"
+        dialog = QFileDialog()
+        dialog.setWindowTitle("Save download as")
+        dialog.setAcceptMode(QFileDialog.AcceptSave)
+        dialog.setDirectory(str(downloads if downloads.is_dir() else Path.home()))
+        dialog.selectFile(name)
+        # Same as choose_open_file: in Flatpak the native dialog is the portal.
+        dialog.setOption(QFileDialog.DontUseNativeDialog, not IS_FLATPAK)
+        if not dialog.exec() or not dialog.selectedFiles():
+            return ""
+        return dialog.selectedFiles()[0]
+
+    @Slot(int, str, str)
+    def moveDownload(self, download_id: int, source: str, target: str) -> None:
+        """Moves a finished download to the chosen place, off the UI thread
+        (a game or an ISO can be gigabytes). downloadMoved(id, path, ok)."""
+        def work():
+            try:
+                if os.path.abspath(source) != os.path.abspath(target):
+                    try:
+                        os.replace(source, target)
+                    except OSError:
+                        # Another drive, or a portal path: copy, then remove.
+                        shutil.copyfile(source, target)
+                        os.remove(source)
+                self.downloadMoved.emit(download_id, target, True)
+            except OSError:
+                self.downloadMoved.emit(download_id, source, False)
+        threading.Thread(target=work, daemon=True).start()
 
     # Printing: QML renders the tab with WebEngineView.printToPdf() into a
     # temp file, then hands it here. Never print a single frame: printing the
