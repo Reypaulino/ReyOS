@@ -91,3 +91,12 @@ echo 'neofetch' >> /etc/skel/.bashrc
 # Calamares module), but ReyOS controls what's baked into the live squashfs,
 # so scrub it here at ISO build time rather than patch Calamares itself.
 sed -i 's/≥/>=/' /etc/mkinitcpio.conf
+
+# reyos-boot pulls in linux-lts (the installed system's backup kernel). The
+# live session only boots `linux`, and archiso copies every kernel and
+# initramfs it finds in /boot onto the ISO (twice: the ISO tree and the EFI
+# image), so the LTS kernel and its all-drivers live initramfs (~245 MB) would
+# add ~500 MB for nothing. The installer copies the LTS kernel back from
+# /usr/lib/modules and builds its image on the target
+# (shellprocess_fix_mkinitcpio_preset.conf).
+rm -f /boot/vmlinuz-linux-lts /boot/initramfs-linux-lts.img /boot/initramfs-linux-lts-fallback.img
