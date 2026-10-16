@@ -531,6 +531,40 @@ def _recolor_look_assets(look_id):
     subprocess.run(["qdbus6", "org.kde.KWin", "/KWin", "org.kde.KWin.reconfigure"], capture_output=True)
 
 
+def _drop_live_wallpaper_autostart():
+    """Installs made before the fix carry the live ISO's wallpaper autostart
+    in the home folder (copied from /etc/skel). It forced the single ReyOS
+    image at every login, so the Look's slideshow never survived a reboot.
+    Remove it once and put the desktop back on the Look's slideshow; runs
+    before plasmashell starts, so writing its config file directly is safe."""
+    autostart = Path.home() / ".config/autostart/reyos-live-wallpaper.desktop"
+    if not autostart.is_file():
+        return
+    if re.search(r"archisobasedir=|archisolabel=", Path("/proc/cmdline").read_text()):
+        return
+    autostart.unlink()
+    # Its live-only sibling: harmless (it exits off the ISO) but listed
+    # under Control Center > Startup Apps as "ReyOS Live Panel".
+    (autostart.parent / "reyos-live-panel.desktop").unlink(missing_ok=True)
+    appletsrc = Path.home() / ".config/plasma-org.kde.plasma.desktop-appletsrc"
+    if not appletsrc.is_file():
+        return
+    look_walls = LOOKS_DIR / _current_look_id() / "wallpaper"
+    slides = f"{look_walls}/" if look_walls.is_dir() else "/usr/share/backgrounds/reyos/"
+    containment = None
+    for line in appletsrc.read_text().splitlines():
+        m = re.fullmatch(r"\[Containments\]\[(\d+)\]", line.strip())
+        if m:
+            containment = m.group(1)
+        elif containment and line.strip() in ("plugin=org.kde.plasma.folder", "plugin=org.kde.desktopcontainment"):
+            base = ["kwriteconfig6", "--file", appletsrc.name, "--group", "Containments", "--group", containment]
+            subprocess.run(base + ["--key", "wallpaperplugin", "org.kde.slideshow"])
+            general = base + ["--group", "Wallpaper", "--group", "org.kde.slideshow", "--group", "General"]
+            subprocess.run(general + ["--key", "SlidePaths", slides])
+            subprocess.run(general + ["--key", "SlideInterval", "1800"])
+            containment = None
+
+
 def main():
     # Package updates reinstall the copper originals of the files
     # _recolor_look_assets() patches, so put the active Look's accent back
@@ -541,6 +575,10 @@ def main():
             _recolor_look_assets(_current_look_id())
         except Exception as exc:
             print(f"reyos: could not reapply Look colors: {exc}", file=sys.stderr)
+        try:
+            _drop_live_wallpaper_autostart()
+        except Exception as exc:
+            print(f"reyos: could not remove the live wallpaper autostart: {exc}", file=sys.stderr)
         # Refresh the per-user bar theme (if Control Center made one) so an
         # update to its rules reaches existing accounts; runs before plasmashell.
         if (Path.home() / ".local/share/plasma/desktoptheme/ReyOS/metadata.json").is_file():

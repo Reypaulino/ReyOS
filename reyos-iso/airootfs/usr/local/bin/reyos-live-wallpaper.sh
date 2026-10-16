@@ -4,6 +4,11 @@
 # live ISO, so nothing else ever sets the desktop/lock-screen wallpaper here
 # -- confirmed via screenshot: the Calamares installer ran against the stock
 # default Breeze wallpaper the whole way through, never the ReyOS one.
+#
+# The installer copies /etc/skel's autostart entry into the new user's home,
+# so without this check it reset an installed desktop to this one image at
+# every login (the Look's slideshow never survived a reboot).
+grep -qE "archisobasedir=|archisolabel=" /proc/cmdline || exit 0
 for _ in $(seq 1 30); do
   qdbus6 org.kde.plasmashell 2>/dev/null && break
   sleep 1
