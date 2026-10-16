@@ -12,8 +12,13 @@ Kirigami.ApplicationWindow {
     pageStack.initialPage: GameLibraryPage {}
     pageStack.globalToolBar.style: Kirigami.ApplicationHeaderStyle.ToolBar
 
+    // Same change popup as Control Center.
+    function notify(message, ok) { changePopup.show(message, ok) }
+
+    ReyOSChangePopup { id: changePopup }
+
     Connections {
         target: backend
-        function onMessage(ok, text) { gamesWindow.showPassiveNotification(text) }
+        function onMessage(ok, text) { gamesWindow.notify(text, ok) }
     }
 }

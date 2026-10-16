@@ -31,6 +31,7 @@ from looks import (  # Qt-free Look / Light-Dark helpers, also run at login
     _recolor_look_assets,
 )
 import emulation  # Qt-free emulation helpers (systems, settings, BIOS, controllers)
+from controller_setup import ControllerSetupWorker  # noqa: E402
 import game_shrink  # Qt-free: add downloaded games, shrink them to CHD
 import steam_options  # Qt-free: GameMode/MangoHud in Steam games' launch options
 import flatpak_updates  # Qt-free: pending Flatpak updates, readable update errors
@@ -345,7 +346,7 @@ def _wait_for_pacman_lock(progress_emit=None, timeout=60):
         time.sleep(1)
         waited += 1
     if lock_path.exists() and progress_emit:
-        progress_emit(f"Still locked after {timeout}s -- proceeding anyway.")
+        progress_emit(f"Still locked after {timeout}s — proceeding anyway.")
     return not lock_path.exists()
 
 
@@ -635,7 +636,7 @@ class PkgWorker(_Worker):
                 if not flatpak_ok:
                     failed.append("updating Flatpak apps")
                 if failed:
-                    detail = " " + flatpak_message if not flatpak_ok else " -- see the log."
+                    detail = " " + flatpak_message if not flatpak_ok else " — see the log."
                     self.finished_ok.emit(True, "System updated, but " + " and ".join(failed) + " failed." + detail)
                 else:
                     self.finished_ok.emit(True, "Full update complete.")
@@ -713,49 +714,6 @@ class ActionWorker(_Worker):
             self.finished_ok.emit(ok, message)
         except Exception as e:
             self.finished_ok.emit(False, str(e))
-
-
-class ControllerSetupWorker(_Worker):
-    """Walks CONTROLLER_STEPS on one pad, then writes the RetroArch profile."""
-    step = Signal(int, int, str, str, str, str)
-    done = Signal(bool, str)
-
-    def __init__(self, path):
-        super().__init__()
-        self.path = path
-        self.skip = False
-        self.cancelled = False
-
-    def run(self):
-        try:
-            reader = emulation.ControllerReader(self.path)
-        except OSError as e:
-            self.done.emit(False, f"Couldn't read the controller ({e.strerror}). Unplug it, plug it back in and try again.")
-            return
-        name = reader.info["name"]
-        brand = emulation.controller_brand(reader.info["vendor"], name)
-        binds = {}
-        steps = emulation.CONTROLLER_STEPS
-        try:
-            for i, (key, title, hint) in enumerate(steps):
-                self.skip = False
-                title, hint = emulation.step_text(key, title, hint, brand)
-                self.step.emit(i, len(steps), key, brand, title, hint)
-                bind = reader.wait_bind(lambda: self.skip or self.cancelled)
-                if self.cancelled:
-                    self.done.emit(False, "Controller setup cancelled -- nothing was changed.")
-                    return
-                if bind:
-                    binds[key] = bind
-            if not binds:
-                self.done.emit(False, "Every step was skipped, so nothing was saved.")
-                return
-            emulation.write_profile(reader.info, binds)
-            self.done.emit(True, f"{name} is set up. Start + Select opens the emulator menu in a game.")
-        except OSError:
-            self.done.emit(False, f"{name} was disconnected during setup -- nothing was saved.")
-        finally:
-            reader.close()
 
 
 class InfoWorker(_Worker):
@@ -878,7 +836,7 @@ class Backend(QObject):
             subprocess.Popen(["timeshift-launcher"])
             # Timeshift asks for the admin password first and takes a few
             # seconds to appear -- say something so the click isn't silent.
-            self.actionFinished.emit(True, "Opening Timeshift -- it will ask for your password.")
+            self.actionFinished.emit(True, "Opening Timeshift — it will ask for your password.")
         except FileNotFoundError:
             self.actionFinished.emit(False, "Timeshift is not installed yet. Reboot into the next ReyOS ISO build.")
 
@@ -906,7 +864,7 @@ class Backend(QObject):
         # The Updates page forgets its own busy state when it is reopened, so
         # refuse here rather than start a second pacman next to the first.
         if self.pkgActionRunning():
-            self.pkgFinished.emit(False, "A package operation is still running -- wait for it to finish.")
+            self.pkgFinished.emit(False, "A package operation is still running — wait for it to finish.")
             return
         worker = PkgWorker(action)
         self._pkg_worker = worker
@@ -963,7 +921,17 @@ class Backend(QObject):
     def setDefaultApp(self, mimetypes_csv, desktop_id):
         mimetypes = mimetypes_csv.split(",")
         rc = subprocess.run(["xdg-mime", "default", desktop_id] + mimetypes).returncode
-        self.actionFinished.emit(rc == 0, f"Default set to {desktop_id}." if rc == 0 else "Could not set default app.")
+        # The app's own name in the popup, not its .desktop file name.
+        name = desktop_id.removesuffix(".desktop")
+        for apps in (Path.home() / ".local/share/applications", Path("/var/lib/flatpak/exports/share/applications"),
+                     Path.home() / ".local/share/flatpak/exports/share/applications", Path("/usr/share/applications")):
+            entry = apps / desktop_id
+            if entry.is_file():
+                m = re.search(r"^Name=(.+)$", entry.read_text(errors="replace"), re.M)
+                if m:
+                    name = m.group(1).strip()
+                    break
+        self.actionFinished.emit(rc == 0, f"{name} is now the default." if rc == 0 else "Could not set default app.")
 
     @Slot()
     def listOrphans(self):
@@ -976,7 +944,7 @@ class Backend(QObject):
         # Replacing a still-running QThread aborts the whole app.
         running = getattr(self, "_action_worker", None)
         if running is not None and running.isRunning():
-            self.actionFinished.emit(False, "Still working on the previous action -- please wait for it to finish.")
+            self.actionFinished.emit(False, "Still working on the previous action — please wait for it to finish.")
             return
         self._action_worker = ActionWorker(fn)
         self._action_worker.finished_ok.connect(self.actionFinished.emit)
@@ -995,7 +963,7 @@ class Backend(QObject):
             wanted = [w for w in steam_options.WRAPPERS
                       if shutil.which(w) and (w != "mangohud" or emulation.load_settings()["overlay"])]
             if "gamemoderun" not in wanted:
-                return False, "GameMode isn't installed yet -- press Install above first."
+                return False, "GameMode isn't installed yet — press Install above first."
             return steam_options.apply(wanted)
         self._steam_worker = ActionWorker(task)
         self._steam_worker.finished_ok.connect(self.gamingFinished.emit)
@@ -1004,7 +972,7 @@ class Backend(QObject):
     @Slot()
     def installGaming(self):
         if _is_live_session():
-            self.gamingFinished.emit(False, "Installing Steam is disabled in the live session -- install ReyOS first.")
+            self.gamingFinished.emit(False, "Installing Steam is disabled in the live session — install ReyOS first.")
             return
 
         def task(emit):
@@ -1021,7 +989,7 @@ class Backend(QObject):
             emit("$ sudo pacman -Sy --noconfirm")
             rc = _run(["sudo", "-n", "pacman", "-Sy", "--noconfirm"], emit)
             if rc != 0:
-                return False, "Could not sync package databases -- check your network connection."
+                return False, "Could not sync package databases — check your network connection."
 
             # One `pacman -S` call per fixed package group, not combined --
             # each call's argv must match one of the fixed, individually
@@ -1043,7 +1011,7 @@ class Backend(QObject):
                 emit("$ sudo pacman -S --needed --noconfirm " + " ".join(group))
                 rc = _run(["sudo", "-n", "pacman", "-S", "--needed", "--noconfirm"] + group, emit)
                 if rc != 0:
-                    return False, f"Install failed ({' '.join(group)}) -- check your network connection and try again."
+                    return False, f"Install failed ({' '.join(group)}) — check your network connection and try again."
 
             return True, "Steam, GameMode, and MangoHud installed."
         self._gaming_worker = ActionWorker(task)
@@ -1082,7 +1050,7 @@ class Backend(QObject):
             self.gamingFinished.emit(False, "Choose at least one system to install.")
             return
         if _is_live_session():
-            self.gamingFinished.emit(False, "Installing emulators is disabled in the live session -- install ReyOS first.")
+            self.gamingFinished.emit(False, "Installing emulators is disabled in the live session — install ReyOS first.")
             return
 
         by_id = {s["id"]: s for s in EMU_SYSTEMS}
@@ -1096,9 +1064,9 @@ class Backend(QObject):
                 emit("(ReyOS will ask for your password.)")
                 rc = _run(["pkexec", str(APP_DIR / "reyos-install-emulators.sh"), *core_ids], emit)
                 if rc in (126, 127):
-                    return False, "Install cancelled -- the password prompt was closed."
+                    return False, "Install cancelled — the password prompt was closed."
                 if rc != 0:
-                    return False, "Install failed -- check your network connection and try again."
+                    return False, "Install failed — check your network connection and try again."
                 emulation.link_system_files()
             if flatpaks:
                 # Per-user, like ReyOS Welcome: no password, and a fresh
@@ -1108,7 +1076,7 @@ class Backend(QObject):
                 rc = _run(["flatpak", "install", "-y", "--user", "--noninteractive", "flathub",
                            *[s["flatpak"] for s in flatpaks]], emit)
                 if rc != 0:
-                    return False, "Flathub download failed -- check your network connection and try again."
+                    return False, "Flathub download failed — check your network connection and try again."
                 for s in flatpaks:
                     emulation.prepare_flatpak(s)
             return True, f"Emulation ready. Put your games in {GAMES_DIR / 'ROMs'}/<system>/ and they'll show up here."
@@ -1209,7 +1177,7 @@ class Backend(QObject):
         except OSError as e:
             self.actionFinished.emit(False, f"Couldn't save game settings: {e}")
             return
-        self.actionFinished.emit(True, "Game settings saved -- they apply the next time you start a game.")
+        self.actionFinished.emit(True, "Saved. Close the game and start it again to see the change.")
 
     @Slot(result="QVariantList")
     def biosReport(self):
@@ -1406,8 +1374,15 @@ class Backend(QObject):
                 return False, f"This CPU doesn't offer the {gov} governor."
             if not Backend._write_governor(paths, gov):
                 return False, "Couldn't change the governor (permission denied)."
-            return True, f"Governor set to: {gov}"
+            names = {"performance": "Fast", "powersave": "Power saving", "ondemand": "Balanced", "schedutil": "Balanced", "conservative": "Quiet"}
+            return True, f"CPU mode set to {names.get(gov, gov)}."
         self._run_action(task)
+
+    @Slot(result="QVariantList")
+    def availableGovernors(self):
+        # Only what this CPU offers: intel_pstate has no "ondemand", and
+        # picking it from a fixed list just failed.
+        return Backend._available_governors() or ["performance", "powersave"]
 
     @staticmethod
     def _available_governors():
@@ -1431,7 +1406,7 @@ class Backend(QObject):
     def performanceMode(self):
         def task(emit):
             paths = glob.glob("/sys/devices/system/cpu/cpu*/cpufreq/scaling_governor")
-            note = " (governor skipped -- no cpufreq scaling on this system)"
+            note = " (governor skipped — no cpufreq scaling on this system)"
             if paths:
                 if "performance" not in Backend._available_governors():
                     note = " (this CPU has no performance governor)"
@@ -1500,7 +1475,7 @@ class Backend(QObject):
             # alone never brings it back: the helper unmasks and starts its unit too.
             subprocess.run(["sudo", "-n", REYOS_ADMIN, "swap", "on"] + list(units), capture_output=True)
             if not Backend._active_swaps():
-                return False, "Couldn't turn swap on -- no swap device came up."
+                return False, "Couldn't turn swap on — no swap device came up."
             return True, "Swap enabled."
         self._run_action(task)
 
@@ -2214,7 +2189,7 @@ class Backend(QObject):
                 return True, ""
             return rc == 0, (
                 f"Removed: {pkgname}" if rc == 0
-                else f"Failed to remove {pkgname} -- it may still be required by another package."
+                else f"Failed to remove {pkgname} — it may still be required by another package."
             )
         self._run_action(task)
 
@@ -2849,9 +2824,9 @@ class Backend(QObject):
             if not _valid_desktop_id(entry_id) or not target.is_file():
                 return False, "Startup entry not found."
             if any((d / entry_id).is_file() for d in _autostart_system_dirs()):
-                return False, "This one comes with the system -- switch it off instead."
+                return False, "This one comes with the system — switch it off instead."
             if entry_id.startswith("reyos-"):
-                return False, "This is part of ReyOS -- switch it off instead."
+                return False, "This is part of ReyOS — switch it off instead."
             name = _read_desktop_entry(target).get("Name", entry_id)
             target.unlink()
             return True, "Removed from startup: " + name
@@ -3067,7 +3042,7 @@ class Backend(QObject):
         def task(emit):
             result = Backend._bt(["power", "on" if on else "off"])
             ok = bool(result and result.returncode == 0)
-            return ok, (("Bluetooth turned on." if on else "Bluetooth turned off.") if ok else "Failed -- is an adapter present?")
+            return ok, (("Bluetooth turned on." if on else "Bluetooth turned off.") if ok else "Failed — is an adapter present?")
         self._run_action(task)
 
     @Slot()
@@ -3137,7 +3112,7 @@ class Backend(QObject):
                 Backend._bt(["connect", mac], timeout_s=15)
                 info = Backend._bt(["info", mac])
             ok = bool(info and "Connected: yes" in info.stdout)
-            return True, (f"Paired and connected: {mac}" if ok else f"Paired: {mac} -- turn the device on to connect.")
+            return True, (f"Paired and connected: {mac}" if ok else f"Paired: {mac} — turn the device on to connect.")
         self._run_action(task)
 
     @Slot(str)
@@ -3354,7 +3329,10 @@ class Backend(QObject):
     def _compute_datetime_info():
         try:
             out = subprocess.check_output(
-                ["timedatectl", "show", "--property=Timezone,NTP,NTPSynchronized"], text=True,
+                # One -p per property: systemd 262 prints nothing at all for
+                # a comma-separated --property list (the page then showed
+                # "Timezone: Unknown" and "Not synchronized").
+                ["timedatectl", "show", "-p", "Timezone", "-p", "NTP", "-p", "NTPSynchronized"], text=True,
             )
             info = dict(line.split("=", 1) for line in out.splitlines() if "=" in line)
         except Exception:
@@ -3435,7 +3413,7 @@ class Backend(QObject):
             if result.returncode in PKEXEC_DISMISSED:
                 return True, ""
             ok = result.returncode == 0
-            return ok, ("Date/time set." if ok else (result.stderr.strip() or "Failed -- disable automatic sync first."))
+            return ok, ("Date/time set." if ok else (result.stderr.strip() or "Failed — disable automatic sync first."))
         self._run_action(task)
 
     @Slot(str)
@@ -3528,8 +3506,22 @@ class Backend(QObject):
                 except Exception:
                     return default
 
+            # Readable names ("English (US)") for the codes, from XKB's list.
+            names = {}
+            try:
+                section = ""
+                for line in Path("/usr/share/X11/xkb/rules/evdev.lst").read_text().splitlines():
+                    if line.startswith("! "):
+                        section = line[2:].strip()
+                    elif section == "layout" and line.strip():
+                        code, _, name = line.strip().partition(" ")
+                        names[code] = name.strip()
+            except OSError:
+                pass
+
             return {
                 "availableLayouts": layouts[:300],
+                "layoutNames": names,
                 "currentLayouts": current,
                 "repeatRate": float(kb_read("RepeatRate", "25") or 25),
                 "repeatDelay": int(float(kb_read("RepeatDelay", "600") or 600)),
@@ -3864,7 +3856,7 @@ class Backend(QObject):
                 name, "leftHanded", "true" if enabled else "false",
                 "libinput Left Handed Enabled", "1" if enabled else "0",
             )
-            return True, ("Left-handed mode applied." if live else "Saved (takes effect next login -- live apply needs this device to be reachable via KWin or xinput).")
+            return True, ("Left-handed mode applied." if live else "Saved. It applies the next time you log in.")
         self._run_action(task)
 
     @Slot(int, int, str, bool)
@@ -3878,7 +3870,7 @@ class Backend(QObject):
                 name, "naturalScroll", "true" if enabled else "false",
                 "libinput Natural Scrolling Enabled", "1" if enabled else "0",
             )
-            return True, ("Natural scrolling applied." if live else "Saved (takes effect next login -- live apply needs this device to be reachable via KWin or xinput).")
+            return True, ("Natural scrolling applied." if live else "Saved. It applies the next time you log in.")
         self._run_action(task)
 
     @Slot(int, int, str, float)
@@ -3897,7 +3889,7 @@ class Backend(QObject):
                 name, "pointerAcceleration", f"{value:.3f}",
                 "libinput Accel Speed", f"{value:.3f}",
             )
-            return True, ("Pointer speed applied." if live else "Saved (takes effect next login -- live apply needs this device to be reachable via KWin or xinput).")
+            return True, ("Pointer speed applied." if live else "Saved. It applies the next time you log in.")
         self._run_action(task)
 
     # -- printers & scanners ----------------------------------------------

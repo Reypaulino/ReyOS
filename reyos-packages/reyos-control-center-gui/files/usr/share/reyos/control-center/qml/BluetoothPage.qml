@@ -121,7 +121,7 @@ Kirigami.ScrollablePage {
                 Controls.Label {
                     visible: scanning
                     Layout.fillWidth: true
-                    text: "Searching... Put your device in pairing mode now (on an Xbox controller, hold the small pair button on top until the logo flashes fast), then click Pair as soon as it appears."
+                    text: "Searching… Put your device in pairing mode now (most devices: hold the pair or power button until a light flashes fast), then press Pair when it shows up."
                     wrapMode: Text.Wrap
                 }
                 Repeater {
@@ -132,7 +132,10 @@ Kirigami.ScrollablePage {
                         ColumnLayout {
                             spacing: 0
                             Layout.fillWidth: true
-                            Controls.Label { text: name; font.bold: true }
+                            // fillWidth here too: a layout with no filling child
+                            // never grows, which left the buttons stuck next to
+                            // the names instead of on the right.
+                            Controls.Label { text: name; font.bold: true; Layout.fillWidth: true; elide: Text.ElideRight }
                             Controls.Label {
                                 text: connected ? "Connected" : (paired ? "Paired" : "Not paired")
                                 color: connected ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.disabledTextColor

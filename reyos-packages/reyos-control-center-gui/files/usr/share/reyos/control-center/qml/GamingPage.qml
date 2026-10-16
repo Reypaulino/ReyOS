@@ -92,15 +92,16 @@ Kirigami.ScrollablePage {
                                   : "Saved. It applies the next time you start a game."
     }
 
-    function startSetup(pad) {
-        setupDialog.padName = pad.name
-        setupDialog.prompt = "Getting ready..."
-        setupDialog.hint = ""
-        setupDialog.stepKey = ""
-        setupDialog.stepIndex = 0
-        setupDialog.running = true
-        setupDialog.open()
-        backend.startControllerSetup(pad.path)
+    function startSetup(pad, system) { setupDialog.start(pad, system) }
+
+    // From the Button layout window: set up player 1's pad for the system
+    // shown there; that window steps aside while the setup runs.
+    function setupForSystem(system) {
+        var pad = controllers.find(function (c) { return c.name === player1 }) || controllers[0]
+        if (!pad) return
+        reopenLayout = true
+        layoutDialog.close()
+        startSetup(pad, system)
     }
 
     Component.onCompleted: {
@@ -134,195 +135,158 @@ Kirigami.ScrollablePage {
             if (ok) emuSelected = ({})
             refreshStatus()
         }
-        function onControllerSetupStep(index, total, key, brand, title, hint) {
-            setupDialog.stepIndex = index
-            setupDialog.stepTotal = total
-            setupDialog.stepKey = key
-            setupDialog.brand = brand
-            setupDialog.prompt = title
-            setupDialog.hint = hint
-        }
-        function onControllerSetupDone(ok, message) {
-            setupDialog.running = false
-            setupDialog.close()
-            controllers = backend.gameControllers()
-        }
     }
 
-    Controls.Dialog {
+    ControllerSetupDialog {
         id: setupDialog
-        property string padName: ""
-        property int stepIndex: 0
-        property int stepTotal: 1
-        property string prompt: ""
-        property string hint: ""
-        property string stepKey: ""
-        property string brand: "generic"
-        property bool running: false
-        title: "Set up " + padName
-        modal: true
-        // Centred in the window, not in the (scrolled) page.
-        parent: Controls.Overlay.overlay
-        anchors.centerIn: parent
-        width: Math.min(parent.width - Kirigami.Units.gridUnit * 2, Kirigami.Units.gridUnit * 26)
-        closePolicy: Controls.Popup.NoAutoClose
-        onRejected: if (running) backend.cancelControllerSetup()
-        contentItem: ColumnLayout {
-            spacing: Kirigami.Units.largeSpacing
-            Controls.Label {
-                text: "Step " + (setupDialog.stepIndex + 1) + " of " + setupDialog.stepTotal
-                opacity: 0.7
-            }
-            ControllerDiagram {
-                Layout.alignment: Qt.AlignHCenter
-                Layout.preferredWidth: Math.min(setupDialog.availableWidth, Kirigami.Units.gridUnit * 18)
-                Layout.preferredHeight: Layout.preferredWidth * 200 / 320
-                activeKey: setupDialog.stepKey
-                brand: setupDialog.brand
-            }
-            Kirigami.Heading {
-                // A fixed width (not fillWidth) so wrapped text reports its real
-                // height and the dialog grows to fit instead of spilling under the buttons.
-                Layout.preferredWidth: setupDialog.availableWidth
-                level: 2
-                wrapMode: Text.Wrap
-                text: setupDialog.prompt
-            }
-            Controls.Label {
-                Layout.preferredWidth: setupDialog.availableWidth
-                wrapMode: Text.Wrap
-                visible: setupDialog.hint.length > 0
-                text: setupDialog.hint
-            }
-            Controls.Label {
-                Layout.preferredWidth: setupDialog.availableWidth
-                wrapMode: Text.Wrap
-                opacity: 0.7
-                text: "No such button on your controller? Press Skip."
-            }
-        }
-        footer: Controls.DialogButtonBox {
-            Controls.Button {
-                text: "Skip"
-                icon.name: "go-next-skip"
-                Controls.DialogButtonBox.buttonRole: Controls.DialogButtonBox.ActionRole
-                onClicked: backend.skipControllerStep()
-            }
-            Controls.Button {
-                text: "Cancel"
-                Controls.DialogButtonBox.buttonRole: Controls.DialogButtonBox.RejectRole
-            }
+        onFinished: {
+            controllers = backend.gameControllers()
+            if (reopenLayout) { reopenLayout = false; systemLayouts = backend.systemControls(padBrand); layoutDialog.open() }
         }
     }
+    property bool reopenLayout: false
 
-    // "Buttons per system": what each button does on each console. Rarely
-    // needed, so it's a window instead of half a page.
-    Controls.Dialog {
+    // "Buttons per system": which button on your controller does each
+    // console button. Rarely needed, so it's a window instead of half a
+    // page; same look as the library's right-click "Controller buttons…".
+    Kirigami.Dialog {
         id: layoutDialog
         title: "Button layout"
-        modal: true
-        parent: Controls.Overlay.overlay
-        anchors.centerIn: parent
-        width: Math.min(parent.width - Kirigami.Units.gridUnit * 2, Kirigami.Units.gridUnit * 44)
-        height: Math.min(parent.height - Kirigami.Units.gridUnit * 2, implicitHeight)
-        standardButtons: Controls.Dialog.Close
-        contentItem: Controls.ScrollView {
-            contentWidth: availableWidth
-            ColumnLayout {
-                id: layoutCard
-                width: layoutDialog.availableWidth
-                readonly property var current: systemLayouts[Math.min(layoutIndex, systemLayouts.length - 1)] || ({ rows: [], labels: {}, note: "", pad: "" })
+        preferredWidth: Kirigami.Units.gridUnit * 24
+        maximumWidth: Kirigami.Units.gridUnit * 24
+        padding: Kirigami.Units.largeSpacing * 2
+        standardButtons: Kirigami.Dialog.Close
+        customFooterActions: [
+            Kirigami.Action {
+                text: "Reset"
+                icon.name: "edit-undo"
+                visible: layoutCard.current.custom === true
+                onTriggered: {
+                    backend.resetButtons(layoutCard.current.id)
+                    systemLayouts = backend.systemControls(padBrand)
+                    applicationWindow().notify(layoutCard.current.name + " buttons are back to the usual layout.")
+                }
+            }
+        ]
+
+        ColumnLayout {
+            id: layoutCard
+            readonly property var current: systemLayouts[Math.min(layoutIndex, systemLayouts.length - 1)] || ({ rows: [], labels: {}, note: "", pad: "", name: "", choices: [] })
+            readonly property var pad: controllers.find(function (c) { return c.name === player1 }) || controllers[0] || null
+            spacing: Kirigami.Units.largeSpacing
+
+            // Same "Your controller" row as ReyOS Games' controller window.
+            RowLayout {
+                Layout.fillWidth: true
                 spacing: Kirigami.Units.largeSpacing
-                RowLayout {
+                Kirigami.Icon {
+                    source: "input-gamepad"
+                    Layout.preferredWidth: Kirigami.Units.iconSizes.medium
+                    Layout.preferredHeight: Kirigami.Units.iconSizes.medium
+                }
+                ColumnLayout {
                     Layout.fillWidth: true
-                    Controls.Label { text: "System:" }
-                    Controls.ComboBox {
+                    spacing: 0
+                    Controls.Label {
                         Layout.fillWidth: true
-                        Layout.maximumWidth: Kirigami.Units.gridUnit * 18
-                        model: systemLayouts
-                        textRole: "name"
-                        currentIndex: layoutIndex
-                        onActivated: index => { layoutIndex = index; layoutKey = "" }
+                        text: layoutCard.pad ? layoutCard.pad.name : "No controller found"
+                        font.bold: true
+                        elide: Text.ElideRight
+                    }
+                    Controls.Label {
+                        Layout.fillWidth: true
+                        wrapMode: Text.Wrap
+                        opacity: 0.7
+                        text: !layoutCard.pad ? "Plug one in, or pair it in Bluetooth."
+                              : layoutCard.pad.configured ? "Set up for games." : "Not set up yet: press Set up and follow the steps."
                     }
                 }
-                Controls.Label {
-                    Layout.fillWidth: true
-                    wrapMode: Text.Wrap
-                    opacity: 0.7
-                    visible: layoutCard.current.rows.length > 0
-                    text: "What each button on your controller does on the " + layoutCard.current.pad + ". Pick another button to swap two; it applies the next time you start a game."
+                Controls.Button {
+                    text: layoutCard.pad && layoutCard.pad.configured ? "Set up again" : "Set up"
+                    icon.name: "input-gamepad"
+                    highlighted: !!layoutCard.pad && !layoutCard.pad.configured
+                    enabled: !!layoutCard.pad
+                    onClicked: setupForSystem(layoutCard.current)
                 }
-                GridLayout {
+            }
+
+            Kirigami.Separator { Layout.fillWidth: true }
+
+            RowLayout {
+                Layout.fillWidth: true
+                Controls.Label { text: "System:" }
+                Controls.ComboBox {
                     Layout.fillWidth: true
-                    visible: layoutCard.current.rows.length > 0
-                    columns: layoutCard.width > Kirigami.Units.gridUnit * 34 ? 2 : 1
-                    columnSpacing: Kirigami.Units.gridUnit
-                    rowSpacing: Kirigami.Units.largeSpacing
-                    ControllerDiagram {
-                        Layout.alignment: Qt.AlignTop | Qt.AlignHCenter
-                        Layout.preferredWidth: Kirigami.Units.gridUnit * 18
-                        Layout.preferredHeight: Layout.preferredWidth * 200 / 320
-                        brand: padBrand
-                        overrides: layoutCard.current.labels
-                        activeKey: layoutKey
+                    wheelEnabled: false
+                    model: systemLayouts
+                    textRole: "name"
+                    currentIndex: layoutIndex
+                    onActivated: index => { layoutIndex = index; layoutKey = "" }
+                }
+            }
+            Controls.Label {
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
+                opacity: 0.75
+                text: layoutCard.current.rows.length === 0 ? "This system has no button layout to change."
+                      : "Left: the " + layoutCard.current.name.replace(" (needs a fast PC)", "") + " button. Right: the button you press for it. Picking one that's taken swaps the two."
+            }
+            GridLayout {
+                Layout.fillWidth: true
+                columns: 2
+                columnSpacing: Kirigami.Units.largeSpacing * 2
+                rowSpacing: Kirigami.Units.smallSpacing
+                Repeater {
+                    model: layoutCard.current.rows
+                    delegate: Controls.Label {
+                        Layout.row: index
+                        Layout.column: 0
+                        Layout.preferredWidth: Kirigami.Units.gridUnit * 7
+                        text: modelData.console
+                        font.bold: true
+                        elide: Text.ElideRight
                     }
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        Layout.alignment: Qt.AlignTop
-                        spacing: 0
-                        Repeater {
-                            model: layoutCard.current.rows
-                            delegate: Controls.ItemDelegate {
-                                Layout.fillWidth: true
-                                highlighted: layoutKey === modelData.key
-                                onClicked: layoutKey = (layoutKey === modelData.key ? "" : modelData.key)
-                                contentItem: RowLayout {
-                                    Controls.Label {
-                                        text: modelData.console
-                                        font.bold: true
-                                        Layout.preferredWidth: Kirigami.Units.gridUnit * 9
-                                        elide: Text.ElideRight
-                                    }
-                                    Controls.Label { text: "→"; opacity: 0.6 }
-                                    Controls.Label {
-                                        visible: !modelData.movable
-                                        text: modelData.yours
-                                        Layout.fillWidth: true
-                                        elide: Text.ElideRight
-                                    }
-                                    Controls.ComboBox {
-                                        visible: modelData.movable
-                                        wheelEnabled: false
-                                        Layout.fillWidth: true
-                                        model: layoutCard.current.choices
-                                        textRole: "label"
-                                        currentIndex: Math.max(0, layoutCard.current.choices.findIndex(function (c) { return c.key === modelData.pad }))
-                                        onActivated: {
-                                            var id = layoutCard.current.id
-                                            backend.setButton(id, modelData.key, layoutCard.current.choices[currentIndex].key)
-                                            systemLayouts = backend.systemControls(padBrand)
-                                        }
-                                    }
-                                }
+                }
+                Repeater {
+                    model: layoutCard.current.rows
+                    delegate: Item {
+                        Layout.row: index
+                        Layout.column: 1
+                        Layout.preferredWidth: Kirigami.Units.gridUnit * 12
+                        implicitHeight: layoutCombo.implicitHeight
+                        Controls.Label {
+                            anchors.verticalCenter: parent.verticalCenter
+                            visible: !modelData.movable
+                            text: modelData.yours
+                            opacity: 0.7
+                        }
+                        Controls.ComboBox {
+                            id: layoutCombo
+                            visible: modelData.movable
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            wheelEnabled: false
+                            model: layoutCard.current.choices
+                            textRole: "label"
+                            currentIndex: Math.max(0, layoutCard.current.choices.findIndex(function (c) { return c.key === modelData.pad }))
+                            onActivated: {
+                                var choice = layoutCard.current.choices[currentIndex]
+                                var name = layoutCard.current.name
+                                backend.setButton(layoutCard.current.id, modelData.key, choice.key)
+                                systemLayouts = backend.systemControls(padBrand)
+                                applicationWindow().notify(name + " " + modelData.console + " is now " + choice.label
+                                                           + " on your controller. Close the game and start it again to use it.")
                             }
                         }
                     }
                 }
-                Controls.Label {
-                    Layout.fillWidth: true
-                    wrapMode: Text.Wrap
-                    visible: layoutCard.current.note.length > 0
-                    text: layoutCard.current.note
-                }
-                Controls.Button {
-                    visible: layoutCard.current.custom === true
-                    text: "Reset " + layoutCard.current.name + " to the usual layout"
-                    icon.name: "edit-undo"
-                    onClicked: {
-                        backend.resetButtons(layoutCard.current.id)
-                        systemLayouts = backend.systemControls(padBrand)
-                    }
-                }
+            }
+            Controls.Label {
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
+                visible: layoutCard.current.note.length > 0
+                text: layoutCard.current.note
+                opacity: 0.75
             }
         }
     }
@@ -598,7 +562,11 @@ Kirigami.ScrollablePage {
                             visible: controllers.length > 1
                             text: "Player 1"
                             checked: player1 === modelData.name || (player1 === "" && index === 0)
-                            onToggled: if (checked) { player1 = modelData.name; backend.setPlayer1(modelData.name) }
+                            onToggled: if (checked) {
+                                player1 = modelData.name
+                                backend.setPlayer1(modelData.name)
+                                applicationWindow().notify(modelData.name + " is now player 1.")
+                            }
                         }
                         // The pad in your hands, not a console: picked as "Nintendo"
                         // next to "Super Nintendo" it renamed every button.
@@ -620,6 +588,7 @@ Kirigami.ScrollablePage {
                             onActivated: {
                                 // Back to "detected" when the pick matches what the vendor id says.
                                 backend.setPadType(modelData.name, padTypes[currentIndex].id === modelData.detected ? "" : padTypes[currentIndex].id)
+                                applicationWindow().notify(modelData.name + ": button names now follow a " + padTypes[currentIndex].label + " controller.")
                                 controllers = backend.gameControllers()
                             }
                             Controls.ToolTip.visible: hovered

@@ -83,7 +83,7 @@ Kirigami.ScrollablePage {
             Layout.fillWidth: true
             wrapMode: Text.Wrap
             opacity: 0.7
-            text: "Set up printers and scanners without hunting for drivers -- most printers made since ~2015 work out of the box."
+            text: "Set up printers and scanners without hunting for drivers. Most printers made since about 2015 work right away."
         }
 
         // -- Configured printers ------------------------------------------

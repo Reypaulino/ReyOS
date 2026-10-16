@@ -59,7 +59,7 @@ Kirigami.ScrollablePage {
             Layout.fillWidth: true
             wrapMode: Text.Wrap
             opacity: 0.7
-            text: "Everything ReyOS's \"safe by default\" pitch depends on, in one place."
+            text: "How your computer is protected, at a glance."
         }
 
         GridLayout {
@@ -69,7 +69,11 @@ Kirigami.ScrollablePage {
             rowSpacing: Kirigami.Units.gridUnit
 
             Kirigami.AbstractCard {
+                // Equal columns: without a shared preferred width a long
+                // label widened one column and pushed the next card's
+                // button past its border.
                 Layout.fillWidth: true
+                Layout.preferredWidth: 1
                 Layout.fillHeight: true
                 padding: Kirigami.Units.gridUnit
                 contentItem: ColumnLayout {
@@ -93,6 +97,7 @@ Kirigami.ScrollablePage {
 
             Kirigami.AbstractCard {
                 Layout.fillWidth: true
+                Layout.preferredWidth: 1
                 Layout.fillHeight: true
                 padding: Kirigami.Units.gridUnit
                 contentItem: ColumnLayout {
@@ -116,6 +121,7 @@ Kirigami.ScrollablePage {
 
             Kirigami.AbstractCard {
                 Layout.fillWidth: true
+                Layout.preferredWidth: 1
                 Layout.fillHeight: true
                 padding: Kirigami.Units.gridUnit
                 contentItem: ColumnLayout {
@@ -124,7 +130,7 @@ Kirigami.ScrollablePage {
                     Kirigami.Heading { text: "Browser Shields"; level: 4 }
                     Controls.Label {
                         Layout.fillWidth: true
-                        text: shieldsBlocked > 0 ? (shieldsBlocked + " trackers/ads blocked, lifetime") : "No data yet — open Reyva"
+                        text: shieldsBlocked > 0 ? (shieldsBlocked + " trackers and ads blocked in Reyva so far") : "No data yet — open Reyva"
                         color: shieldsBlocked > 0 ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.disabledTextColor
                         font.bold: true
                         wrapMode: Text.Wrap
@@ -134,6 +140,7 @@ Kirigami.ScrollablePage {
 
             Kirigami.AbstractCard {
                 Layout.fillWidth: true
+                Layout.preferredWidth: 1
                 Layout.fillHeight: true
                 padding: Kirigami.Units.gridUnit
                 contentItem: ColumnLayout {
@@ -156,6 +163,7 @@ Kirigami.ScrollablePage {
 
             Kirigami.AbstractCard {
                 Layout.fillWidth: true
+                Layout.preferredWidth: 1
                 Layout.fillHeight: true
                 padding: Kirigami.Units.gridUnit
                 contentItem: ColumnLayout {

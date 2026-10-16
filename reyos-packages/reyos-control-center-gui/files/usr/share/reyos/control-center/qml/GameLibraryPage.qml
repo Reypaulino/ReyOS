@@ -21,15 +21,45 @@ Kirigami.Page {
     property var addOriginals: []
     property var controllers: []
     readonly property var unconfiguredPad: controllers.find(function (c) { return !c.configured }) || null
+    property var setupPad: ({})
 
-    // Systems that have games, for the picker.
+    // The step-by-step setup runs right here (same steps as Control Center).
+    function setUpController(pad) {
+        controllers = backend.controllers()
+        var p = pad || backend.player1Controller()
+        if (!p || !p.path) {
+            applicationWindow().notify("No controller found. Plug one in, or pair it in Control Center > Bluetooth.", false)
+            return
+        }
+        // One window at a time: the button window would cover the setup.
+        reopenButtons = buttonsDialog.visible
+        // The system you're looking at: the button window's, else the open tab's.
+        var system = reopenButtons ? buttonsDialog.layout : (gameFilter !== "" ? backend.buttonLayout(gameFilter) : null)
+        buttonsDialog.close()
+        setupDialog.start(p, system)
+    }
+    property bool reopenButtons: false
+
+    ControllerSetupDialog {
+        id: setupDialog
+        onFinished: function (ok, message) {
+            controllers = backend.controllers()
+            if (reopenButtons) { reopenButtons = false; buttonsDialog.changed(); buttonsDialog.open() }
+            if (message) applicationWindow().notify(message, ok)
+        }
+    }
+
+    // One tab per system that has games (sorted by emulator), "All" last.
+    // The "(needs a fast PC)" hint stays on the Gaming page, not the tabs.
     property var gameSystems: {
-        var list = [{ id: "", label: "All systems (" + allGames.length + ")" }]
+        var list = []
         for (var i = 0; i < systems.length; i++)
             if (systems[i].games > 0)
-                list.push({ id: systems[i].id, label: systems[i].name + " (" + systems[i].games + ")" })
+                list.push({ id: systems[i].id, label: systems[i].name.replace(/ \(needs a fast PC\)/, "") + "  " + systems[i].games })
+        if (list.length > 1) list.push({ id: "", label: "All  " + allGames.length })
         return list
     }
+    property bool filterChosen: false
 
     function startAdding(text) {
         adding = true
@@ -55,8 +85,8 @@ Kirigami.Page {
         gameModel.setProperty(index, "resolution", value)
         for (var i = 0; i < allGames.length; i++)
             if (allGames[i].path === path) allGames[i].resolution = value
-        applicationWindow().showPassiveNotification(value === 0 ? "This game follows Control Center's 3D resolution again."
-                                                   : "3D resolution for this game: " + resolutionNames[value] + ". It applies the next time you start it.")
+        applicationWindow().notify(value === 0 ? "This game follows Control Center's 3D resolution again."
+                                   : "3D resolution for this game: " + resolutionNames[value] + ". Close the game and start it again to see it.")
     }
 
     function shrinkGame(path, title) {
@@ -76,8 +106,8 @@ Kirigami.Page {
         Kirigami.Action {
             text: "Controller…"
             icon.name: "input-gamepad"
-            tooltip: "Set up your controller's buttons for games (opens Control Center)."
-            onTriggered: backend.setUpController()
+            tooltip: "Set up your controller for games: press each button it shows."
+            onTriggered: setUpController(null)
         },
         Kirigami.Action {
             text: "Set up emulators"
@@ -110,7 +140,8 @@ Kirigami.Page {
         if (sig !== gamesSignature) {
             gamesSignature = sig
             allGames = games
-            if (!gameSystems.some(function (s) { return s.id === gameFilter })) gameFilter = ""
+            if (!filterChosen || !gameSystems.some(function (s) { return s.id === gameFilter }))
+                gameFilter = gameSystems.length > 0 ? gameSystems[0].id : ""
             applyFilter()
         }
         backend.fetchCovers()
@@ -121,8 +152,9 @@ Kirigami.Page {
         var q = gameSearch.toLowerCase()
         for (var i = 0; i < allGames.length; i++) {
             var g = allGames[i]
-            if ((gameFilter === "" || g.systemId === gameFilter)
-                    && (q === "" || g.title.toLowerCase().indexOf(q) >= 0))
+            // A search looks through every system, not just the open tab.
+            if ((q !== "" ? g.title.toLowerCase().indexOf(q) >= 0
+                          : (gameFilter === "" || g.systemId === gameFilter)))
                 gameModel.append(g)
         }
     }
@@ -137,6 +169,7 @@ Kirigami.Page {
             startAdding("Shrinking your games...")
             backend.shrinkAll()
         }
+        else if (start.indexOf("buttons:") === 0) buttonsDialog.openFor(start.slice(8))
     }
 
     // Also rescan when the window comes back to the front (a game added
@@ -148,102 +181,147 @@ Kirigami.Page {
 
     ListModel { id: gameModel }
 
-    // A system's buttons: what each console button is on your controller,
-    // changed here (a swap, so nothing is doubled). Same settings as
-    // Control Center > Gaming > Button layout.
-    Controls.Dialog {
+    // A system's buttons: which button on your controller does each
+    // console button, changed here (a swap, so nothing is doubled). Same
+    // settings as Control Center > Gaming > Button layout.
+    Kirigami.Dialog {
         id: buttonsDialog
         property string systemId: ""
         property var layout: ({})
-        property string activeKey: ""
         function openFor(id) {
             systemId = id
-            layout = backend.buttonLayout(id)
-            activeKey = ""
+            changed()
             open()
         }
-        function changed() { layout = backend.buttonLayout(systemId) }
-        title: "Controller buttons: " + (layout.name || "")
-        modal: true
-        parent: Controls.Overlay.overlay
-        anchors.centerIn: parent
-        width: Math.min(parent.width - Kirigami.Units.gridUnit * 2, Kirigami.Units.gridUnit * 40)
-        height: Math.min(parent.height - Kirigami.Units.gridUnit * 2, implicitHeight)
-        standardButtons: Controls.Dialog.Close
-        contentItem: Controls.ScrollView {
-            contentWidth: availableWidth
-            ColumnLayout {
-                width: buttonsDialog.availableWidth
-                spacing: Kirigami.Units.largeSpacing
-                Controls.Label {
-                    Layout.fillWidth: true
-                    wrapMode: Text.Wrap
-                    opacity: 0.7
-                    text: (buttonsDialog.layout.rows || []).length === 0 ? "No controller layout for this system."
-                          : "Which button on your controller does each " + buttonsDialog.layout.pad + " button. Pick another to swap the two. It applies the next time you start a game."
+        function changed() {
+            layout = backend.buttonLayout(systemId)
+            pad = backend.player1Controller()
+        }
+        property var pad: ({})
+        title: "Controller: " + (layout.name || "").replace(" (needs a fast PC)", "")
+        preferredWidth: Kirigami.Units.gridUnit * 24
+        maximumWidth: Kirigami.Units.gridUnit * 24
+        padding: Kirigami.Units.largeSpacing * 2
+        standardButtons: Kirigami.Dialog.Close
+        customFooterActions: [
+            Kirigami.Action {
+                text: "Reset"
+                icon.name: "edit-undo"
+                visible: buttonsDialog.layout.custom === true
+                onTriggered: {
+                    backend.resetButtons(buttonsDialog.systemId)
+                    buttonsDialog.changed()
+                    applicationWindow().notify((buttonsDialog.layout.name || "") + " buttons are back to the usual layout.")
                 }
-                GridLayout {
+            }
+        ]
+
+        ColumnLayout {
+            spacing: Kirigami.Units.largeSpacing
+
+            // Your controller first: set it up here before changing buttons.
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Kirigami.Units.largeSpacing
+                Kirigami.Icon {
+                    source: "input-gamepad"
+                    Layout.preferredWidth: Kirigami.Units.iconSizes.medium
+                    Layout.preferredHeight: Kirigami.Units.iconSizes.medium
+                }
+                ColumnLayout {
                     Layout.fillWidth: true
-                    columns: buttonsDialog.availableWidth > Kirigami.Units.gridUnit * 30 ? 2 : 1
-                    columnSpacing: Kirigami.Units.gridUnit
-                    ControllerDiagram {
-                        Layout.alignment: Qt.AlignTop | Qt.AlignHCenter
-                        Layout.preferredWidth: Kirigami.Units.gridUnit * 16
-                        Layout.preferredHeight: Layout.preferredWidth * 200 / 320
-                        brand: buttonsDialog.layout.brand || "generic"
-                        overrides: buttonsDialog.layout.labels || ({})
-                        activeKey: buttonsDialog.activeKey
-                    }
-                    ColumnLayout {
+                    spacing: 0
+                    Controls.Label {
                         Layout.fillWidth: true
-                        Layout.alignment: Qt.AlignTop
-                        spacing: 0
-                        Repeater {
-                            model: buttonsDialog.layout.rows || []
-                            delegate: RowLayout {
-                                Layout.fillWidth: true
-                                Controls.Label {
-                                    text: modelData.console
-                                    font.bold: true
-                                    Layout.preferredWidth: Kirigami.Units.gridUnit * 7
-                                    elide: Text.ElideRight
-                                }
-                                Controls.Label { text: "→"; opacity: 0.6 }
-                                Controls.Label {
-                                    visible: !modelData.movable
-                                    text: modelData.yours
-                                    Layout.fillWidth: true
-                                }
-                                Controls.ComboBox {
-                                    visible: modelData.movable
-                                    wheelEnabled: false
-                                    Layout.fillWidth: true
-                                    model: buttonsDialog.layout.choices || []
-                                    textRole: "label"
-                                    currentIndex: Math.max(0, (buttonsDialog.layout.choices || []).findIndex(function (c) { return c.key === modelData.pad }))
-                                    onActivated: {
-                                        backend.setButton(buttonsDialog.systemId, modelData.key, buttonsDialog.layout.choices[currentIndex].key)
-                                        buttonsDialog.activeKey = buttonsDialog.layout.choices[currentIndex].key
-                                        buttonsDialog.changed()
-                                    }
-                                    onHoveredChanged: if (hovered) buttonsDialog.activeKey = modelData.pad
-                                }
+                        text: buttonsDialog.pad.name || "No controller found"
+                        font.bold: true
+                        elide: Text.ElideRight
+                    }
+                    Controls.Label {
+                        Layout.fillWidth: true
+                        wrapMode: Text.Wrap
+                        opacity: 0.7
+                        text: !buttonsDialog.pad.name ? "Plug one in, or pair it in Control Center > Bluetooth."
+                              : buttonsDialog.pad.configured ? "Set up for games." : "Not set up yet: press Set up and follow the steps."
+                        color: buttonsDialog.pad.name && !buttonsDialog.pad.configured ? Kirigami.Theme.neutralTextColor : Kirigami.Theme.textColor
+                    }
+                }
+                Controls.Button {
+                    text: buttonsDialog.pad.configured ? "Set up again" : "Set up"
+                    icon.name: "input-gamepad"
+                    highlighted: !!buttonsDialog.pad.name && !buttonsDialog.pad.configured
+                    enabled: !!buttonsDialog.pad.path
+                    onClicked: setUpController(buttonsDialog.pad)
+                }
+            }
+
+            Kirigami.Separator { Layout.fillWidth: true }
+
+            Controls.Label {
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
+                opacity: 0.75
+                text: (buttonsDialog.layout.rows || []).length === 0 ? "This system has no button layout to change."
+                      : "Left: the " + (buttonsDialog.layout.name || "console").replace(" (needs a fast PC)", "") + " button. Right: the button you press for it. Picking one that's taken swaps the two."
+            }
+
+            GridLayout {
+                Layout.fillWidth: true
+                columns: 2
+                columnSpacing: Kirigami.Units.largeSpacing * 2
+                rowSpacing: Kirigami.Units.smallSpacing
+
+                Repeater {
+                    model: buttonsDialog.layout.rows || []
+                    delegate: Controls.Label {
+                        Layout.row: index
+                        Layout.column: 0
+                        Layout.preferredWidth: Kirigami.Units.gridUnit * 7
+                        text: modelData.console
+                        font.bold: true
+                        elide: Text.ElideRight
+                    }
+                }
+                Repeater {
+                    model: buttonsDialog.layout.rows || []
+                    delegate: Item {
+                        Layout.row: index
+                        Layout.column: 1
+                        Layout.preferredWidth: Kirigami.Units.gridUnit * 12
+                        implicitHeight: combo.implicitHeight
+                        Controls.Label {
+                            anchors.verticalCenter: parent.verticalCenter
+                            visible: !modelData.movable
+                            text: modelData.yours
+                            opacity: 0.7
+                        }
+                        Controls.ComboBox {
+                            id: combo
+                            visible: modelData.movable
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            wheelEnabled: false
+                            model: buttonsDialog.layout.choices || []
+                            textRole: "label"
+                            currentIndex: Math.max(0, (buttonsDialog.layout.choices || []).findIndex(function (c) { return c.key === modelData.pad }))
+                            onActivated: {
+                                var choice = buttonsDialog.layout.choices[currentIndex]
+                                backend.setButton(buttonsDialog.systemId, modelData.key, choice.key)
+                                buttonsDialog.changed()
+                                applicationWindow().notify((buttonsDialog.layout.name || "") + " " + modelData.console + " is now " + choice.label
+                                                           + " on your controller. Close the game and start it again to use it.")
                             }
                         }
                     }
                 }
-                Controls.Label {
-                    Layout.fillWidth: true
-                    wrapMode: Text.Wrap
-                    visible: !!buttonsDialog.layout.note
-                    text: buttonsDialog.layout.note || ""
-                }
-                Controls.Button {
-                    visible: buttonsDialog.layout.custom === true
-                    text: "Back to the usual layout"
-                    icon.name: "edit-undo"
-                    onClicked: { backend.resetButtons(buttonsDialog.systemId); buttonsDialog.changed() }
-                }
+            }
+
+            Controls.Label {
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
+                visible: !!buttonsDialog.layout.note
+                text: buttonsDialog.layout.note || ""
+                opacity: 0.75
             }
         }
     }
@@ -304,7 +382,7 @@ Kirigami.Page {
                 Kirigami.Action {
                     text: "Set up"
                     icon.name: "input-gamepad"
-                    onTriggered: backend.setUpController()
+                    onTriggered: setUpController(unconfiguredPad)
                 }
             ]
         }
@@ -321,6 +399,7 @@ Kirigami.Page {
                     visible: addOriginals.length > 0
                     onTriggered: {
                         var n = backend.deleteOriginals(addOriginals)
+                        applicationWindow().notify(n + (n === 1 ? " original file deleted." : " original files deleted."))
                         addOriginals = []
                         addResult.text = n + (n === 1 ? " original file deleted." : " original files deleted.")
                     }
@@ -331,16 +410,8 @@ Kirigami.Page {
         RowLayout {
             Layout.fillWidth: true
             spacing: Kirigami.Units.largeSpacing
-            Controls.ComboBox {
-                Layout.preferredWidth: Kirigami.Units.gridUnit * 14
-                model: gameSystems
-                textRole: "label"
-                valueRole: "id"
-                currentIndex: Math.max(0, gameSystems.findIndex(function (s) { return s.id === gameFilter }))
-                onActivated: gameFilter = currentValue
-            }
             Kirigami.SearchField {
-                Layout.fillWidth: true
+                Layout.preferredWidth: Kirigami.Units.gridUnit * 14
                 placeholderText: "Search games..."
                 onTextChanged: gameSearch = text
             }
@@ -350,10 +421,27 @@ Kirigami.Page {
                 onToggled: {
                     boxart = checked
                     backend.setBoxart(checked)
+                    applicationWindow().notify(checked ? "Box art downloads are on." : "Box art downloads are off.")
                     if (checked) backend.fetchCovers()
                 }
                 Controls.ToolTip.visible: hovered
                 Controls.ToolTip.text: "Looks up covers by game name on thumbnails.libretro.com. Your own cover image with the same name as the game (next to it, or in ~/Games/Covers/<system>/) is always used first."
+            }
+        }
+
+        // Your games sorted by emulator: one tab per system.
+        Controls.TabBar {
+            id: systemTabs
+            visible: gameSystems.length > 1 && gameSearch === ""
+            Layout.fillWidth: true
+            currentIndex: Math.max(0, gameSystems.findIndex(function (s) { return s.id === gameFilter }))
+            Repeater {
+                model: gameSystems
+                Controls.TabButton {
+                    text: modelData.label
+                    width: implicitWidth
+                    onClicked: { filterChosen = true; gameFilter = modelData.id }
+                }
             }
         }
 
@@ -377,7 +465,7 @@ Kirigami.Page {
             visible: allGames.length > 0 && gameModel.count === 0
             Layout.fillWidth: true
             opacity: 0.7
-            text: "No games match."
+            text: gameSearch !== "" ? "No games match \"" + gameSearch + "\"." : "No games here."
         }
 
         GridView {
@@ -496,7 +584,8 @@ Kirigami.Page {
                         }
                         Controls.Label {
                             Layout.fillWidth: true
-                            text: model.playable ? model.system : model.system + " — emulator not installed"
+                            visible: !model.playable || gameFilter === "" || gameSearch !== ""
+                            text: model.playable ? model.system.replace(/ \(needs a fast PC\)/, "") : "Emulator not installed"
                             opacity: 0.7
                             elide: Text.ElideRight
                         }
@@ -551,7 +640,7 @@ Kirigami.Page {
                             Controls.MenuItem { text: "4× (sharpest)"; checkable: true; checked: model.resolution === 4; onTriggered: setResolution(index, model.path, 4) }
                         }
                         Controls.MenuItem {
-                            text: "Controller buttons for " + model.system + "…"
+                            text: "Controller buttons…"
                             icon.name: "input-gamepad"
                             onTriggered: buttonsDialog.openFor(model.systemId)
                         }
@@ -561,6 +650,7 @@ Kirigami.Page {
                             checked: model.windowed
                             onToggled: {
                                 backend.setGameWindowed(model.path, checked)
+                                applicationWindow().notify(checked ? model.title + " will open in a window." : model.title + " no longer opens in a window.")
                                 gameModel.setProperty(index, "windowed", checked)
                                 // Keep the unfiltered list in step, or the badge
                                 // would vanish on the next search/filter change.

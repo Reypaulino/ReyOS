@@ -8,6 +8,7 @@ Kirigami.ScrollablePage {
 
     property bool busy: false
     property var currentLayouts: []
+    property var layoutNames: ({})
     property string switchShortcut: ""
 
     function refresh() {
@@ -22,7 +23,12 @@ Kirigami.ScrollablePage {
             busy = false
             currentLayouts = info.currentLayouts
             layoutModel.clear()
-            for (var i = 0; i < info.availableLayouts.length; i++) layoutModel.append({ code: info.availableLayouts[i] })
+            layoutNames = info.layoutNames || {}
+            var rows = info.availableLayouts.map(function (c) { return { code: c, label: (layoutNames[c] || c) } })
+            rows.sort(function (a, b) { return a.label.localeCompare(b.label) })
+            for (var i = 0; i < rows.length; i++) layoutModel.append(rows[i])
+            for (var j = 0; j < layoutModel.count; j++)
+                if (currentLayouts.length > 0 && layoutModel.get(j).code === currentLayouts[0]) layoutBox.currentIndex = j
             rateSlider.value = info.repeatRate
             delaySlider.value = info.repeatDelay
 
@@ -66,7 +72,7 @@ Kirigami.ScrollablePage {
                 spacing: Kirigami.Units.largeSpacing
                 Kirigami.Heading { text: "Layout"; level: 3 }
                 Controls.Label {
-                    text: "Current: " + currentLayouts.join(", ")
+                    text: "Now: " + currentLayouts.map(function (c) { return layoutNames[c] || c }).join(", ")
                     visible: currentLayouts.length > 0
                 }
                 RowLayout {
@@ -76,13 +82,12 @@ Kirigami.ScrollablePage {
                         id: layoutBox
                         Layout.fillWidth: true
                         model: layoutModel
-                        textRole: "code"
-                        editable: true
+                        textRole: "label"
                     }
                     Controls.Button {
-                        text: "Set as layout"
-                        enabled: !busy && layoutBox.editText.length > 0
-                        onClicked: { busy = true; backend.setKeyboardLayouts([layoutBox.editText]) }
+                        text: "Use this layout"
+                        enabled: !busy && layoutBox.currentIndex >= 0
+                        onClicked: { busy = true; backend.setKeyboardLayouts([layoutModel.get(layoutBox.currentIndex).code]) }
                     }
                 }
                 Controls.Label {
@@ -90,7 +95,7 @@ Kirigami.ScrollablePage {
                     wrapMode: Text.Wrap
                     opacity: 0.7
                     font.pointSize: 9
-                    text: "Layout codes are the standard X11 ones (e.g. \"us\", \"de\", \"es\"). Takes effect next login."
+                    text: "The new layout starts the next time you log in."
                 }
 
                 Kirigami.Separator { Layout.fillWidth: true; Layout.topMargin: Kirigami.Units.smallSpacing }
@@ -206,7 +211,7 @@ Kirigami.ScrollablePage {
                     wrapMode: Text.Wrap
                     opacity: 0.7
                     font.pointSize: 9
-                    text: "Modifiers: control, shift, alt, Mod4 (Win/Super) -- combine with \"+\", e.g. \"control+shift + Return\". Applies immediately."
+                    text: "Modifiers: control, shift, alt, Mod4 (Win/Super) — combine with \"+\", e.g. \"control+shift + Return\". Applies immediately."
                 }
             }
         }

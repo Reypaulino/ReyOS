@@ -93,7 +93,10 @@ Kirigami.ScrollablePage {
                             value: pointerAcceleration
                             onPressedChanged: if (!pressed) backend.setMousePointerAcceleration(vendor, product, name, value)
                         }
-                        Controls.Label { text: speedSlider.value.toFixed(2); Layout.preferredWidth: 40 }
+                        Controls.Label {
+                            text: speedSlider.value < -0.05 ? "Slower" : speedSlider.value > 0.05 ? "Faster" : "Normal"
+                            Layout.preferredWidth: Kirigami.Units.gridUnit * 3
+                        }
                     }
 
                     Controls.CheckBox {

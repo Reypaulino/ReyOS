@@ -105,7 +105,13 @@ Kirigami.ScrollablePage {
                 }
                 Controls.Label {
                     visible: defaultPolicy.length > 0
-                    text: defaultPolicy
+                    // ufw's "deny (incoming), allow (outgoing)..." in plain words.
+                    text: !fwEnabled ? "Other computers on the network can reach any program here that listens for connections."
+                          : (/deny \(incoming\)|reject \(incoming\)/.test(defaultPolicy)
+                             ? "Blocks connections from other computers unless a rule below allows them. Your own apps reach the internet as usual."
+                             : defaultPolicy)
+                    wrapMode: Text.Wrap
+                    Layout.fillWidth: true
                     opacity: 0.7
                 }
                 Controls.Button {

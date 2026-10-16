@@ -31,7 +31,7 @@ Kirigami.ScrollablePage {
             currentTimezone = info.timezone
             ntpEnabled = info.ntp
             localTimeLabel.text = info.localTime
-            syncedLabel.text = info.synced ? "Synchronized" : "Not synchronized"
+            syncedLabel.text = info.synced ? "Correct (set from the internet)" : (info.ntp ? "Not checked yet" : "Set by hand")
             clockFormat = info.clockFormat
             clockFormatBox.currentIndex = clockFormatBox.indexOfValue(info.clockFormat)
         }
@@ -103,7 +103,7 @@ Kirigami.ScrollablePage {
             padding: Kirigami.Units.gridUnit
             contentItem: Kirigami.FormLayout {
                 Controls.Label { id: localTimeLabel; Kirigami.FormData.label: "Current time:" }
-                Controls.Label { id: syncedLabel; Kirigami.FormData.label: "NTP status:" }
+                Controls.Label { id: syncedLabel; Kirigami.FormData.label: "Time:" }
                 RowLayout {
                     Kirigami.FormData.label: "Timezone:"
                     spacing: Kirigami.Units.largeSpacing
@@ -146,7 +146,7 @@ Kirigami.ScrollablePage {
                 spacing: Kirigami.Units.largeSpacing
                 RowLayout {
                     Layout.fillWidth: true
-                    Kirigami.Heading { text: "Automatic date & time"; level: 3 }
+                    Kirigami.Heading { text: "Set the time automatically"; level: 3 }
                     Item { Layout.fillWidth: true }
                     Controls.Switch {
                         checked: ntpEnabled
@@ -161,7 +161,7 @@ Kirigami.ScrollablePage {
                     Controls.TextField {
                         id: manualField
                         Layout.fillWidth: true
-                        placeholderText: "YYYY-MM-DD HH:MM:SS"
+                        placeholderText: "Date and time, e.g. 2026-10-15 14:30:00"
                     }
                     Controls.Button {
                         text: "Set"

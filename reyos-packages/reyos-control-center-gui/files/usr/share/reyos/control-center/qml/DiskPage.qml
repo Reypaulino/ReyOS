@@ -54,7 +54,7 @@ Kirigami.ScrollablePage {
             padding: Kirigami.Units.gridUnit
             contentItem: ColumnLayout {
                 spacing: Kirigami.Units.largeSpacing
-                Kirigami.Heading { text: "Filesystems"; level: 3 }
+                Kirigami.Heading { text: "Drives"; level: 3 }
                 Repeater {
                     model: fsModel
                     delegate: ColumnLayout {
@@ -63,9 +63,18 @@ Kirigami.ScrollablePage {
                         spacing: Kirigami.Units.smallSpacing
                         RowLayout {
                             Layout.fillWidth: true
-                            Controls.Label { text: mount; font.bold: true }
+                            // "/" and long /run/media/... paths mean little to most people.
+                            Controls.Label {
+                                text: mount === "/" ? "ReyOS (system)" : mount === "/boot" ? "Startup files (/boot)"
+                                      : mount === "/home" ? "Your files (/home)"
+                                      : mount.indexOf("/run/media/") === 0 ? "Other drive (" + mount.split("/").pop().slice(0, 8) + "…)" : mount
+                                font.bold: true
+                            }
                             Item { Layout.fillWidth: true }
-                            Controls.Label { text: used + " / " + size + "  (" + pct + ")" }
+                            Controls.Label {
+                                text: (parseInt(pct) >= 90 ? "Almost full · " : "") + used + " / " + size + "  (" + pct + ")"
+                                color: parseInt(pct) >= 90 ? Kirigami.Theme.negativeTextColor : Kirigami.Theme.textColor
+                            }
                         }
                         ReyOSProgressBar {
                             Layout.fillWidth: true
@@ -82,13 +91,13 @@ Kirigami.ScrollablePage {
             padding: Kirigami.Units.gridUnit
             contentItem: ColumnLayout {
                 spacing: Kirigami.Units.largeSpacing
-                Kirigami.Heading { text: "Largest items in home (top 15)"; level: 3 }
+                Kirigami.Heading { text: "What takes the most space in your home folder"; level: 3 }
                 Repeater {
                     model: largestModel
                     delegate: RowLayout {
                         spacing: Kirigami.Units.largeSpacing
                         Controls.Label { text: itemSize; Layout.preferredWidth: 70; font.family: "monospace" }
-                        Controls.Label { text: itemPath; elide: Text.ElideMiddle; Layout.fillWidth: true }
+                        Controls.Label { text: itemPath.replace(/^\/home\/[^\/]+/, "~"); elide: Text.ElideMiddle; Layout.fillWidth: true }
                     }
                 }
             }

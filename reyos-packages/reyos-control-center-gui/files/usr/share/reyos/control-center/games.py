@@ -20,6 +20,7 @@ APP_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(APP_DIR))
 import emulation  # noqa: E402
 import game_shrink  # noqa: E402
+from controller_setup import ControllerSetupWorker  # noqa: E402
 from emulation import EMU_SYSTEMS  # noqa: E402
 
 
@@ -94,6 +95,8 @@ class GamesBackend(QObject):
     gamesChanged = Signal()
     addProgress = Signal(str, float)
     addFinished = Signal(bool, str, "QVariantList")
+    controllerSetupStep = Signal(int, int, str, str, str, str)
+    controllerSetupDone = Signal(bool, str)
 
     def __init__(self):
         super().__init__()
@@ -187,6 +190,13 @@ class GamesBackend(QObject):
             worker.cancelled = True
             if not worker.wait(2000):
                 os._exit(0)
+        # A controller setup waits for a button press; cancelling ends it
+        # (nothing is saved).
+        setup = getattr(self, "_controller_worker", None)
+        if setup is not None and setup.isRunning():
+            setup.cancelled = True
+            if not setup.wait(2000):
+                os._exit(0)
         # Shrinking a game takes minutes; closing the window ends it. The
         # .part file is ignored and replaced on the next try.
         if self._add_worker is not None and self._add_worker.isRunning():
@@ -259,11 +269,40 @@ class GamesBackend(QObject):
     def controllers(self):
         return emulation.list_controllers()
 
+    # The same step-by-step setup as Control Center's, run here so the
+    # library's controller window doesn't have to open Control Center.
+    @Slot(str)
+    def startControllerSetup(self, path):
+        worker = getattr(self, "_controller_worker", None)
+        if worker is not None and worker.isRunning():
+            return
+        self._controller_worker = ControllerSetupWorker(path)
+        self._controller_worker.step.connect(self.controllerSetupStep.emit)
+        self._controller_worker.done.connect(self.controllerSetupDone.emit)
+        self._controller_worker.start()
+
+    @Slot()
+    def skipControllerStep(self):
+        if getattr(self, "_controller_worker", None) is not None:
+            self._controller_worker.skip = True
+
+    @Slot()
+    def cancelControllerSetup(self):
+        if getattr(self, "_controller_worker", None) is not None:
+            self._controller_worker.cancelled = True
+
+    @Slot(result="QVariantMap")
+    def player1Controller(self):
+        """The pad the setup and button names are for: player 1, else the first one."""
+        pads = emulation.list_controllers()
+        return emulation.player1_pad(pads) or (pads[0] if pads else {})
+
     @Slot(str, result="QVariantMap")
     def buttonLayout(self, system_id):
         """One system's buttons for the library's own button window."""
         pads = emulation.list_controllers()
-        brand = pads[0]["brand"] if pads else emulation.saved_brand()
+        pad = emulation.player1_pad(pads) or (pads[0] if pads else None)
+        brand = pad["brand"] if pad else emulation.saved_brand()
         layout = next((l for l in emulation.system_controls(brand) if l["id"] == system_id), None)
         return dict(layout, brand=brand) if layout else {}
 

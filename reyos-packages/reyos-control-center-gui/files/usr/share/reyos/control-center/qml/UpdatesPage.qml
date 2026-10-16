@@ -52,6 +52,7 @@ Kirigami.ScrollablePage {
     }
 
     property bool securityChecked: false
+    property bool moreOptions: false
     property var channelInfo: backend.updateChannel()
 
     ListModel { id: pkgModel }
@@ -175,30 +176,45 @@ Kirigami.ScrollablePage {
             Layout.fillWidth: true
             spacing: Kirigami.Units.largeSpacing
 
+            // Two choices up front; the narrower ones live under "More options".
             Controls.Button {
                 text: "Check for updates"
+                icon.name: "view-refresh"
                 enabled: !running
                 onClicked: { running = true; logText = ""; backend.runPkgAction("check") }
             }
             Controls.Button {
-                text: "Install updates"
-                enabled: !running
-                onClicked: { running = true; logText = ""; backend.runPkgAction("upgrade") }
-            }
-            Controls.Button {
-                text: "Full update"
+                text: "Update everything"
+                icon.name: "system-software-update"
                 highlighted: true
                 enabled: !running
                 onClicked: { running = true; logText = ""; backend.runPkgAction("full") }
+                Controls.ToolTip.visible: hovered
+                Controls.ToolTip.text: "Updates ReyOS and your apps (Flatpak too), then clears out files that are no longer needed."
+            }
+            Item { Layout.fillWidth: true }
+            Controls.Button {
+                text: moreOptions ? "Fewer options" : "More options"
+                flat: true
+                icon.name: moreOptions ? "arrow-up" : "arrow-down"
+                onClicked: moreOptions = !moreOptions
             }
         }
 
         RowLayout {
             Layout.fillWidth: true
             spacing: Kirigami.Units.largeSpacing
+            visible: moreOptions
 
             Controls.Button {
-                text: "Update ReyOS Apps only"
+                text: "System only"
+                enabled: !running
+                onClicked: { running = true; logText = ""; backend.runPkgAction("upgrade") }
+                Controls.ToolTip.visible: hovered
+                Controls.ToolTip.text: "Updates the system packages, not Flatpak apps, and doesn't clean up."
+            }
+            Controls.Button {
+                text: "ReyOS apps only"
                 icon.name: "system-software-update"
                 enabled: !running
                 onClicked: { running = true; logText = ""; backend.runPkgAction("reyos") }
@@ -207,7 +223,7 @@ Kirigami.ScrollablePage {
                 Layout.fillWidth: true
                 wrapMode: Text.Wrap
                 opacity: 0.7
-                text: "Updates only reyos-* apps (Browser, Reader, Control Center, etc.) without touching the rest of the system."
+                text: "ReyOS apps only: Reyva, Reader, Control Center and the other ReyOS apps, nothing else."
             }
         }
 
@@ -240,14 +256,15 @@ Kirigami.ScrollablePage {
         RowLayout {
             Layout.fillWidth: true
             spacing: Kirigami.Units.largeSpacing
+            visible: moreOptions
 
             Controls.Button {
-                text: "List orphaned packages"
+                text: "Show unused packages"
                 enabled: !running
                 onClicked: backend.listOrphans()
             }
             Controls.Button {
-                text: "Remove orphans + clean cache"
+                text: "Remove unused packages and old downloads"
                 enabled: !running
                 onClicked: { running = true; logText = ""; backend.runPkgAction("clean") }
             }
@@ -303,6 +320,7 @@ Kirigami.ScrollablePage {
 
         Kirigami.AbstractCard {
             Layout.fillWidth: true
+            visible: moreOptions
             padding: Kirigami.Units.gridUnit
             contentItem: ColumnLayout {
                 spacing: Kirigami.Units.smallSpacing

@@ -133,7 +133,7 @@ Kirigami.ScrollablePage {
                         Layout.preferredWidth: 200
                     }
                     Controls.Button {
-                        text: "Apply custom chmod"
+                        text: "Apply number"
                         enabled: !busy && folderField.text.length > 0 && chmodField.text.length > 0
                         onClicked: confirmAndFix(folderField.text, "custom:" + chmodField.text)
                     }
@@ -173,7 +173,7 @@ Kirigami.ScrollablePage {
                     }
                 }
                 Controls.Button {
-                    text: "chmod +x"
+                    text: "Make it runnable"
                     enabled: !busy && fileField.text.length > 0
                     onClicked: { busy = true; backend.makeExecutable(fileField.text) }
                 }

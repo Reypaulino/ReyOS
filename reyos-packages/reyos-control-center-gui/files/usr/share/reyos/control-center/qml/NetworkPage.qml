@@ -29,8 +29,18 @@ Kirigami.ScrollablePage {
         function onNetworkInfoReady(info) {
             loading = false
             addrModel.clear()
-            for (var i = 0; i < info.addresses.length; i++) addrModel.append(info.addresses[i])
-            gatewayLabel.text = info.gateway || "None"
+            // Plain words: what kind of connection, its address and the
+            // router's, not "lo" or a raw route line.
+            for (var i = 0; i < info.addresses.length; i++) {
+                var a = info.addresses[i]
+                if (a.iface === "lo") continue
+                var kind = /^wl/.test(a.iface) ? "Wi-Fi" : /^(en|eth)/.test(a.iface) ? "Wired (Ethernet)"
+                         : /^(wg|tun|tap)/.test(a.iface) ? "VPN" : a.iface
+                if (a.address.indexOf(":") >= 0) continue  // IPv6: keep the list short
+                addrModel.append({ iface: kind, address: a.address.split("/")[0] })
+            }
+            var m = /via (\S+)/.exec(info.gateway || "")
+            gatewayLabel.text = m ? m[1] : "Not connected"
             portsModel.clear()
             for (var j = 0; j < info.ports.length; j++) portsModel.append(info.ports[j])
         }
@@ -85,17 +95,27 @@ Kirigami.ScrollablePage {
             padding: Kirigami.Units.gridUnit
             contentItem: ColumnLayout {
                 spacing: Kirigami.Units.largeSpacing
-                Kirigami.Heading { text: "IP Addresses"; level: 3 }
-                Repeater {
-                    model: addrModel
-                    delegate: RowLayout {
-                        spacing: Kirigami.Units.largeSpacing
-                        Controls.Label { text: iface; font.bold: true; Layout.preferredWidth: 120 }
-                        Controls.Label { text: address }
-                    }
+                Kirigami.Heading { text: "Your connection"; level: 3 }
+                Controls.Label {
+                    visible: addrModel.count === 0 && !loading
+                    text: "Not connected to a network."
+                    opacity: 0.7
                 }
-                Kirigami.Heading { text: "Gateway"; level: 3; Layout.topMargin: Kirigami.Units.gridUnit }
-                Controls.Label { id: gatewayLabel }
+                GridLayout {
+                    columns: 2
+                    columnSpacing: Kirigami.Units.gridUnit
+                    rowSpacing: Kirigami.Units.smallSpacing
+                    Repeater {
+                        model: addrModel
+                        delegate: Controls.Label { Layout.row: index; Layout.column: 0; text: iface; font.bold: true }
+                    }
+                    Repeater {
+                        model: addrModel
+                        delegate: Controls.Label { Layout.row: index; Layout.column: 1; text: "This computer: " + address }
+                    }
+                    Controls.Label { Layout.row: addrModel.count; Layout.column: 0; text: "Router"; font.bold: true }
+                    Controls.Label { id: gatewayLabel; Layout.row: addrModel.count; Layout.column: 1 }
+                }
             }
         }
 
@@ -104,7 +124,23 @@ Kirigami.ScrollablePage {
             padding: Kirigami.Units.gridUnit
             contentItem: ColumnLayout {
                 spacing: Kirigami.Units.largeSpacing
-                Kirigami.Heading { text: "Listening Ports"; level: 3 }
+                RowLayout {
+                    Layout.fillWidth: true
+                    Kirigami.Heading { text: "Open ports"; level: 3; Layout.fillWidth: true }
+                    Controls.Button {
+                        text: portsList.visible ? "Hide" : "Show"
+                        onClicked: portsList.visible = !portsList.visible
+                    }
+                }
+                Controls.Label {
+                    Layout.fillWidth: true
+                    wrapMode: Text.Wrap
+                    opacity: 0.7
+                    text: "Programs on this computer waiting for connections. For troubleshooting; the firewall decides who can reach them."
+                }
+                ColumnLayout {
+                    id: portsList
+                    visible: false
                 Repeater {
                     model: portsModel
                     delegate: RowLayout {
@@ -112,6 +148,7 @@ Kirigami.ScrollablePage {
                         Controls.Label { text: proto; Layout.preferredWidth: 60 }
                         Controls.Label { text: address }
                     }
+                }
                 }
             }
         }

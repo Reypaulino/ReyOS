@@ -91,7 +91,9 @@ Kirigami.ApplicationWindow {
                 { text: "Permissions", icon: "object-locked", page: "PermissionsPage.qml" }
             ]}
         ]
-        property string currentPage: "SystemInfoPage.qml"
+        // The page the window opened on (it isn't always Home), so the
+        // sidebar highlights the right row from the start.
+        property string currentPage: initialPage
 
         // Strips everything but letters/digits before comparing, so "wifi"
         // still matches "Wi-Fi" (a plain substring match doesn't) and "date
@@ -258,10 +260,17 @@ Kirigami.ApplicationWindow {
     // a dialog when it fails -- whichever page it came from.
     property int runningActions: 0
 
+    // A popup at the top of the window whenever something changes; pages
+    // call applicationWindow().notify("...") for changes that don't go
+    // through a backend action (switches, drop-downs).
+    function notify(message, ok) { changePopup.show(message, ok) }
+
+    ReyOSChangePopup { id: changePopup }
+
     function reportResult(ok, message) {
         if (!message || message.length === 0) return
         if (ok) {
-            showPassiveNotification(message, "long")
+            changePopup.show(message, true)
         } else {
             errorDialog.message = message
             errorDialog.open()

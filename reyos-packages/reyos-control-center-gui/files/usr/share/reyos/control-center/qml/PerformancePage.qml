@@ -74,7 +74,7 @@ Kirigami.ScrollablePage {
         onAccepted: { busy = true; backend.performanceMode() }
         contentItem: Controls.Label {
             wrapMode: Text.Wrap
-            text: "This favors responsiveness for games and demanding work. It can use more power, produce more heat, and reduce battery life. You can change the governor and swappiness below at any time."
+            text: "This favors responsiveness for games and demanding work. It can use more power, produce more heat, and reduce battery life. You can change the CPU mode and swap below at any time."
         }
     }
 
@@ -114,31 +114,32 @@ Kirigami.ScrollablePage {
             Layout.fillWidth: true
             padding: Kirigami.Units.gridUnit
             contentItem: Kirigami.FormLayout {
-                Controls.Label { Kirigami.FormData.label: "Current governor:"; text: governor }
-
                 RowLayout {
                     spacing: Kirigami.Units.largeSpacing
-                    Kirigami.FormData.label: "Set governor:"
+                    Kirigami.FormData.label: "CPU mode:"
                     Controls.ComboBox {
                         id: govBox
-                        model: ["performance", "ondemand", "powersave"]
-                    }
-                    Controls.Button {
-                        text: "Apply"
+                        // The CPU's own governors, in words; picking one applies it.
+                        readonly property var names: ({ performance: "Fast", powersave: "Power saving", ondemand: "Balanced", schedutil: "Balanced", conservative: "Quiet" })
+                        model: backend.availableGovernors().map(function (g) { return { value: g, label: (names[g] || g) + "  (" + g + ")" } })
+                        textRole: "label"
+                        valueRole: "value"
+                        currentIndex: Math.max(0, indexOfValue(governor))
                         enabled: !busy
-                        onClicked: { busy = true; backend.setGovernor(govBox.currentText) }
+                        wheelEnabled: false
+                        onActivated: { busy = true; backend.setGovernor(currentValue) }
                     }
                 }
 
                 RowLayout {
                     spacing: Kirigami.Units.largeSpacing
-                    Kirigami.FormData.label: "Swappiness:"
+                    Kirigami.FormData.label: "Use swap when RAM is:"
                     Controls.Slider {
                         id: swapSlider
                         from: 0; to: 100; stepSize: 1
                         value: swappiness
                     }
-                    Controls.Label { text: Math.round(swapSlider.value) }
+                    Controls.Label { text: swapSlider.value <= 20 ? "almost full" : swapSlider.value <= 60 ? "fairly full" : "still free" }
                     Controls.Button {
                         text: "Apply"
                         enabled: !busy
@@ -149,7 +150,7 @@ Kirigami.ScrollablePage {
                 RowLayout {
                     spacing: Kirigami.Units.largeSpacing
                     Kirigami.FormData.label: "Swap:"
-                    Controls.Label { text: swapStatus }
+                    Controls.Label { text: swapStatus === "ON" ? "On" : "Off" }
                     Controls.Button {
                         text: swapStatus === "ON" ? "Disable swap" : "Enable swap"
                         enabled: !busy

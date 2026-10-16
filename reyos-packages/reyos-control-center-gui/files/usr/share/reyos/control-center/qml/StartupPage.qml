@@ -12,18 +12,6 @@ Kirigami.ScrollablePage {
 
     actions: [
         Kirigami.Action {
-            text: "Add App…"
-            icon.name: "list-add"
-            enabled: !busy
-            onTriggered: {
-                candidatesModel.clear()
-                addDialog.loading = true
-                searchField.text = ""
-                addDialog.open()
-                backend.listStartupCandidates()
-            }
-        },
-        Kirigami.Action {
             text: "Refresh"
             icon.name: "view-refresh"
             onTriggered: refresh()
@@ -160,7 +148,13 @@ Kirigami.ScrollablePage {
                         text: "Add App…"
                         icon.name: "list-add"
                         enabled: !busy
-                        onClicked: page.actions[0].trigger()
+                        onClicked: {
+                            candidatesModel.clear()
+                            addDialog.loading = true
+                            searchField.text = ""
+                            addDialog.open()
+                            backend.listStartupCandidates()
+                        }
                     }
                 }
                 Repeater {
