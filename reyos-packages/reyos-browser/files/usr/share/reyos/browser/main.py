@@ -595,7 +595,7 @@ class BrowserBackend(QObject):
     shieldsChanged = Signal()
     lowMemoryChanged = Signal()
     askDownloadLocationChanged = Signal()
-    downloadMoved = Signal(int, str, bool)
+    downloadMoved = Signal(int, str, str, bool)
     blockedRequestCountChanged = Signal()
     currentSiteChanged = Signal()
     currentSiteShieldsChanged = Signal()
@@ -1229,9 +1229,9 @@ class BrowserBackend(QObject):
                         # Another drive, or a portal path: copy, then remove.
                         shutil.copyfile(source, target)
                         os.remove(source)
-                self.downloadMoved.emit(download_id, target, True)
+                self.downloadMoved.emit(download_id, target, host_path(target), True)
             except OSError:
-                self.downloadMoved.emit(download_id, source, False)
+                self.downloadMoved.emit(download_id, source, host_path(source), False)
         threading.Thread(target=work, daemon=True).start()
 
     # Printing: QML renders the tab with WebEngineView.printToPdf() into a
@@ -2021,6 +2021,34 @@ LOOK_SHADES = {
     "accentHoverStrong": (39.6, 20.8),
     "accentGlow": (81.7, 67.8),
 }
+
+
+def host_path(path: str) -> str:
+    """The real location of a file the Flatpak got through the file-chooser
+    portal. The portal hands Reyva /run/user/<uid>/doc/<id>/<name> (which
+    Reyva can read and write); the file manager and the user need the real
+    folder, which the document portal's GetHostPaths gives. Other paths are
+    returned unchanged."""
+    match = re.match(r"/run/user/\d+/doc/([^/]+)/", path or "")
+    if not match or IS_WINDOWS:
+        return path
+    try:
+        # jeepney (bundled for saved passwords): QtDBus returns this a{say}
+        # reply as an opaque QDBusArgument in PySide.
+        from jeepney import DBusAddress, new_method_call
+        from jeepney.io.blocking import open_dbus_connection
+
+        documents = DBusAddress("/org/freedesktop/portal/documents", bus_name="org.freedesktop.portal.Documents",
+                                interface="org.freedesktop.portal.Documents")
+        with open_dbus_connection(bus="SESSION") as connection:
+            reply = connection.send_and_get_reply(
+                new_method_call(documents, "GetHostPaths", "as", ([match.group(1)],)), timeout=3)
+        host = reply.body[0].get(match.group(1), b"").rstrip(b"\0").decode()
+        if host:
+            return host
+    except Exception:
+        pass
+    return path
 
 
 def look_palette() -> dict:

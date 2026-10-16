@@ -232,6 +232,7 @@ ApplicationWindow {
             finished: false,
             completed: false,
             path: downloadsPath + "/" + download.downloadFileName,
+            shownPath: downloadsPath + "/" + download.downloadFileName,
             target: ""
         })
         downloadRequests[download.id] = download
@@ -269,10 +270,13 @@ ApplicationWindow {
 
     Connections {
         target: browserBackend
-        function onDownloadMoved(downloadId, path, ok) {
+        function onDownloadMoved(downloadId, path, shownPath, ok) {
             var row = window.downloadRow(downloadId)
             if (row < 0) return
             downloads.setProperty(row, "path", path)
+            // Where it really is: in the Flatpak, path is the file-chooser
+            // portal's /run/user/<uid>/doc/... copy, which only Reyva can use.
+            downloads.setProperty(row, "shownPath", shownPath)
             downloads.setProperty(row, "completed", true)
             downloads.setProperty(row, "status", ok ? "Completed" : "Couldn't move it; it's in Downloads")
             var name = path.split("/").pop()
@@ -2683,6 +2687,7 @@ ApplicationWindow {
                     required property bool finished
                     required property bool completed
                     required property string path
+                    required property string shownPath
                     readonly property bool failed: finished && !completed && status.indexOf("Moving") !== 0
                     readonly property string ext: name.indexOf(".") > 0 ? name.split(".").pop().toUpperCase().slice(0, 4) : "FILE"
                     width: ListView.view.width
@@ -2730,13 +2735,13 @@ ApplicationWindow {
                                                                 + " · " + Math.round(100 * dlRow.receivedBytes / dlRow.totalBytes) + "%"
                                                               : "Starting…")
                                       : (dlRow.completed ? window.humanSize(dlRow.totalBytes > 0 ? dlRow.totalBytes : dlRow.receivedBytes) + " · "
-                                                           + (dlRow.path.indexOf(window.downloadsPath + "/") === 0 ? "in Downloads" : "saved in " + dlRow.path.split("/").slice(-2, -1)[0])
+                                                           + (dlRow.shownPath.indexOf(window.downloadsPath + "/") === 0 ? "in Downloads" : "saved in " + dlRow.shownPath.split("/").slice(-2, -1)[0])
                                                          : dlRow.status)
                             }
                         }
                         ThemedButton { visible: !dlRow.finished; text: "Cancel"; onClicked: window.cancelDownload(dlRow.downloadId) }
                         ThemedButton { visible: dlRow.completed; text: "Open"; onClicked: window.openDownload(dlRow.path) }
-                        ThemedButton { visible: dlRow.completed; text: "Show"; onClicked: browserBackend.showInFolder(dlRow.path)
+                        ThemedButton { visible: dlRow.completed; text: "Show"; onClicked: browserBackend.showInFolder(dlRow.shownPath)
                             ToolTip.visible: hovered; ToolTip.text: "Show in Folder" }
                     }
                 }
