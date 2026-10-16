@@ -6,6 +6,22 @@ This file was rewritten from scratch on 2026-08-18 after a full audit of the wor
 
 **2026-10-08 verification pass:** see `BUG_VERIFICATION_REPORT.md` for what was re-tested and how. Entries below carry a "Status 2026-10-08" line where they were checked; resolved entries moved to the "Resolved" section at the end.
 
+## Games: PCSX2 swaps face buttons for third-party pads in Xbox mode
+
+Added 2026-10-15 (laptop). The user's pad switches between Xbox mode (`045e:02e0`) and PlayStation mode (`054c:05c4`, DualShock 4). In Xbox mode, PCSX2's `SDLControllerEnhancedMode = true` (HIDAPI, "Xbox One Controller") mixes up the face buttons; host SDL3 sees them right. PlayStation mode is fine. Not changed in code: decide whether ReyOS should turn Enhanced Mode off for non-Microsoft "Xbox" pads. The laptop's PCSX2.ini has it off now (set by hand during testing).
+
+## Control Center: "CPU mode" shows "Fast (performance)" where the CPU has no frequency control
+
+Added 2026-10-15 (Dev VM, control-center-gui 124). With no `/sys/devices/system/cpu/cpu0/cpufreq` (VMs), `availableGovernors()` falls back to `["performance", "powersave"]` and the drop-down shows "Fast" although the governor is "N/A" and nothing can be applied. Cosmetic; hide the row (or show "Not available") when there's no cpufreq.
+
+## Laptop install: ReyOS root is 97 % full
+
+Added 2026-10-15. The laptop's ReyOS partition is 20 GB (installed before the installer asked for 30 GB). Before the next big update: free space or grow the partition with Partition Manager from the 2026.10.14 stick. Games added with "Add games" can be stored on another drive (Gaming → "Added games are kept in").
+
+## Unverified from the 124 batch
+
+Wallpaper fix on a fresh install (needs a new ISO), Azahar (3DS) controls with a real game (written at 3DS launch; not yet on the laptop's real config), player 1 with two pads in PCSX2 (`SDL-<n>` follows connection order).
+
 ## Reyva can't save passwords on a fresh install: no default wallet
 
 Added 2026-10-09, real laptop install (reported 2026-10-08, cause confirmed by the ReyOS-side agent). Saving a password in Reyva fails with `[org.freedesktop.DBus.Error.UnknownObject] ("No such object path '/org/freedesktop/secrets/aliases/default'",)`. `~/.local/share/kwalletd/` is empty and there's no `~/.config/kwalletrc`: no wallet was ever created. The Secret Service (`ksecretd`) runs and exports `/org/freedesktop/secrets/session/…`, but there's no collection and no `default` alias. Not fixed. Likely fix: create the default wallet/collection on first login (Welcome or a first-run step), or have Reyva create the collection through the Secret Service `CreateCollection` call when the alias is missing. Check what a fresh Calamares install sets up (PAM `pam_kwallet5` + an empty wallet) before choosing.
@@ -126,7 +142,20 @@ Added 2026-10-09, real laptop install (ReyOS-side agent's log check). Discover l
 Decided 2026-10-13: keep Discover Flatpak-only. System updates must go through Control Center (stable channel, `reyos-channel upgrade`); a working PackageKit backend would let Discover do partial upgrades around it. `fwupd-backend` starts working by itself if the user installs `fwupd` (offered in Control Center). The log lines are harmless.
 
 
-Moved out of the open list after the 2026-10-08 verification; original text kept for history. Fixes from 2026-10-09 are listed first (details in `fixes.md`).
+Moved out of the open list after the 2026-10-08 verification; original text kept for history.
+
+### Reyva: Show in Folder / Open Downloads Folder did nothing — fixed in Flatpak 0.1.7, `.deb` 0.1.0-123ubuntu1, Windows 0.1.0.109
+
+Reported from the laptop 2026-10-15. Now uses the file manager's FileManager1 D-Bus service (file selected), with Qt's openUrl as fallback. Details in `fixes.md` 2026-10-15 (night). Not yet clicked on the laptop.
+
+### Wallpaper slideshow replaced by one image after every reboot — fixed in control-center-gui 124 / reyos-calamares 50 (fresh installs need the next ISO)
+
+Reported from the laptop 2026-10-15. The live ISO's wallpaper autostart was copied into installed homes. Details in `fixes.md` 2026-10-15 (night).
+
+### Date · Time showed "Timezone: Unknown" on systemd 262 — fixed in control-center-gui 124
+
+Found on the laptop 2026-10-15: `timedatectl show --property=A,B,C` prints nothing on systemd 262; Control Center now passes one `-p` per property.
+ Fixes from 2026-10-09 are listed first (details in `fixes.md`).
 
 ### Reyva: fullscreen video didn't work — fixed in Flatpak 0.1.2, `.deb` 0.1.0-118ubuntu1, Windows 0.1.0.106
 
