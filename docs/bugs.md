@@ -10,10 +10,6 @@ This file was rewritten from scratch on 2026-08-18 after a full audit of the wor
 
 Added 2026-10-15 (laptop). The user's pad switches between Xbox mode (`045e:02e0`) and PlayStation mode (`054c:05c4`, DualShock 4). In Xbox mode, PCSX2's `SDLControllerEnhancedMode = true` (HIDAPI, "Xbox One Controller") mixes up the face buttons; host SDL3 sees them right. PlayStation mode is fine. Not changed in code: decide whether ReyOS should turn Enhanced Mode off for non-Microsoft "Xbox" pads. The laptop's PCSX2.ini has it off now (set by hand during testing).
 
-## Control Center: "CPU mode" shows "Fast (performance)" where the CPU has no frequency control
-
-Added 2026-10-15 (Dev VM, control-center-gui 124). With no `/sys/devices/system/cpu/cpu0/cpufreq` (VMs), `availableGovernors()` falls back to `["performance", "powersave"]` and the drop-down shows "Fast" although the governor is "N/A" and nothing can be applied. Cosmetic; hide the row (or show "Not available") when there's no cpufreq.
-
 ## Laptop install: ReyOS root is 97 % full
 
 Added 2026-10-15. The laptop's ReyOS partition is 20 GB (installed before the installer asked for 30 GB). Before the next big update: free space or grow the partition with Partition Manager from the 2026.10.14 stick. Games added with "Add games" can be stored on another drive (Gaming → "Added games are kept in").
@@ -143,6 +139,14 @@ Decided 2026-10-13: keep Discover Flatpak-only. System updates must go through C
 
 
 Moved out of the open list after the 2026-10-08 verification; original text kept for history.
+
+### Control Center: "CPU mode" showed "Fast (performance)" where the CPU has no frequency control — fixed in control-center-gui 126
+
+Now says "Not available on this computer". See `fixes.md` 2026-10-16.
+
+### Feature buttons did partial upgrades (`pacman -Sy` + `pacman -S`) — fixed in control-center-gui 126 / welcome 33 / update-channel 2026.10.10-2
+
+Found by the architecture audit. See `fixes.md` 2026-10-16.
 
 ### Reyva: Show in Folder / Open Downloads Folder did nothing — fixed in Flatpak 0.1.7, `.deb` 0.1.0-123ubuntu1, Windows 0.1.0.109
 
