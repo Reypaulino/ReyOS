@@ -55,6 +55,18 @@ def _appstream_version(scope, origin, app_id):
     return ""
 
 
+def _is_newer(new, old):
+    """Compares dotted versions number by number; unknown formats count as
+    newer unless they're identical."""
+    if not old:
+        return True
+    parts = lambda v: [int(n) for n in re.findall(r"\d+", v)]
+    a, b = parts(new), parts(old)
+    if a and b:
+        return a > b
+    return new != old
+
+
 def available_updates():
     """Apps with a newer commit on their remote, user and system installs:
     [{"appId", "name", "installed", "version", "scope"}]."""
@@ -65,18 +77,23 @@ def available_updates():
                          "--columns=application,version,origin"])
         if not rows:
             continue
-        if any(len(r) < 2 or not r[1] for r in rows) and scope == "user":
-            # Refreshes the user remotes' catalogs (no root needed), so the
-            # fallback below sees the new release.
-            _columns(["flatpak", "update", "--user", "--appstream", "--noninteractive"])
+        if any(len(r) < 2 or not r[1] for r in rows):
+            # Refreshes the remotes' catalogs so the fallback below sees the
+            # new release. Needs no password for system remotes either
+            # (Flatpak's polkit rule allows appstream updates); without it a
+            # system install showed the catalog's stale "0.1.6 → 0.1.3".
+            _columns(["flatpak", "update", "--" + scope, "--appstream", "--noninteractive"])
+            # remote-ls then knows the version too (seen with the Reyva repo).
+            rows = _columns(["flatpak", "remote-ls", "--" + scope, "--updates", "--app",
+                             "--columns=application,version,origin"]) or rows
         for row in rows:
             app_id = row[0]
             version = row[1] if len(row) > 1 else ""
             if not version and len(row) > 2 and row[2]:
                 version = _appstream_version(scope, row[2], app_id)
             info = installed.get(app_id, {})
-            if version and version == info.get("version"):
-                version = ""  # same release, rebuilt: don't show "1.0 → 1.0"
+            if version and not _is_newer(version, info.get("version", "")):
+                version = ""  # rebuilt release, or a stale catalog: no "1.0 → 1.0" / "0.1.6 → 0.1.3"
             found.append({
                 "appId": app_id,
                 "name": info.get("name", app_id),

@@ -35,6 +35,7 @@ from controller_setup import ControllerSetupWorker  # noqa: E402
 import game_shrink  # Qt-free: add downloaded games, shrink them to CHD
 import steam_options  # Qt-free: GameMode/MangoHud in Steam games' launch options
 import flatpak_updates  # Qt-free: pending Flatpak updates, readable update errors
+import app_updates  # Qt-free: ReyOS + Flatpak updates for the "Updates are ready" dialog
 from emulation import EMU_SYSTEMS, GAMES_DIR, RETROARCH_REYOS_CFG
 
 
@@ -573,10 +574,36 @@ class PkgWorker(_Worker):
             if self._log is not None:
                 self._log.close()
 
+    def _update_reyos_apps(self, emit):
+        """Upgrades installed reyos-* packages (and installs missing default
+        ReyOS apps). Returns (ok, message)."""
+        _wait_for_pacman_lock(emit)
+        emit("$ sudo pacman -Sy")
+        rc = _run(["sudo", "-n", "pacman", "-Sy"], emit)
+        if rc != 0:
+            return False, "Could not sync package databases."
+        emit("Checking for ReyOS app updates...")
+        repo_out = subprocess.run(["pacman", "-Sl", "reyos-local"], capture_output=True, text=True).stdout
+        reyos_pkgs = {line.split()[1] for line in repo_out.splitlines() if len(line.split()) >= 2}
+        upgradable_out = subprocess.run(["pacman", "-Qu"], capture_output=True, text=True).stdout
+        to_upgrade = [line.split()[0] for line in upgradable_out.splitlines() if line.split() and line.split()[0] in reyos_pkgs]
+
+        installed_out = subprocess.run(["pacman", "-Qq"], capture_output=True, text=True).stdout
+        installed = set(installed_out.split())
+        to_backfill = [p for p in REYOS_DEFAULT_APPS if p in reyos_pkgs and p not in installed]
+
+        to_install = to_upgrade + to_backfill
+        if not to_install:
+            return True, "ReyOS apps are already up to date."
+        emit("Updating: " + ", ".join(to_install))
+        _wait_for_pacman_lock(emit)
+        rc = _run(["sudo", "-n", REYOS_ADMIN, "install-reyos"] + to_install, emit)
+        return rc == 0, (f"Updated {len(to_install)} ReyOS app(s)." if rc == 0 else "Update failed.")
+
     def _run_action(self):
         try:
             emit = self._emit
-            if self.action in ("upgrade", "full", "clean", "reyos", "channel-stable", "channel-rolling") and _is_live_session():
+            if self.action in ("upgrade", "full", "clean", "reyos", "apps", "channel-stable", "channel-rolling") and _is_live_session():
                 self.finished_ok.emit(False, "Updates and cleanup are disabled in the live session. Install ReyOS first, then update the installed system.")
                 return
             if self.action == "check":
@@ -641,30 +668,21 @@ class PkgWorker(_Worker):
                 else:
                     self.finished_ok.emit(True, "Full update complete.")
             elif self.action == "reyos":
-                _wait_for_pacman_lock(emit)
-                emit("$ sudo pacman -Sy")
-                rc = _run(["sudo", "-n", "pacman", "-Sy"], emit)
-                if rc != 0:
-                    self.finished_ok.emit(False, "Could not sync package databases.")
-                    return
-                emit("Checking for ReyOS app updates...")
-                repo_out = subprocess.run(["pacman", "-Sl", "reyos-local"], capture_output=True, text=True).stdout
-                reyos_pkgs = {line.split()[1] for line in repo_out.splitlines() if len(line.split()) >= 2}
-                upgradable_out = subprocess.run(["pacman", "-Qu"], capture_output=True, text=True).stdout
-                to_upgrade = [line.split()[0] for line in upgradable_out.splitlines() if line.split() and line.split()[0] in reyos_pkgs]
-
-                installed_out = subprocess.run(["pacman", "-Qq"], capture_output=True, text=True).stdout
-                installed = set(installed_out.split())
-                to_backfill = [p for p in REYOS_DEFAULT_APPS if p in reyos_pkgs and p not in installed]
-
-                to_install = to_upgrade + to_backfill
-                if not to_install:
-                    self.finished_ok.emit(True, "ReyOS apps are already up to date.")
-                    return
-                emit("Updating: " + ", ".join(to_install))
-                _wait_for_pacman_lock(emit)
-                rc = _run(["sudo", "-n", REYOS_ADMIN, "install-reyos"] + to_install, emit)
-                self.finished_ok.emit(rc == 0, f"Updated {len(to_install)} ReyOS app(s)." if rc == 0 else "Update failed.")
+                self.finished_ok.emit(*self._update_reyos_apps(emit))
+            elif self.action == "apps":
+                # The "Updates are ready" dialog: ReyOS apps, then Flatpak
+                # apps (Reyva, emulators), in one go.
+                reyos_ok, reyos_message = self._update_reyos_apps(emit)
+                emit("Updating Flatpak apps...")
+                flatpak_ok, flatpak_message = _flatpak_update(emit)
+                if reyos_ok and flatpak_ok:
+                    self.finished_ok.emit(True, "Updates installed: ReyOS apps and Flatpak apps are up to date.")
+                elif reyos_ok:
+                    self.finished_ok.emit(False, "ReyOS apps are up to date, but " + flatpak_message[0].lower() + flatpak_message[1:])
+                elif flatpak_ok:
+                    self.finished_ok.emit(False, "Flatpak apps are up to date, but updating ReyOS apps failed: " + reyos_message)
+                else:
+                    self.finished_ok.emit(False, reyos_message + " " + flatpak_message)
             elif self.action in ("channel-stable", "channel-rolling"):
                 target = self.action.split("-", 1)[1]
                 _wait_for_pacman_lock(emit)
@@ -747,6 +765,7 @@ class Backend(QObject):
     pkgProgress = Signal(str)
     pkgFinished = Signal(bool, str)
     restartRecommended = Signal()
+    updateOfferReady = Signal("QVariantMap")
     # Emitted when any background action starts, so Main.qml can show one
     # app-wide "Working..." message instead of every page needing its own.
     actionStarted = Signal()
@@ -795,6 +814,7 @@ class Backend(QObject):
         super().__init__()
         self._pkg_worker = None
         self._action_worker = None
+        self._offer_worker = None
         self._picker_worker = None
         self._browse_worker = None
         self._network_worker = None
@@ -858,6 +878,16 @@ class Backend(QObject):
     @Slot(result=bool)
     def pkgActionRunning(self):
         return self._pkg_worker is not None and self._pkg_worker.isRunning()
+
+    @Slot()
+    def checkUpdateOffer(self):
+        """Looks for ReyOS app and Flatpak app updates in the background;
+        Main.qml offers to install them all at once when there are any."""
+        if _is_live_session() or (self._offer_worker is not None and self._offer_worker.isRunning()):
+            return
+        self._offer_worker = InfoWorker(app_updates.check)
+        self._offer_worker.ready.connect(self.updateOfferReady.emit)
+        self._offer_worker.start()
 
     @Slot(str)
     def runPkgAction(self, action):

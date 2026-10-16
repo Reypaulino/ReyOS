@@ -288,6 +288,93 @@ Kirigami.ApplicationWindow {
         function onGamingFinished(ok, message) { appWindow.reportResult(ok, message) }
     }
 
+    // "Updates are ready": ReyOS's own apps and Flatpak apps (Reyva,
+    // emulators) in one list, installed together with one button.
+    Timer {
+        interval: 3000
+        running: true
+        onTriggered: backend.checkUpdateOffer()
+    }
+
+    Connections {
+        target: backend
+        function onUpdateOfferReady(offer) {
+            if (backend.pkgActionRunning()) return
+            if (offer.reyos.length + offer.flatpaks.length === 0) return
+            updateOffer.reyosItems = offer.reyos
+            updateOffer.flatpakItems = offer.flatpaks
+            updateOffer.open()
+        }
+        function onPkgProgress(line) { if (updateOffer.installing && line.trim().length) updateOffer.lastLine = line }
+        function onPkgFinished(ok, message) { if (updateOffer.installing) { updateOffer.installing = false; updateOffer.close() } }
+    }
+
+    Controls.Dialog {
+        id: updateOffer
+        property var reyosItems: []
+        property var flatpakItems: []
+        property bool installing: false
+        property string lastLine: ""
+        title: "Updates are ready"
+        modal: true
+        anchors.centerIn: Controls.Overlay.overlay
+        width: Math.min(appWindow.width * 0.85, 480)
+        closePolicy: installing ? Controls.Popup.NoAutoClose : Controls.Popup.CloseOnEscape
+        footer: Controls.DialogButtonBox {
+            Controls.Button {
+                text: "Update all"
+                icon.name: "update-none"
+                highlighted: true
+                enabled: !updateOffer.installing
+                onClicked: {
+                    updateOffer.installing = true
+                    updateOffer.lastLine = "Starting…"
+                    backend.runPkgAction("apps")
+                }
+            }
+            Controls.Button {
+                text: "Later"
+                enabled: !updateOffer.installing
+                onClicked: updateOffer.close()
+            }
+        }
+        ColumnLayout {
+            width: parent.width
+            spacing: Kirigami.Units.largeSpacing
+            Controls.Label {
+                visible: updateOffer.reyosItems.length > 0
+                text: "ReyOS apps"
+                font.bold: true
+            }
+            Repeater {
+                model: updateOffer.reyosItems
+                Controls.Label { Layout.fillWidth: true; Layout.leftMargin: Kirigami.Units.largeSpacing; text: modelData.text; wrapMode: Text.Wrap }
+            }
+            Controls.Label {
+                visible: updateOffer.flatpakItems.length > 0
+                text: "Flatpak apps"
+                font.bold: true
+            }
+            Repeater {
+                model: updateOffer.flatpakItems
+                Controls.Label { Layout.fillWidth: true; Layout.leftMargin: Kirigami.Units.largeSpacing; text: modelData.text; wrapMode: Text.Wrap }
+            }
+            Controls.Label {
+                Layout.fillWidth: true
+                visible: !updateOffer.installing
+                opacity: 0.7
+                wrapMode: Text.Wrap
+                text: "System updates (the rest of ReyOS) stay on Updates > Update everything."
+            }
+            RowLayout {
+                visible: updateOffer.installing
+                Layout.fillWidth: true
+                Controls.BusyIndicator { running: updateOffer.installing; Layout.preferredWidth: Kirigami.Units.iconSizes.medium; Layout.preferredHeight: Kirigami.Units.iconSizes.medium }
+                Controls.Label { Layout.fillWidth: true; text: updateOffer.lastLine; elide: Text.ElideRight }
+            }
+        }
+    }
+
     Controls.Dialog {
         id: errorDialog
         property string message: ""
