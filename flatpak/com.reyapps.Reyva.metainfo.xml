@@ -67,6 +67,13 @@
   </requires>
 
   <releases>
+    <release version="0.1.8" date="2026-10-16">
+      <description>
+        <p>Downloads can go anywhere: turn on "Ask where to save each file" in Settings to pick a folder for each download.</p>
+        <p>Redesigned Settings, Downloads, Bookmarks, Passwords and Web Apps windows; bookmark imports keep their folders.</p>
+        <p>On ReyOS, Reyva follows the Look you pick in Control Center instead of always being copper.</p>
+      </description>
+    </release>
     <release version="0.1.7" date="2026-10-15">
       <description>
         <p>Show in Folder and Open Downloads Folder in the downloads list open the file manager again, with the downloaded file selected.</p>

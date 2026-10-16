@@ -54,15 +54,16 @@ ApplicationWindow {
     // breaking the match). A single named property per role has none of
     // those failure modes: QML's own binding system propagates one change
     // to every usage, so there's nothing left to scan for or get out of sync.
-    readonly property color accentColor: "#C97932"          // the raw accent
-    readonly property color accentBorder: "#8E5B2E"          // every popup/dialog border + hairline divider
-    readonly property color accentSurfaceHover: "#3B2B1C"    // hover/highlighted/checked-alt chip background
-    readonly property color accentSurfaceRaised: "#302317"   // popup/dialog/menu-item default background
-    readonly property color accentSurfaceBase: "#211911"     // deepest background (tab strip, article view, root window)
-    readonly property color accentSurfaceToolbar: "#241B13"  // toolbar background
-    readonly property color accentSurfaceWindow: "#15110E"   // root window background
-    readonly property color accentHoverStrong: "#4A3420"     // pinned ("keep alive") tab's own hover shade
-    readonly property color accentGlow: "#F0A96A"             // non-https padlock / accent label text
+    // Copper unless ReyOS has another Look (lookPalette, from main.py).
+    readonly property color accentColor: lookPalette.accentColor || "#C97932"          // the raw accent
+    readonly property color accentBorder: lookPalette.accentBorder || "#8E5B2E"          // every popup/dialog border + hairline divider
+    readonly property color accentSurfaceHover: lookPalette.accentSurfaceHover || "#3B2B1C"    // hover/highlighted/checked-alt chip background
+    readonly property color accentSurfaceRaised: lookPalette.accentSurfaceRaised || "#302317"   // popup/dialog/menu-item default background
+    readonly property color accentSurfaceBase: lookPalette.accentSurfaceBase || "#211911"     // deepest background (tab strip, article view, root window)
+    readonly property color accentSurfaceToolbar: lookPalette.accentSurfaceToolbar || "#241B13"  // toolbar background
+    readonly property color accentSurfaceWindow: lookPalette.accentSurfaceWindow || "#15110E"   // root window background
+    readonly property color accentHoverStrong: lookPalette.accentHoverStrong || "#4A3420"     // pinned ("keep alive") tab's own hover shade
+    readonly property color accentGlow: lookPalette.accentGlow || "#F0A96A"             // non-https padlock / accent label text
     readonly property string iconLinkFinderScript: "(function() { function abs(href) { try { return new URL(href, document.baseURI).href } catch (e) { return '' } } var links = document.querySelectorAll('link[rel~=\"icon\"], link[rel=\"apple-touch-icon\"], link[rel=\"apple-touch-icon-precomposed\"]'); var best = ''; var bestSize = 0; for (var i = 0; i < links.length; i++) { var link = links[i]; var href = link.getAttribute('href'); if (!href) continue; var size = 32; var sizesAttr = link.getAttribute('sizes') || ''; var match = sizesAttr.match(/(\\d+)x\\d+/); if (match) { size = parseInt(match[1], 10) } else if ((link.getAttribute('rel') || '').indexOf('apple-touch-icon') !== -1) { size = 180 } if (size > bestSize) { bestSize = size; best = href } } return best ? abs(best) : '' })()"
 
     // Fusion draws every stock control from the palette, so this one block

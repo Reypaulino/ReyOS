@@ -106,7 +106,7 @@ ApplicationWindow {
             visible: !appWindow.pageFullScreen
             Layout.fillWidth: true
             implicitHeight: 34
-            background: Rectangle { color: "#302217" }
+            background: Rectangle { color: (lookPalette.accentSurfaceRaised || "#302217") }
             contentItem: RowLayout {
                 spacing: 3
                 Item { Layout.fillWidth: true }
@@ -118,7 +118,7 @@ ApplicationWindow {
                     implicitWidth: 28
                     implicitHeight: 28
                     opacity: appWindow.keepRunning ? 1.0 : 0.5
-                    background: Rectangle { color: (appWindow.keepRunning || keepRunningButton.hovered) ? "#3B291C" : "transparent"; radius: 6 }
+                    background: Rectangle { color: (appWindow.keepRunning || keepRunningButton.hovered) ? (lookPalette.accentSurfaceHover || "#3B291C") : "transparent"; radius: 6 }
                     onClicked: appWindow.keepRunning = !appWindow.keepRunning
                     ToolTip.visible: hovered
                     ToolTip.text: appWindow.keepRunning ? "Keep running: On — never freezes while minimized (e.g. music or a call)" : "Keep this app running in the background even when minimized"
@@ -132,7 +132,7 @@ ApplicationWindow {
                     implicitWidth: 28
                     implicitHeight: 28
                     opacity: browserBackend.lowMemoryMode ? 1.0 : 0.5
-                    background: Rectangle { color: memoryButton.hovered ? "#3B291C" : "transparent"; radius: 6 }
+                    background: Rectangle { color: memoryButton.hovered ? (lookPalette.accentSurfaceHover || "#3B291C") : "transparent"; radius: 6 }
                     onClicked: browserBackend.toggleLowMemoryMode()
                     ToolTip.visible: hovered
                     ToolTip.text: browserBackend.lowMemoryMode ? "Low Memory Mode: On" : "Low Memory Mode: Off"
@@ -146,7 +146,7 @@ ApplicationWindow {
                     implicitWidth: 28
                     implicitHeight: 28
                     opacity: browserBackend.shieldsEnabled ? 1.0 : 0.5
-                    background: Rectangle { color: shieldsButton.hovered ? "#3B291C" : "transparent"; radius: 6 }
+                    background: Rectangle { color: shieldsButton.hovered ? (lookPalette.accentSurfaceHover || "#3B291C") : "transparent"; radius: 6 }
                     onClicked: siteSafetyDialog.open()
                     ToolTip.visible: hovered
                     ToolTip.text: "Site Safety"
@@ -199,7 +199,7 @@ ApplicationWindow {
         width: 450
         anchors.centerIn: parent
         padding: 18
-        background: Rectangle { color: "#302217"; border.color: "#8E5A2E"; border.width: 1; radius: 12 }
+        background: Rectangle { color: (lookPalette.accentSurfaceRaised || "#302217"); border.color: (lookPalette.accentBorder || "#8E5A2E"); border.width: 1; radius: 12 }
         contentItem: ColumnLayout {
             spacing: 12
             Label {
@@ -222,7 +222,7 @@ ApplicationWindow {
                 color: "#D7C1AA"
                 Layout.fillWidth: true
             }
-            Rectangle { Layout.fillWidth: true; height: 1; color: "#8E5A2E" }
+            Rectangle { Layout.fillWidth: true; height: 1; color: (lookPalette.accentBorder || "#8E5A2E") }
             Label {
                 text: "ReyOS Shields: " + (browserBackend.shieldsEnabled ? "On" : "Off") + " · " + browserBackend.blockedRequestCount + " requests blocked this session"
                 wrapMode: Text.Wrap

@@ -18,7 +18,7 @@ from pathlib import Path
 
 # Reyva's own version, shown in Settings. Bump it with every release (and the
 # Flatpak metainfo <release>); the .deb/Windows package numbers are separate.
-APP_VERSION = "0.1.7"
+APP_VERSION = "0.1.8"
 
 IS_WINDOWS = sys.platform == "win32"
 IS_FLATPAK = os.path.exists("/.flatpak-info")
@@ -2005,6 +2005,59 @@ class PrintPreviewImages(QQuickImageProvider):
         return page_image
 
 
+# Reyva's colors are one accent plus shades of it. On ReyOS they follow the
+# Look the user picked (Control Center > Looks). The Arch package used to get
+# them by having looks.py rewrite Main.qml, which can't reach the Flatpak's
+# read-only copy, so Reyva now reads the accent itself at start-up. Same
+# (saturation %, lightness %) targets as looks.py's ROLE_HSL, measured from
+# the original copper palette.
+LOOK_SHADES = {
+    "accentBorder": (51.1, 36.9),
+    "accentSurfaceHover": (35.6, 17.1),
+    "accentSurfaceRaised": (35.2, 13.9),
+    "accentSurfaceBase": (32.0, 9.8),
+    "accentSurfaceToolbar": (30.9, 10.8),
+    "accentSurfaceWindow": (20.0, 6.9),
+    "accentHoverStrong": (39.6, 20.8),
+    "accentGlow": (81.7, 67.8),
+}
+
+
+def look_palette() -> dict:
+    """The ReyOS Look's accent and Reyva's shades of it, or {} (copper, the
+    built-in default) anywhere else: Windows, Ubuntu, other KDE desktops."""
+    if IS_WINDOWS:
+        return {}
+    import colorsys
+    import configparser
+
+    parser = configparser.ConfigParser(strict=False, interpolation=None)
+    # The host's ~/.config/kdeglobals (the Flatpak has xdg-config/kdeglobals:ro).
+    for path in (Path.home() / ".config" / "kdeglobals",
+                 Path(os.environ.get("XDG_CONFIG_HOME", "")) / "kdeglobals"):
+        try:
+            if path.is_file():
+                parser.read(path)
+                break
+        except (OSError, configparser.Error):
+            return {}
+    is_reyos = parser.has_option("ReyOS", "Look") or \
+        parser.get("General", "ColorScheme", fallback="").startswith("ReyOS")
+    accent = parser.get("Colors:Button", "DecorationFocus", fallback="")
+    try:
+        rgb = tuple(int(c) for c in accent.split(","))[:3]
+    except ValueError:
+        return {}
+    if not is_reyos or len(rgb) != 3:
+        return {}
+    hue = colorsys.rgb_to_hls(*(c / 255 for c in rgb))[0]
+    palette = {"accentColor": "#" + "".join(f"{c:02X}" for c in rgb)}
+    for name, (sat, light) in LOOK_SHADES.items():
+        shade = colorsys.hls_to_rgb(hue, light / 100, sat / 100)
+        palette[name] = "#" + "".join(f"{round(c * 255):02X}" for c in shade)
+    return palette
+
+
 def load_setting(key: str, default, allowed=None):
     """One value from settings.json, or default if it's missing or invalid."""
     try:
@@ -2232,6 +2285,7 @@ def main():
     app.aboutToQuit.connect(backend.removePrintFiles)
     engine.addImageProvider("reyvaprint", backend.print_preview_images)
     engine.rootContext().setContextProperty("browserBackend", backend)
+    engine.rootContext().setContextProperty("lookPalette", look_palette())
 
     if app_url:
         app_id = _webapp_id(app_url, app_title)
