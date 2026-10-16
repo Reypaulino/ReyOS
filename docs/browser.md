@@ -2,7 +2,7 @@
 
 Reyva is ReyOS's private-by-default web browser: a native PySide6 / Qt Quick application on Qt WebEngine (Chromium). It is not a Firefox wrapper. The package and source folder are still called `reyos-browser` (renamed to Reyva on 2026-10-04).
 
-Current version: **0.1.8** (`APP_VERSION` in `main.py`, shown in Settings; bump it with every release).
+Current version: **0.1.9** (`APP_VERSION` in `main.py`, shown in Settings; bump it with every release).
 
 ## Where it runs
 
@@ -22,7 +22,7 @@ Only the newest GitHub Release of each build is kept.
 - **Passwords:** saved in the system keyring (Secret Service / KWallet; Windows Credential Manager), save prompt and autofill, CSV import from other browsers.
 - **Bookmarks** with folders and HTML import, a bookmarks bar.
 - **Downloads** list with progress, notifications, Open, and Show in Folder (file manager's `org.freedesktop.FileManager1`, file selected; Explorer `/select` on Windows). Optional "Ask where to save each file": downloaded to Downloads, then moved to the folder picked in the save dialog (in the Flatpak the portal's `/run/user/<uid>/doc/...` path is mapped to the real one with the document portal's `GetHostPaths`).
-- **Colors follow the ReyOS Look:** `look_palette()` reads the accent from `kdeglobals` (only on ReyOS) and derives the same shades as Control Center's `looks.py`; copper everywhere else.
+- **Colors follow the ReyOS Look:** `look_palette()` reads the accent from `kdeglobals` (only on ReyOS) and derives the shades with `looks.py`'s HSL targets scaled by the accent's own saturation relative to copper's (so Graphite stays grey); copper everywhere else.
 - **Printing:** print preview (printer, pages, copies, layout, paper, color, two-sided) and Save as PDF.
 - **Install a site as an app:** its own window and launcher, persistent sign-in for that app (DynamicLauncher portal in the Flatpak).
 - Reader Mode, Find in Page, Low Memory Mode (freezes and later discards background tabs; pin a tab to keep it running), video fullscreen, CPU video decoding on Linux (`--disable-accelerated-video-decode`, GPU frames failed on Intel graphics).

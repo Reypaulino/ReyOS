@@ -2,6 +2,12 @@
 
 Real bugs found and fixed, with root cause. Newest first. See `bugs.md` for what's still open.
 
+## 2026-10-16 (later still) — Reyva 0.1.9: Look shades follow the accent's saturation (Flatpak 0.1.9, .deb 0.1.0-125ubuntu1, Windows 0.1.0.111)
+
+0.1.8's `look_palette()` used `looks.py`'s (saturation, lightness) targets as they are. They were measured on copper (saturation 0.60), so a grey accent got coloured shades: Graphite (150,150,158, saturation 0.04, hue ≈ 240°) came out blue-purple (`accentBorder` `#2E2E8E`), and Forest (saturation 0.30) neon (`accentGlow` `#6AF08F`). The targets are now scaled by the accent's saturation relative to copper's (`min(1, s / s_copper)`, copper computed from `LOOK_SHADES_BASE_RGB`). Copper's nine colors are byte-identical to before; Graphite `#5B5B61`…, Forest `#467653`/`#8CCE9E`, Crimson/Slate/Violet barely change. Control Center's `looks.py` keeps the unscaled table (it only rewrites the old native Arch `Main.qml`, which ReyOS no longer ships since Reyva became a Flatpak).
+
+Tested: palettes for all six Looks computed with the real `main.py`; on the Dev VM desktop with the Look set to Graphite (kdeglobals, restored afterwards) Reyva drew grey borders, menu and switches. `.deb` 125 in a clean `ubuntu:24.04` container: installs, 0.1.9, Graphite border `#5B5B61`. Flatpak repo commit `9a44ecdf` (Dev VM updated from the public repo), Windows CI passed (no visible change there). Source `2267a74`, pin `11dd9c8`.
+
 ## 2026-10-16 (late) — Reyva 0.1.8 (Flatpak 0.1.8, .deb 0.1.0-124ubuntu1, Windows 0.1.0.110)
 
 From the laptop handoff (patch 0015, made on the laptop's ReyOS) plus two fixes found testing it.
