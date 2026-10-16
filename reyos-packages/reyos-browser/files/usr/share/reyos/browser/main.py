@@ -18,7 +18,7 @@ from pathlib import Path
 
 # Reyva's own version, shown in Settings. Bump it with every release (and the
 # Flatpak metainfo <release>); the .deb/Windows package numbers are separate.
-APP_VERSION = "0.1.8"
+APP_VERSION = "0.1.9"
 
 IS_WINDOWS = sys.platform == "win32"
 IS_FLATPAK = os.path.exists("/.flatpak-info")
@@ -2021,6 +2021,8 @@ LOOK_SHADES = {
     "accentHoverStrong": (39.6, 20.8),
     "accentGlow": (81.7, 67.8),
 }
+# Copper's accent, which the targets were measured on.
+LOOK_SHADES_BASE_RGB = (201, 121, 50)
 
 
 def host_path(path: str) -> str:
@@ -2078,10 +2080,15 @@ def look_palette() -> dict:
         return {}
     if not is_reyos or len(rgb) != 3:
         return {}
-    hue = colorsys.rgb_to_hls(*(c / 255 for c in rgb))[0]
+    hue, _light, saturation = colorsys.rgb_to_hls(*(c / 255 for c in rgb))
+    # The targets were measured on copper (saturation 0.60). A greyer accent
+    # gets proportionally greyer shades: with the targets as they are,
+    # Graphite's grey (150,150,158) came out blue-purple and Forest neon.
+    base_saturation = colorsys.rgb_to_hls(*(c / 255 for c in LOOK_SHADES_BASE_RGB))[2]
+    scale = min(1.0, saturation / base_saturation)
     palette = {"accentColor": "#" + "".join(f"{c:02X}" for c in rgb)}
     for name, (sat, light) in LOOK_SHADES.items():
-        shade = colorsys.hls_to_rgb(hue, light / 100, sat / 100)
+        shade = colorsys.hls_to_rgb(hue, light / 100, sat * scale / 100)
         palette[name] = "#" + "".join(f"{round(c * 255):02X}" for c in shade)
     return palette
 

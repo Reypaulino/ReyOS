@@ -67,6 +67,11 @@
   </requires>
 
   <releases>
+    <release version="0.1.9" date="2026-10-16">
+      <description>
+        <p>On ReyOS, Reyva's colors match grey and softer Looks too: Graphite is grey instead of blue-purple, Forest is softer.</p>
+      </description>
+    </release>
     <release version="0.1.8" date="2026-10-16">
       <description>
         <p>Downloads can go anywhere: turn on "Ask where to save each file" in Settings to pick a folder for each download.</p>
