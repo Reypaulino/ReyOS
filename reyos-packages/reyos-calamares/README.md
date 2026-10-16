@@ -1,38 +1,26 @@
 # reyos-calamares
 
-ReyOS's own `/etc/calamares/settings.conf`, overriding whatever the
-`cachyos-calamares` package ships by default — this is the standard,
-expected way to customize Calamares (each distro provides its own
-settings.conf; there's no `.conf.user`-style override mechanism for it
-like SDDM's theme.conf, distros just replace the file directly).
+ReyOS's installer configuration and branding for Calamares. The Calamares engine itself is `reyos-calamares-core` (built for ReyOS from CachyOS's Calamares branch, since the CachyOS repositories are no longer used).
 
-## Current state: SAFE PREVIEW ONLY
+This is the real installer: it partitions, copies the live system to disk (`unpackfs`) and installs the bootloader. Test it in a throwaway VM, never on a disk you care about.
 
-`exec: []` — the sequence has no disk-modifying modules anywhere in it.
-Clicking all the way through the UI does nothing to the disk; it just
-reaches the "finished" page. This is intentional and load-bearing:
-**do not add real exec modules (partition, mount, unpackfs, bootloader,
-etc.) without deliberately reviewing and testing that change** — this
-file existing safely is what makes it okay to test-launch Calamares on
-a live desktop VM at all.
+## Sequence (`/etc/calamares/settings.conf`)
 
-## Why `cachyos-calamares` and not `cachyos-calamares-qt6-next-grub`
+Pages: `welcome → locale → keyboard → partition → users → summary`, then the install steps, then `finished`.
 
-The `-qt6-next-grub` variant (and most of the other `-qt6-*` suffixed
-variants) has version-pinned native dependencies
-(`libyaml-cpp.so.0.8`, `libpython3.13.so.1.0`,
-`libboost_python313.so.1.89.0`) that have drifted out of sync with the
-current rolling-release package set. The plain `cachyos-calamares`
-depends on generic `python`/`yaml-cpp` package names instead of pinned
-SONAMEs and has no boost-python dependency at all — it launches cleanly
-with the current package snapshot. If this stops working after a
-future system update, check `ldd $(which calamares)` for missing
-libraries before assuming Calamares itself is broken again.
+Install steps, in order: partition, mount, unpackfs, pacman keyring setup, machine-id, fstab, locale/keyboard, LUKS keyfile, mkinitcpio preset fix, Plymouth theme, initramfs, hardware drivers (`reyos-hw-drivers`), removal of the live user, autologin, installer and live-session autostarts (`shellprocess_live_cleanup.conf`), users, firewall, network, display manager, hardware clock, Limine bootloader (+ shim and boot entries), EFI boot entry (`reyos-efi-entry`), systemd services, unmount.
 
-## Sequence
+Notable settings:
+- Bootloader: **Limine** (`efiBootloaderId: reyos`).
+- Default file system: **ext4**.
+- Minimum size for ReyOS: **30 GiB** (`welcome.conf` `requiredStorage`; also the smallest partition "Install alongside" creates and "Replace a partition" accepts). Shown as a warning, not a hard stop.
 
-`welcome → keyboard → users → finished` — no `locale` (timezone) step.
-ReyOS Welcome already has its own timezone setup that runs right after
-first login, so asking for it twice would be redundant. Language
-selection stays on Calamares' own Welcome page (a separate control from
-timezone, not affected by dropping `locale`).
+## Module overrides
+
+Calamares' own package ships the module configs under `/etc/calamares/modules/`, so shipping ReyOS's versions at the same paths would be a pacman file conflict. ReyOS keeps them in `/usr/share/reyos/calamares-overrides/` (`welcome`, `users`, `partition`, `unpackfs`, `bootloader`, `grubcfg`, `services-systemd`) and a pacman hook (`reyos-calamares-overrides.hook`, runs when this package or the Calamares engine is installed or upgraded) copies them into place with `reyos-apply-calamares-overrides.sh`. The `shellprocess_*.conf` modules are ReyOS's own and ship directly in `/etc/calamares/modules/`.
+
+## Known gap
+
+`luksopenswaphookcfg` was removed from the sequence (it needs `mkinitcpio-openswap`, which only came from the CachyOS repos): encrypted-swap installs don't get the openswap resume hook.
+
+Changes and test results: `docs/fixes.md`.

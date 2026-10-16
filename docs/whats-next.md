@@ -1,3 +1,5 @@
+> **Superseded (2026-10-15).** This file was the running plan from August–September 2026 and hasn't been kept up since. Much of what it lists as open has shipped (installer, Reyva, the stable update channel, gaming, the package repo on GitHub Pages). For what has actually been built and tested, read `docs/fixes.md` (newest first); for open problems, `docs/bugs.md`. Kept for history.
+
 # ReyOS — What's Next
 
 > Product direction: see [Product Vision and Roadmap](vision-roadmap.md). ReyOS prioritizes dependable everyday use, understandable recovery, and efficient KDE on older hardware; it is not a CachyOS clone.

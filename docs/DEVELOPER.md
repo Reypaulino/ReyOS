@@ -5,60 +5,82 @@ Custom Arch Linux distro (KDE Plasma 6, Wayland) built via `mkarchiso`, targetin
 ## Repo layout
 
 ```
-~/Developer/ReyOS/            (this repo, source of truth)
+~/Developer/ReyOS/            (this repo, source of truth; branch main)
 ├── reyos-packages/           PKGBUILDs for every reyos-* package
 │   └── <pkgname>/
 │       ├── PKGBUILD
 │       └── files/            payload, mirrors target filesystem layout
-├── reyos-iso/                 archiso profile
-│   ├── packages.x86_64        base ISO package list
+├── reyos-iso/                archiso profile
+│   ├── packages.x86_64       base ISO package list
 │   ├── pacman.conf
 │   ├── profiledef.sh
-│   └── airootfs/              overlay files + customize_airootfs.sh
-└── docs/                      this documentation
+│   └── airootfs/             overlay files + customize_airootfs.sh
+├── flatpak/                  Reyva Flatpak manifest, metainfo, release steps
+├── tools/stable-snapshot/    stable update channel: check, promote, signing key (public)
+├── website/                  reyos.reyapps.com (one page + screenshots)
+├── wsl/                      ReyOS WSL build
+├── .github/workflows/        stable-snapshot check, Reyva for Windows
+└── docs/                     this documentation
+Branch reyos-pages:           the signed package repo served by GitHub Pages
 ```
 
 ## Package-based architecture
 
-Everything ReyOS-specific ships as a real Arch package (`PKGBUILD` + `makepkg`), installed via a local pacman repo (`[reyos-local]` stanza in `pacman.conf`, `file://` server), not ad-hoc files copied into the ISO overlay. This was a deliberate pivot (2026-08-06) away from an earlier ad-hoc approach.
+Everything ReyOS-specific ships as a real Arch package (`PKGBUILD` + `makepkg`) in ReyOS's own pacman repo, `[reyos-local]`. Installed systems and the ISO build both get it from GitHub Pages:
 
-**Packages so far:**
+```
+[reyos-local]
+SigLevel = Required
+Server = https://reypaulino.github.io/ReyOS/
+```
+
+The repo's files (packages, `.sig` files, `reyos-local.db`/`.files`) live on the **`reyos-pages`** branch of this repository (not on `main`). `SigLevel = Required`: every package **and** the database must carry a valid signature from the ReyOS package key (`9A17D49EE3929AC6402337FA66E4085621026272`, public key in `tools/stable-snapshot/reyos-signing-key.asc`), or `pacman -Syu` rejects the whole repo.
+
+**Packages:**
 | Package | Purpose |
 |---|---|
-| `reyos-base` | `/etc/os-release`, `/etc/hostname` |
-| `reyos-wallpapers` | Desktop background |
-| `reyos-icons` | Icon theme |
-| `reyos-themes` | Global Theme, color scheme, locked panel/taskbar layout, virtual desktops, shortcuts |
-| `reyos-welcome` | First-login setup wizard (Kirigami/QML) |
-| `reyos-sddm` | Login screen branding |
-| `reyos-calamares` | Installer (safe UI-preview mode only — see Calamares section) |
+| `reyos-base` | os-release, hostname, sudoers rules (`/etc/sudoers.d/90-reyos`), pulls in the update channel |
+| `reyos-branding`, `reyos-icons`, `reyos-wallpapers`, `reyos-themes`, `reyos-looks`, `reyos-terminal` | Look and feel: icon theme, wallpapers, Global Theme and panel layout, Looks (palette + wallpaper bundles), Konsole/fastfetch |
+| `reyos-sddm`, `reyos-plymouth`, `reyos-grub` | Login screen, boot splash, GRUB theme |
+| `reyos-welcome` | First-login setup wizard |
+| `reyos-control-center-gui` | Control Center (Kirigami/QML) and ReyOS Games; `reyos-admin` privileged helper |
+| `reyos-control-center` | ReyOS System Tools (terminal menu) |
+| `reyos-update-channel` | Stable (tested Arch snapshot) / rolling channel switch; see "Update channels" |
+| `reyos-update-notifier` | Login/30-minute check for newer `reyos-*` packages |
+| `reyos-browser` | Launcher for Reyva (installs and runs the `com.reyapps.Reyva` Flatpak) |
+| `reyos-reader`, `reyos-connect`, `reyos-distrobox-gui`, `reyos-screenshot`, `reyos-shortcuts-cheatsheet` | Apps: book/comic reader, device dashboard (KDE Connect, VPN, Bluetooth), Distrobox GUI, screenshots, `Meta+/` shortcut list |
+| `reyos-preload` | Adaptive preload daemon |
+| `reyos-calamares`, `reyos-calamares-core` | Installer configuration and branding; the Calamares engine built for ReyOS |
+| `reyos-kde-customization` | Optional extra desktop customization |
 
-Planned but not yet built: `reyos-plymouth`, `reyos-grub`, `reyos-fonts`, `reyos-control-center`, `reyos-update`, `reyos-store`, `reyos-backup`, `reyos-driver-manager`, and meta-packages (`reyos-desktop`, `reyos-gaming`, `reyos-developer`, `reyos-security`, `reyos-complete`).
+Reyva (the browser) is also shipped outside ReyOS: a Flatpak repo (`flatpak/README.md`), an Ubuntu/Debian `.deb` (`reyos-packages/reyos-browser/debian/build.sh`) and a Windows installer (`.github/workflows/reyos-browser-windows.yml`), each published as a GitHub Release (only the newest of each is kept).
 
-## Two VMs
+## VMs
 
 - **`ReyOS`** (build + branded dev VM) — `192.168.122.19`, user `reyrubi` / password set locally (see your own notes, not committed here), passwordless sudo. This is where packages get built and the ISO gets assembled. Also serves as the "live" branded desktop for manually validating changes before a full ISO rebuild.
-- **`ReyOS-Test`** — disposable, boots the *actual built ISO* live (not installed). Fully ephemeral — a plain `virsh reboot`/destroy+start gives a genuinely fresh "first login" every time, no need to recreate the domain. Safe to nuke/rebuild anytime.
+- **Test VMs** are made per test and deleted afterwards (the old permanent `ReyOS-Test` domain is gone): for an ISO, a throwaway UEFI VM with Secure Boot off and its disk in `/dev/shm` (see "Build and publish workflow").
 
 SSH from this host needs password auth explicitly (no key trust set up), routed through `host-spawn` since the Bash tool itself is sandboxed and can't reach the VM network directly:
 ```
 host-spawn bash -c 'sshpass -p "<dev-vm-password>" ssh -o StrictHostKeyChecking=no -o PubkeyAuthentication=no reyrubi@192.168.122.19 "<remote command>"'
 ```
-`ReyOS-Test`'s IP changes every boot (DHCP) — get it via `virsh domifaddr ReyOS-Test`, and use `-o UserKnownHostsFile=/dev/null` since its host key changes every boot too (ephemeral).
+A test VM's IP changes every boot (DHCP) — get it via `virsh domifaddr <name>`, and use `-o UserKnownHostsFile=/dev/null` since its host key changes too. Add `-o GSSAPIAuthentication=no` if SSH hangs at login.
 
-## Build workflow
+## Build and publish workflow
 
-1. Edit source locally in this repo.
-2. `rsync` changed files to the VM (`~/reyos-packages/...`, `~/reyos-build/reyos-iso/...`).
-3. Bump `pkgrel`/`pkgver` in the affected `PKGBUILD`.
-4. `cd ~/reyos-packages/<pkg> && makepkg -f --noconfirm`
-5. Copy the built `.pkg.tar.zst` into `~/reyos-build/local-repo/` and `repo-add reyos-local.db.tar.gz <pkg>.pkg.tar.zst`.
-6. Clean stale build state: `sudo rm -rf ~/reyos-build/work` (a leftover `work/` dir from a prior build can eat several GB and starve the next build of disk space).
-7. Build the ISO: `cd ~/reyos-build && setsid nohup bash -c "echo <dev-vm-password> | sudo -S mkarchiso -v -w work -o out reyos-iso" > buildlog 2>&1 < /dev/null &` — `setsid` matters, see gotchas below.
-8. Copy the finished ISO to the **host's** `/var/lib/libvirt/images/` (not the VM's own disk) — QEMU/libvirt on this host can only read from trusted locations there, not from a user's home directory.
-9. `virsh destroy ReyOS-Test && virsh start ReyOS-Test` to boot the new ISO fresh.
-10. SSH in as `liveuser`/`liveuser` (NOPASSWD sudo) and verify.
-11. Commit.
+1. Change the source in a worktree made from `origin/main` (`git worktree add --detach <dir> origin/main`), never only on a local branch.
+2. Bump `pkgrel` (or `pkgver`) in the package's `PKGBUILD`.
+3. Copy the package folder to the Dev VM and build there: `makepkg -f --nodeps`. Install it on the Dev VM (`pacman -U`) and test.
+4. Sign the built package on the machine that holds the ReyOS package key: `gpg --local-user <key> --detach-sign <pkg>.pkg.tar.zst`.
+5. Check out the `reyos-pages` branch (`git worktree add --detach <dir> origin/reyos-pages`) and copy the package + `.sig` into it.
+6. Update the database: copy `reyos-local.db.tar.gz`, `reyos-local.files.tar.gz` and the new package(s) to the Dev VM (`repo-add` is Arch-only), run `repo-add reyos-local.db.tar.gz <new-pkg>...` with explicit file names (no glob, no `-s`), and copy **both** database files back (check that both list the new version).
+7. Sign both database files (`gpg --detach-sign reyos-local.db.tar.gz`, same for `.files`), and `gpg --verify` every new `.sig` before pushing: one bad database signature breaks the whole repo for every user.
+8. Commit and push `reyos-pages` (GitHub Pages serves it within a minute or two), then commit and push the source to `main` with an explicit pathspec.
+9. Record the change in `docs/fixes.md`.
+
+`reyos-update-channel` is built and published automatically by `tools/stable-snapshot/promote.sh` (see "Update channels").
+
+**ISO builds** need far more disk than packages (a normal `mkarchiso` run grows the Dev VM's disk by ~13 GB). The method that works on a nearly full host: give the Dev VM 16 GB RAM, build into a tmpfs (`mount -t tmpfs -o size=13G tmpfs /mnt/isobuild`, `mkarchiso -v -w /mnt/isobuild/work -o /mnt/isobuild/out reyos-iso`), then test-install it in a throwaway UEFI VM (Secure Boot off) whose disk is a sparse raw file in `/dev/shm` (at least 34 GB; the installer requires 30 GiB). Never start an ISO build without checking free space on the host first. Release ISOs are split into parts for GitHub Releases (2 GB asset limit).
 
 Never hand-edit files live on the VM via SSH heredocs except for the build/test commands themselves — this repo is the source of truth.
 

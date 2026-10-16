@@ -1,47 +1,44 @@
-# ReyOS Browser
+# Reyva (the ReyOS browser)
 
-## Current Dev build
+Reyva is ReyOS's private-by-default web browser: a native PySide6 / Qt Quick application on Qt WebEngine (Chromium). It is not a Firefox wrapper. The package and source folder are still called `reyos-browser` (renamed to Reyva on 2026-10-04).
 
-`reyos-browser` 0.1.0-43 is a native PySide6/Qt Quick application using Qt WebEngine (Chromium). It is not a Firefox wrapper and it does not require Firefox at runtime. It is installed and tested only on the ReyOS Dev VM; it has not yet been staged to the ISO repository or deployed to ReyOS-Test.
+Current version: **0.1.7** (`APP_VERSION` in `main.py`, shown in Settings; bump it with every release).
 
-## User-verified behavior
+## Where it runs
 
-- Private, in-memory browsing profile starts correctly.
-- Downloads dialog opens.
-- Download notifications appear in KDE.
-- The Downloads-folder button and download save target use `~/Downloads` after the v0.1.0-30 path correction.
+| Build | How users get it | Updates |
+|---|---|---|
+| ReyOS | Arch package `reyos-browser`: since 0.1.0-106 only a launcher that installs and runs the Flatpak (`arch-flatpak/usr/bin/reyos-browser`; Arch's Qt 6.12 rollout broke the native build) | Flatpak updates (Discover, Control Center) |
+| Any Linux distro | Flatpak `com.reyapps.Reyva` from the signed repo at https://reypaulino.github.io/reyva-flatpak/ (`flatpak/README.md`), or `Reyva.flatpak` from GitHub Releases | Automatic through the Flatpak repo |
+| Ubuntu / Debian | `.deb` from GitHub Releases (`debian/build.sh`; builds its Python runtime at install time) | Install the newer `.deb` |
+| Windows 10/11 | Per-user installer built by `.github/workflows/reyos-browser-windows.yml` | Run the newer installer |
 
-## Current features
+Only the newest GitHub Release of each build is kept.
 
-- Tabs, keyboard shortcuts (`Ctrl+T`, `Ctrl+W`, `Ctrl+L`, `Ctrl+R`), navigation, and DuckDuckGo search fallback.
-- GPU acceleration by default on real hardware; automatic software-rendering fallback inside virtual machines.
-- Low Memory Mode, enabled for the current session by default: safely freezes inactive tabs after two minutes and may discard them after fifteen more minutes when Qt reports that they are safe to suspend; selecting a discarded tab reloads it. The `RAM` toolbar control toggles this mode.
-- Off-the-record WebEngine profile, memory-only cache/cookies, blocked popup windows, and a visible session-only Allow/Block prompt for sensitive permission requests.
-- Browser Settings panel: session-only DuckDuckGo/Startpage search choice, Low Memory Mode control, and live Shields status.
-- Reader Mode converts the current tab into an article-focused view; selecting `Exit Read` or `Ctrl+Shift+R` returns to the original page.
-- Private Session History shows up to 50 pages visited during the current browser run, can reopen a page in the active tab, and is cleared at exit or manually from its panel.
-- Find in Page has an in-window search bar, match count, next/previous navigation, and `Ctrl+F`.
-- Branded vector reload control with tooltip and accessibility name.
-- ReyOS Shields v1: 21 curated network ad/tracker domains blocked before Chromium networking; master on/off toggle, live session blocked-request count, and per-site session-only exceptions; no persistence.
-- Downloads manager with live byte progress, completed/failed/cancelled state, Cancel, Open File, KDE notifications, and standard Downloads location.
-- Frozen (`❄`) and discarded (`◌`) markers in tab titles when Low Memory Mode changes their lifecycle state.
-- Downloads dialog, KDE start/completion notifications, standard Downloads location, and folder opener.
-- ReyOS blue active tabs, dark inactive tabs, blue hover states, enlarged navigation/new-tab buttons, native ReyOS Shield icon.
+## Features
 
-## Known limits / next work
+- **Private by default:** off-the-record profile, no persistent history; browsing data is cleared at exit, settings are kept (`settings.json`).
+- **Shields:** refreshable ad/tracker domain blocklist with per-site on/off, HTTPS upgrade, tracking-parameter stripping, canvas/WebGL/audio fingerprint noise.
+- **Passwords:** saved in the system keyring (Secret Service / KWallet; Windows Credential Manager), save prompt and autofill, CSV import from other browsers.
+- **Bookmarks** with folders and HTML import, a bookmarks bar.
+- **Downloads** list with progress, notifications, Open, and Show in Folder (file manager's `org.freedesktop.FileManager1`, file selected; Explorer `/select` on Windows).
+- **Printing:** print preview (printer, pages, copies, layout, paper, color, two-sided) and Save as PDF.
+- **Install a site as an app:** its own window and launcher, persistent sign-in for that app (DynamicLauncher portal in the Flatpak).
+- Reader Mode, Find in Page, Low Memory Mode (freezes and later discards background tabs; pin a tab to keep it running), video fullscreen, CPU video decoding on Linux (`--disable-accelerated-video-decode`, GPU frames failed on Intel graphics).
 
-- Shields v1 is not an EasyList/uBlock-compatible blocker. It does not reliably block YouTube ads and has no cosmetic filtering, filter-subscription updater, or persistent per-site rules.
+## Source
 
-- Verify Reader Mode and Find in Page on several real articles, plus Low Memory Mode tab freeze/discard/reload behavior, then perform real-site, low-memory, multi-tab, video, login, and download-failure tests before ISO inclusion.
+- `reyos-packages/reyos-browser/files/usr/share/reyos/browser/main.py`: backend (`BrowserBackend`), Shields interceptor, passwords, printing, downloads.
+- `qml/Main.qml` (+ `qml/components/`): the UI; `AppWindow.qml` for installed web apps.
+- `shields-blocklist.txt`, `fingerprint-protection.js`, `password-autofill.js`, `home.html` (New Tab page).
+- Packaging: `PKGBUILD` + `arch-flatpak/` (ReyOS launcher), `debian/`, `windows/`, and `flatpak/` at the repo root.
 
-## Implementation locations
+## Releasing
 
-- Package: `reyos-packages/reyos-browser`
-- Application: `files/usr/share/reyos/browser/main.py`
-- UI: `files/usr/share/reyos/browser/qml/Main.qml`
-- Shields domain list: `files/usr/share/reyos/browser/shields-blocklist.txt`
-- Icon: `files/usr/share/reyos/browser/icons/reyos-shields.svg`
+1. Change the code in a worktree from `origin/main`, bump `APP_VERSION`, add a `<release>` to `flatpak/com.reyapps.Reyva.metainfo.xml`, push to `main`.
+2. Pin the Flatpak manifest's `commit:` to that commit (second commit), build the Flatpak, export it signed into the repo, push the repo site, build the bundle, create the GitHub Release (steps in `flatpak/README.md`).
+3. `.deb`: `debian/build.sh <version>`, test in a clean `ubuntu:24.04` container, GitHub Release.
+4. Windows: run the "Reyva for Windows" workflow with the new four-part version, download the artifact, GitHub Release.
+5. Update the download links on the website (`website/index.html`) and delete the previous releases.
 
-## Build and deployment policy
-
-Build on the Dev VM with `makepkg -f --noconfirm`, install there with `pacman -U`, then stage to `/home/reyrubi/reyos-build/local-repo` and add `reyos-browser` to `reyos-iso/packages.x86_64` only after all browser acceptance tests pass. Deploy resulting ISOs only to ReyOS-Test.
+History of every change, with what was tested: `docs/fixes.md`. Open problems: `docs/bugs.md`.

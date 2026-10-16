@@ -48,8 +48,8 @@ page and real sites, opens URLs passed on the command line, saves settings to
 the sandboxed data dir, and saves/reads/deletes a password through the host's
 Secret Service from inside the sandbox.
 
-Single-file bundle for GitHub Releases (what's actually shipped today, since Flathub
-is blocked — see below). Builds straight from the manifest's pinned public commit:
+Single-file bundle for GitHub Releases (Flathub is blocked — see below). The first
+bundles were built straight from the manifest's pinned public commit:
 
     flatpak-builder --user --force-clean --disable-rofiles-fuse --install-deps-from=flathub --repo=repo build-dir com.reyapps.Reyva.yaml
     flatpak build-bundle --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo repo Reyva.flatpak com.reyapps.Reyva
@@ -58,8 +58,8 @@ is blocked — see below). Builds straight from the manifest's pinned public com
 BaseApp from Flathub. Users must download the file first — `flatpak install <https url>`
 fails with "Remote bundles are not supported". Release tag pattern:
 `reyva-flatpak-v<version>` (not marked Latest — that stays on the ISO). Bump
-`<releases>` in the metainfo for each new bundle; no auto-updates yet (would need an
-OSTree repo, e.g. on GitHub Pages, plus a `.flatpakref`).
+`<releases>` in the metainfo for each new bundle. Since 2026-10-05 the bundle is built
+from the auto-updating repo below, so bundle installs update too.
 
 Auto-updating repo (public since 2026-10-05): github.com/Reypaulino/reyva-flatpak,
 served by GitHub Pages at https://reypaulino.github.io/reyva-flatpak/ — a signed
