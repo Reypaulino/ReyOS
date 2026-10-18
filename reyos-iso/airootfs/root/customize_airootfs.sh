@@ -31,7 +31,7 @@ mkdir -p /etc/sddm.conf.d
 cat > /etc/sddm.conf.d/autologin.conf << 'EOF'
 [Autologin]
 User=liveuser
-Session=plasma
+Session=plasmax11
 EOF
 
 chown -R liveuser:liveuser /home/liveuser
@@ -72,8 +72,8 @@ done
 
 # Fail the ISO build if an upstream filename/layout change made either
 # required ReyOS session override impossible to generate.
-grep -Fqx 'Name=ReyOS Desktop' /usr/local/share/wayland-sessions/plasma.desktop
-grep -Fqx 'Name=ReyOS Desktop (Compatibility Mode)' /usr/local/share/xsessions/plasmax11.desktop
+grep -Fqx 'Name=ReyOS Desktop' /usr/local/share/xsessions/plasmax11.desktop
+grep -Fqx 'Name=ReyOS Desktop (Wayland)' /usr/local/share/wayland-sessions/plasma.desktop
 
 # ReyOS branding: auto-run neofetch (REY ASCII logo + system info) on every
 # new terminal. Appended here rather than shipped as a full /etc/skel/.bashrc

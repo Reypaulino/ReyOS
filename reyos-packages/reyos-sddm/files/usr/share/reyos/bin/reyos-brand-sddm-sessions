@@ -34,7 +34,9 @@ brand_session() {
     grep -Fqx "Name=${display_name}" "$target_file"
 }
 
-brand_session /usr/share/wayland-sessions/plasma.desktop \
-    /usr/local/share/wayland-sessions/plasma.desktop 'ReyOS Desktop'
+# X11 is the default session (reyos-sddm-default-session), so it gets the
+# plain name; Wayland stays available under its own.
 brand_session /usr/share/xsessions/plasmax11.desktop \
-    /usr/local/share/xsessions/plasmax11.desktop 'ReyOS Desktop (Compatibility Mode)'
+    /usr/local/share/xsessions/plasmax11.desktop 'ReyOS Desktop'
+brand_session /usr/share/wayland-sessions/plasma.desktop \
+    /usr/local/share/wayland-sessions/plasma.desktop 'ReyOS Desktop (Wayland)'

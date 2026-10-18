@@ -1,7 +1,7 @@
 # Maintainer: Rey Paulino
 pkgname=reyos-sddm
 pkgver=1.0.3
-pkgrel=16
+pkgrel=17
 pkgdesc="ReyOS login screen — SilentSDDM restyled with ReyOS colors, ReyOS wallpaper, Look-tracking accent"
 arch=('any')
 license=('MIT')
@@ -28,6 +28,7 @@ package() {
     find "$pkgdir/usr" -type f -exec chmod 644 {} \;
     chmod 755 "$pkgdir/usr/share/reyos/bin/reyos-brand-sddm-sessions"
     chmod 755 "$pkgdir/usr/share/reyos/bin/reyos-render-sddm-look"
+    chmod 755 "$pkgdir/usr/share/reyos/bin/reyos-sddm-default-session"
 }
 
 # Two GPL-3.0-or-later licenses (the kept, older bundled theme and the new

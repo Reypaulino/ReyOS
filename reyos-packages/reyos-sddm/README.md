@@ -17,9 +17,12 @@ Plasma owns the actual Wayland and X11 session files. The
 `reyos-brand-sddm-sessions` helper copies their current metadata into SDDM's
 higher-priority `/usr/local/share/*sessions` directories and labels them:
 
-- `ReyOS Desktop` — normal Wayland session
-- `ReyOS Desktop (Compatibility Mode)` — X11 fallback for hardware/VMs where
-  Wayland cannot start
+- `ReyOS Desktop` — Plasma X11, the default since 2026-10-17 (faster on older
+  Intel graphics; RustDesk/AnyDesk remote help works unattended there)
+- `ReyOS Desktop (Wayland)` — Plasma Wayland, still installed and selectable
+
+`reyos-sddm-default-session` preselects X11 on systems where SDDM remembers no
+session yet (`/var/lib/sddm/state.conf`); existing users keep their last choice.
 
 The matching filenames make SDDM deduplicate the upstream entries, so the
 menu still contains only two choices. Localized upstream `Name[...]` values

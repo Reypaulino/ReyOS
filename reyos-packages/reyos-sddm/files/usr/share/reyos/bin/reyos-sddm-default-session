@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# The login screen preselects the session SDDM remembers in state.conf
+# ([Last] Session=), or the first one it lists (Wayland) when there is
+# none. ReyOS starts in Plasma X11 by default (2026-10-17): faster on older
+# Intel graphics, and remote help (RustDesk, AnyDesk) works unattended
+# there. Only a system with no remembered session gets it -- a new install,
+# or one where nobody has logged in yet -- so existing users keep the
+# session they picked. Wayland stays installed and selectable.
+state=/var/lib/sddm/state.conf
+x11=/usr/local/share/xsessions/plasmax11.desktop
+
+[[ -f "$x11" ]] || exit 0
+if [[ -f "$state" ]] && grep -q '^Session=.' "$state"; then
+    exit 0
+fi
+
+install -d /var/lib/sddm
+if [[ -f "$state" ]] && grep -q '^\[Last\]' "$state"; then
+    sed -i -e '/^Session=$/d' -e "/^\[Last\]/a Session=${x11}" "$state"
+else
+    printf '[Last]\nSession=%s\n' "$x11" >> "$state"
+fi
+if id sddm >/dev/null 2>&1; then
+    chown sddm:sddm /var/lib/sddm "$state"
+fi
