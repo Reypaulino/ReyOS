@@ -212,7 +212,9 @@ ApplicationWindow {
                 }
                 downloads.setProperty(i, "status", completed ? "Completed" : (cancelled ? "Cancelled" : "Failed: " + download.interruptReasonString))
                 if (completed) {
-                    browserBackend.notify("Download finished", download.downloadFileName + " is ready in Downloads")
+                    // Saved straight into a picked folder: say which one.
+                    var where = download.downloadDirectory === downloadsPath ? "Downloads" : download.downloadDirectory.split("/").pop()
+                    browserBackend.notify("Download finished", download.downloadFileName + " is ready in " + where)
                 } else if (!cancelled) {
                     browserBackend.notify("Download failed", download.downloadFileName + " could not be saved")
                 }
@@ -244,22 +246,38 @@ ApplicationWindow {
                 window.finishDownload(download)
             }
         })
-        download.accept()
         if (!browserBackend.askDownloadLocation) {
+            download.accept()
             browserBackend.notify("Download started", download.downloadFileName + " is saving to Downloads")
             return
         }
-        // "Ask where to save each file": it keeps downloading into
-        // Downloads while the dialog is open, then moves to the pick.
+        // "Ask where to save each file": asked before accepting, so the
+        // file can go straight into the picked folder. Downloading to
+        // Downloads first and moving it later filled a small system drive.
         var target = browserBackend.chooseDownloadLocation(download.downloadFileName)
         var row = window.downloadRow(download.id)
         if (target === "") {
             download.cancel()
             return
         }
-        if (row < 0 || target === downloads.get(row).path) return
-        downloads.setProperty(row, "target", target)
-        if (download.isFinished) window.finishDownload(download)
+        var slash = target.lastIndexOf("/")
+        if (browserBackend.canDownloadInto(target)) {
+            download.downloadDirectory = target.slice(0, slash)
+            download.downloadFileName = target.slice(slash + 1)
+            if (row >= 0) {
+                downloads.setProperty(row, "name", download.downloadFileName)
+                downloads.setProperty(row, "path", target)
+                downloads.setProperty(row, "shownPath", target)
+            }
+            download.accept()
+            browserBackend.notify("Download started", download.downloadFileName + " is saving to " + download.downloadDirectory)
+            return
+        }
+        // A folder Reyva can't write to directly: download to Downloads,
+        // then move it there when it's done.
+        download.accept()
+        if (row >= 0 && target !== downloads.get(row).path) downloads.setProperty(row, "target", target)
+        browserBackend.notify("Download started", download.downloadFileName + " is saving to Downloads first")
     }
 
     function downloadRow(downloadId) {
@@ -284,6 +302,28 @@ ApplicationWindow {
             else browserBackend.notify("Download finished", name + " couldn't be moved, so it's in Downloads")
         }
     }
+
+    // Removes finished downloads (done, cancelled or failed) from the list;
+    // the files themselves stay where they are.
+    function clearFinishedDownloads() {
+        for (var i = downloads.count - 1; i >= 0; --i)
+            if (downloads.get(i).finished && downloads.get(i).status.indexOf("Moving") !== 0) {
+                delete downloadRequests[downloads.get(i).downloadId]
+                downloads.remove(i)
+            }
+    }
+
+    function removeDownloadRow(downloadId) {
+        var row = window.downloadRow(downloadId)
+        if (row >= 0 && downloads.get(row).finished) {
+            delete downloadRequests[downloadId]
+            downloads.remove(row)
+        }
+    }
+
+    // In-progress downloads are counted in activeDownloadCount, so the rest
+    // of the list is finished (ListModel.get() isn't a binding dependency).
+    readonly property int finishedDownloadCount: Math.max(0, downloads.count - activeDownloadCount)
 
     function cancelDownload(downloadId) {
         var request = downloadRequests[downloadId]
@@ -2642,6 +2682,8 @@ ApplicationWindow {
                         color: "#D7C1AA"; font.pixelSize: 12
                     }
                 }
+                ThemedButton { text: "Clear"; visible: window.finishedDownloadCount > 0; onClicked: window.clearFinishedDownloads()
+                    ToolTip.visible: hovered; ToolTip.text: "Remove finished, cancelled and failed downloads from this list (the files stay)" }
                 ThemedButton { text: "Open folder"; onClicked: browserBackend.showInFolder(window.downloadsPath) }
                 ToolButton {
                     implicitWidth: 34
@@ -2743,6 +2785,16 @@ ApplicationWindow {
                         ThemedButton { visible: dlRow.completed; text: "Open"; onClicked: window.openDownload(dlRow.path) }
                         ThemedButton { visible: dlRow.completed; text: "Show"; onClicked: browserBackend.showInFolder(dlRow.shownPath)
                             ToolTip.visible: hovered; ToolTip.text: "Show in Folder" }
+                        ToolButton {
+                            visible: dlRow.finished
+                            implicitWidth: 30
+                            implicitHeight: 30
+                            onClicked: window.removeDownloadRow(dlRow.downloadId)
+                            contentItem: Text { text: "✕"; color: "#FFF3E6"; font.pixelSize: 13; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                            background: Rectangle { radius: 15; color: parent.hovered ? accentSurfaceHover : "transparent" }
+                            ToolTip.visible: hovered
+                            ToolTip.text: "Remove from the list (the file stays)"
+                        }
                     }
                 }
             }

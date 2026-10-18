@@ -18,7 +18,7 @@ from pathlib import Path
 
 # Reyva's own version, shown in Settings. Bump it with every release (and the
 # Flatpak metainfo <release>); the .deb/Windows package numbers are separate.
-APP_VERSION = "0.1.9"
+APP_VERSION = "0.1.10"
 
 IS_WINDOWS = sys.platform == "win32"
 IS_FLATPAK = os.path.exists("/.flatpak-info")
@@ -1186,11 +1186,14 @@ class BrowserBackend(QObject):
         save_low_memory_mode(self._low_memory_mode)
         self.lowMemoryChanged.emit()
 
-    # Downloads can go somewhere other than Downloads. The Flatpak can only
-    # write to Downloads by itself, and Chromium writes a download to a
-    # temporary name next to it, so the file is always downloaded there and
-    # then moved to the place picked in the save dialog (the file-chooser
-    # portal in the Flatpak grants write access to exactly that file).
+    # Downloads can go somewhere other than Downloads. A download goes
+    # straight into the picked folder whenever Reyva can write there
+    # (Downloads, and in the Flatpak also /run/media and /media: USB sticks
+    # and other partitions). Downloading to Downloads first and moving it
+    # afterwards filled a 20 GB system drive with two PS2 games, so that is
+    # only the fallback for a folder the sandbox can't reach (the portal
+    # then grants write access to exactly the picked file, and Chromium
+    # can't create its temporary .download file next to it).
     @Property(bool, notify=askDownloadLocationChanged)
     def askDownloadLocation(self) -> bool:
         return self._ask_download_location
@@ -1209,12 +1212,29 @@ class BrowserBackend(QObject):
         dialog.setWindowTitle("Save download as")
         dialog.setAcceptMode(QFileDialog.AcceptSave)
         dialog.setDirectory(str(downloads if downloads.is_dir() else Path.home()))
-        dialog.selectFile(name)
+        dialog.selectFile(safe_file_name(name))
         # Same as choose_open_file: in Flatpak the native dialog is the portal.
         dialog.setOption(QFileDialog.DontUseNativeDialog, not IS_FLATPAK)
         if not dialog.exec() or not dialog.selectedFiles():
             return ""
-        return dialog.selectedFiles()[0]
+        picked = dialog.selectedFiles()[0]
+        picked = os.path.join(os.path.dirname(picked), safe_file_name(os.path.basename(picked)))
+        # In the Flatpak the portal hands back /run/user/<uid>/doc/<id>/<name>
+        # even for a folder Reyva may write to (a USB stick under /run/media).
+        # Use the real path when its folder is writable here, so the download
+        # can go straight there (see canDownloadInto).
+        real = host_path(picked)
+        if real != picked and os.access(os.path.dirname(real), os.W_OK):
+            return real
+        return picked
+
+    @Slot(str, result=bool)
+    def canDownloadInto(self, target: str) -> bool:
+        """True when Chromium can write straight into the picked file's folder."""
+        folder = os.path.dirname(target)
+        if re.match(r"^/run/user/\d+/doc/", folder):
+            return False
+        return os.path.isdir(folder) and os.access(folder, os.W_OK)
 
     @Slot(int, str, str)
     def moveDownload(self, download_id: int, source: str, target: str) -> None:
@@ -2023,6 +2043,16 @@ LOOK_SHADES = {
 }
 # Copper's accent, which the targets were measured on.
 LOOK_SHADES_BASE_RGB = (201, 121, 50)
+
+
+def safe_file_name(name: str) -> str:
+    """A file name every drive accepts. USB sticks and SD cards (exFAT/FAT)
+    and NTFS refuse : * ? " < > | \\ -- a game called "Need for Speed: Most
+    Wanted" saved to a Ventoy stick sat at 0 B forever (Chromium gets
+    EINVAL creating the file and never reports it)."""
+    name = name.replace(": ", " - ").replace(":", "-")
+    name = re.sub(r'[*?"<>|\\]', "_", name).rstrip(" .")
+    return name or "download"
 
 
 def host_path(path: str) -> str:
