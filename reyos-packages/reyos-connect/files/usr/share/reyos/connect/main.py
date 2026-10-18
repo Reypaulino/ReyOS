@@ -95,6 +95,7 @@ class Backend(QObject):
     phoneCapabilitiesReady = Signal(str, "QVariantMap")  # mac, {contacts, messages, calls}
     connectionDiagnosticsReady = Signal("QVariantList")
     remoteCommandsReady = Signal("QVariantList")
+    remoteDesktopConnectFinished = Signal(bool, str)
 
     def __init__(self):
         super().__init__()
@@ -455,6 +456,26 @@ class Backend(QObject):
             ok, err = remote_provider.stop_remote_desktop()
             return ok, ("Remote Desktop session stopped." if ok else f"Failed to stop: {err}")
         self._run(task)
+
+    @Slot(result=bool)
+    def remoteDesktopClientAvailable(self):
+        return remote_provider.remote_desktop_client_available()
+
+    @Slot(result="QVariantList")
+    def recentRemoteDesktops(self):
+        return remote_provider.load_recent_remote_desktops()
+
+    @Slot(str, str, int, str)
+    def forgetRemoteDesktop(self, protocol, host, port, user):
+        remote_provider.forget_remote_desktop(protocol, host, port, user)
+
+    @Slot(str, str, int, str)
+    def connectRemoteDesktop(self, protocol, host, port, user):
+        worker = ActionWorker(lambda: remote_provider.connect_remote_desktop(protocol, host, port, user))
+        worker.finished_ok.connect(self.remoteDesktopConnectFinished.emit)
+        worker.finished_ok.connect(lambda *_: self._workers.remove(worker) if worker in self._workers else None)
+        self._workers.append(worker)
+        worker.start()
 
     # -- Bluetooth ----------------------------------------------------------
 

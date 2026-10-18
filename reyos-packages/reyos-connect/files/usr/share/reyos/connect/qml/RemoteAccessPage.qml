@@ -13,10 +13,26 @@ Kirigami.ScrollablePage {
     property bool testReady: false
     property bool testRun: false
     property bool busy: false
+    property bool rdBusy: false
+    property bool rdClient: false
+    property var rdRecent: []
+    property string rdMessage: ""
+    property bool rdOk: false
+
+    function refreshRemoteDesktop() {
+        rdClient = backend.remoteDesktopClientAvailable()
+        rdRecent = backend.recentRemoteDesktops()
+    }
+
+    function connectTo(protocol, host, port, user) {
+        rdBusy = true
+        rdMessage = ""
+        backend.connectRemoteDesktop(protocol, host, port, user)
+    }
 
     function refresh() { busy = true; backend.refreshVpnStatus() }
 
-    Component.onCompleted: refresh()
+    Component.onCompleted: { refresh(); refreshRemoteDesktop() }
 
     Connections {
         target: backend
@@ -38,12 +54,18 @@ Kirigami.ScrollablePage {
             testRun = true
         }
         function onActionFinished(ok, message) { busy = false; statusLabel.text = message; refresh() }
+        function onRemoteDesktopConnectFinished(ok, message) {
+            rdBusy = false
+            rdOk = ok
+            rdMessage = message
+            refreshRemoteDesktop()
+        }
     }
 
     actions: [
         Kirigami.Action { text: "Close"; icon.name: "window-close"; onTriggered: applicationWindow().pageStack.pop() },
         Kirigami.Action { text: "Menu"; icon.name: "application-menu"; onTriggered: applicationWindow().globalDrawer.open() },
-        Kirigami.Action { text: "Refresh"; icon.name: "view-refresh"; onTriggered: refresh() }
+        Kirigami.Action { text: "Refresh"; icon.name: "view-refresh"; onTriggered: { refresh(); refreshRemoteDesktop() } }
     ]
 
     ColumnLayout {
@@ -209,6 +231,134 @@ Kirigami.ScrollablePage {
                     font.bold: true
                     color: testReady ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.neutralTextColor
                     text: testReady ? "Remote access ready." : "Not ready yet -- see checks above."
+                }
+            }
+        }
+
+        Kirigami.AbstractCard {
+            Layout.fillWidth: true
+            padding: Kirigami.Units.gridUnit
+            contentItem: ColumnLayout {
+                spacing: Kirigami.Units.largeSpacing
+
+                Kirigami.Heading { text: "Connect to a Computer"; level: 3 }
+                Controls.Label {
+                    Layout.fillWidth: true
+                    wrapMode: Text.Wrap
+                    opacity: 0.7
+                    text: "See and control another computer's desktop: a Windows PC (RDP), another ReyOS or KDE computer with Remote Desktop turned on (RDP), or anything running a VNC server. Away from home, connect your VPN first."
+                }
+                Kirigami.InlineMessage {
+                    Layout.fillWidth: true
+                    visible: !rdClient
+                    type: Kirigami.MessageType.Warning
+                    text: "The remote desktop viewer (KRDC) isn't installed yet. Run Control Center → Updates → Update everything."
+                }
+
+                GridLayout {
+                    Layout.fillWidth: true
+                    columns: 2
+                    columnSpacing: Kirigami.Units.largeSpacing
+                    rowSpacing: Kirigami.Units.smallSpacing
+
+                    Controls.Label { text: "Type" }
+                    Controls.ComboBox {
+                        id: rdProtocol
+                        Layout.fillWidth: true
+                        model: [{text: "RDP (Windows, KDE/ReyOS)", value: "rdp"}, {text: "VNC", value: "vnc"}]
+                        textRole: "text"
+                        valueRole: "value"
+                    }
+                    Controls.Label { text: "Address" }
+                    Controls.TextField {
+                        id: rdHost
+                        Layout.fillWidth: true
+                        placeholderText: "e.g. my-pc or 192.168.1.20"
+                        inputMethodHints: Qt.ImhNoAutoUppercase | Qt.ImhUrlCharactersOnly
+                        onAccepted: rdConnectButton.clicked()
+                    }
+                    Controls.Label { text: "Port" }
+                    Controls.SpinBox {
+                        id: rdPort
+                        from: 1; to: 65535
+                        editable: true
+                        value: rdProtocol.currentValue === "vnc" ? 5900 : 3389
+                        textFromValue: function(v) { return String(v) }
+                    }
+                    Controls.Label { text: "Username" }
+                    Controls.TextField {
+                        id: rdUser
+                        Layout.fillWidth: true
+                        placeholderText: "optional"
+                        inputMethodHints: Qt.ImhNoAutoUppercase
+                    }
+                }
+
+                RowLayout {
+                    Controls.Button {
+                        id: rdConnectButton
+                        text: "Connect"
+                        icon.name: "krdc"
+                        enabled: rdClient && !rdBusy && rdHost.text.trim().length > 0
+                        onClicked: connectTo(rdProtocol.currentValue, rdHost.text.trim(), rdPort.value, rdUser.text.trim())
+                    }
+                    Controls.BusyIndicator { running: rdBusy; visible: rdBusy; implicitHeight: rdConnectButton.implicitHeight }
+                }
+                Controls.Label {
+                    Layout.fillWidth: true
+                    visible: rdMessage.length > 0
+                    wrapMode: Text.Wrap
+                    color: rdOk ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.negativeTextColor
+                    text: rdMessage
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    visible: rdRecent.length > 0
+                    spacing: Kirigami.Units.smallSpacing
+                    Kirigami.Heading { text: "Recent"; level: 4 }
+                    Repeater {
+                        model: rdRecent
+                        delegate: RowLayout {
+                            Layout.fillWidth: true
+                            Controls.Label {
+                                Layout.fillWidth: true
+                                elide: Text.ElideRight
+                                text: (modelData.user ? modelData.user + "@" : "") + modelData.host + "  ·  " + modelData.protocol.toUpperCase() + " " + modelData.port
+                            }
+                            Controls.Button {
+                                text: "Connect"
+                                enabled: rdClient && !rdBusy
+                                onClicked: connectTo(modelData.protocol, modelData.host, modelData.port, modelData.user || "")
+                            }
+                            Controls.ToolButton {
+                                icon.name: "edit-delete-remove"
+                                Controls.ToolTip.text: "Forget"
+                                Controls.ToolTip.visible: hovered
+                                onClicked: { backend.forgetRemoteDesktop(modelData.protocol, modelData.host, modelData.port, modelData.user || ""); refreshRemoteDesktop() }
+                            }
+                        }
+                    }
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    visible: peerList.onlinePeers.length > 0
+                    spacing: Kirigami.Units.smallSpacing
+                    property var onlinePeers: (vpnInfo.tailscale && vpnInfo.tailscale.peers ? vpnInfo.tailscale.peers : []).filter(function(p) { return p.online && p.ip && p.os !== "iOS" && p.os !== "android" })
+                    id: peerList
+                    Kirigami.Heading { text: "Your Tailscale computers"; level: 4 }
+                    Repeater {
+                        model: peerList.onlinePeers
+                        delegate: RowLayout {
+                            Layout.fillWidth: true
+                            Controls.Label { Layout.fillWidth: true; elide: Text.ElideRight; text: modelData.name + " (" + modelData.ip + ")" }
+                            Controls.Button {
+                                text: "Use"
+                                onClicked: { rdHost.text = modelData.ip; rdHost.forceActiveFocus() }
+                            }
+                        }
+                    }
                 }
             }
         }

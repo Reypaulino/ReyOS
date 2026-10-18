@@ -208,3 +208,108 @@ def write_enabled_commands(device_id, enabled_ids):
     settings.setValue("commands", json.dumps(payload))
     settings.sync()
     return settings.status() == QSettings.Status.NoError
+
+
+# -- Remote Desktop client (connect to another computer) ---------------------
+#
+# The viewer is KDE's own KRDC; ReyOS Connect only validates the target and
+# hands KRDC a single URL argument (no shell), so nothing typed here can run
+# as a command. Passwords are never taken here -- KRDC asks for them itself.
+
+import json
+import re
+
+CLIENT_PROTOCOLS = {"rdp": 3389, "vnc": 5900}
+_HOST_RE = re.compile(r"^(?=.{1,253}$)[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$")
+_USER_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
+_RECENT_PATH = Path.home() / ".config" / "reyos-connect" / "remote-desktops.json"
+_RECENT_MAX = 8
+
+
+def remote_desktop_client_available():
+    return shutil.which("krdc") is not None
+
+
+def build_remote_desktop_url(protocol, host, port=0, user=""):
+    """Returns (url, error). Accepts hostnames, IPv4 and bare IPv6 addresses."""
+    protocol = (protocol or "").lower()
+    host = (host or "").strip()
+    user = (user or "").strip()
+    if protocol not in CLIENT_PROTOCOLS:
+        return "", "Choose RDP or VNC."
+    if not host:
+        return "", "Enter the computer's address."
+    if ":" in host:
+        try:
+            socket.inet_pton(socket.AF_INET6, host)
+        except OSError:
+            return "", "Put the port in the Port box, not in the address."
+        host_part = f"[{host}]"
+    elif _HOST_RE.match(host):
+        host_part = host
+    else:
+        return "", "That address isn't valid (use a name like my-pc or an IP like 100.64.0.2)."
+    try:
+        port = int(port) if port else CLIENT_PROTOCOLS[protocol]
+    except (TypeError, ValueError):
+        return "", "The port must be a number."
+    if not 1 <= port <= 65535:
+        return "", "The port must be between 1 and 65535."
+    if user and not _USER_RE.match(user):
+        return "", "The username can only use letters, numbers, dot, dash and underscore."
+    user_part = f"{user}@" if user else ""
+    return f"{protocol}://{user_part}{host_part}:{port}", ""
+
+
+def load_recent_remote_desktops():
+    try:
+        data = json.loads(_RECENT_PATH.read_text())
+    except (OSError, ValueError):
+        return []
+    out = []
+    for entry in data if isinstance(data, list) else []:
+        if isinstance(entry, dict) and build_remote_desktop_url(
+                entry.get("protocol"), entry.get("host"), entry.get("port"), entry.get("user"))[0]:
+            out.append({k: entry.get(k) for k in ("protocol", "host", "port", "user")})
+    return out[:_RECENT_MAX]
+
+
+def _remember_remote_desktop(protocol, host, port, user):
+    entry = {"protocol": protocol, "host": host, "port": int(port), "user": user}
+    recent = [e for e in load_recent_remote_desktops()
+              if (e["protocol"], e["host"], e["port"], e["user"]) != tuple(entry.values())]
+    recent.insert(0, entry)
+    _RECENT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    _RECENT_PATH.write_text(json.dumps(recent[:_RECENT_MAX], indent=1))
+
+
+def forget_remote_desktop(protocol, host, port, user):
+    recent = [e for e in load_recent_remote_desktops()
+              if (e["protocol"], e["host"], e["port"], e["user"]) != (protocol, host, int(port), user)]
+    _RECENT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    _RECENT_PATH.write_text(json.dumps(recent, indent=1))
+
+
+def connect_remote_desktop(protocol, host, port=0, user=""):
+    """Checks the target answers, then opens it in KRDC. Returns (ok, message)."""
+    url, err = build_remote_desktop_url(protocol, host, port, user)
+    if err:
+        return False, err
+    if not remote_desktop_client_available():
+        return False, "The remote desktop viewer (KRDC) isn't installed. Run Control Center → Updates → Update everything."
+    protocol = protocol.lower()
+    host = host.strip()
+    port = int(port) if port else CLIENT_PROTOCOLS[protocol]
+    try:
+        with socket.create_connection((host, port), timeout=4):
+            pass
+    except socket.gaierror:
+        return False, f"Can't find a computer called {host}. Check the name, or connect your VPN first."
+    except OSError:
+        return False, (f"{host} didn't answer on port {port}. Make sure Remote Desktop is turned on there "
+                       "and that you're on the same network or VPN.")
+    from PySide6.QtCore import QProcess
+    if not QProcess.startDetached("krdc", [url]):
+        return False, "Couldn't start the remote desktop viewer."
+    _remember_remote_desktop(protocol, host, port, (user or "").strip())
+    return True, f"Opening {host} ({protocol.upper()}). The viewer will ask for the password."

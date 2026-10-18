@@ -2,6 +2,11 @@
 
 Real bugs found and fixed, with root cause. Newest first. See `bugs.md` for what's still open.
 
+## 2026-10-18 — ReyOS Connect can open other computers' desktops (reyos-connect 1.0.0-18); README refresh
+
+- **Connect to a Computer** (Remote Access page): RDP/VNC client through KDE's KRDC, with address validation, a reachability check, Recent targets and Tailscale peers. `krdc`, `freerdp`, `libvncserver` are now dependencies. Details and test results: `docs/connect.md` → "Connect to a Computer".
+- **README** brought up to date: Reyva's current features and platforms, Connect, rollback (btrfs snapshots + LTS kernel, next ISO), X11 default, no-partial-updates, repo layout (`tools/`, `website/`).
+
 ## 2026-10-18 — Phase 1b: btrfs + automatic snapshots for new installs (reyos-base 1.1.0-9, reyos-boot 1.0.0-2, reyos-calamares 1.3.6-54, control-center-gui 1.0.0-128)
 
 User decision: snapshots on by default, but small (ReyOS partitions are small): keep 2, space guard, trimmed package cache.
