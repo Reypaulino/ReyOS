@@ -1,6 +1,10 @@
 # Rules now ship in /etc/sudoers.d/90-reyos; drop the wildcard file Calamares used to write (RB-1).
 post_install() {
     rm -f /etc/sudoers.d/99-reyos-system-menu
+    # Automatic snapshots on a btrfs install whose Timeshift was never set up
+    # (does nothing on ext4 or when Timeshift is already configured).
+    /usr/share/reyos/bin/reyos-snapshots setup || true
+    systemctl enable reyos-snapshots-sync.service >/dev/null 2>&1 || true
 }
 
 post_upgrade() {

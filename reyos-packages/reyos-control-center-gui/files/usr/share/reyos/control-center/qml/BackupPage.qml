@@ -4,13 +4,39 @@ import QtQuick.Controls as Controls
 import org.kde.kirigami as Kirigami
 
 Kirigami.ScrollablePage {
+    id: page
     title: "Backup Center"
+
+    // Automatic snapshots on btrfs installs (reyos-snapshots).
+    property var snapshots: backend.snapshotStatus()
 
     ColumnLayout {
         x: Kirigami.Units.gridUnit
         y: Kirigami.Units.gridUnit
         width: parent.width - Kirigami.Units.gridUnit * 2
         spacing: Kirigami.Units.gridUnit
+
+        Kirigami.InlineMessage {
+            Layout.fillWidth: true
+            visible: page.snapshots.bootedFrom !== ""
+            type: Kirigami.MessageType.Warning
+            text: "ReyOS is running from the snapshot taken before the update on " + page.snapshots.bootedFrom + ". To keep this version, open Timeshift and restore this snapshot. To go back to your current system, just restart."
+        }
+
+        Kirigami.AbstractCard {
+            Layout.fillWidth: true
+            visible: page.snapshots.on
+            padding: Kirigami.Units.gridUnit
+            contentItem: ColumnLayout {
+                spacing: Kirigami.Units.largeSpacing
+                Kirigami.Heading { text: "Automatic snapshots are on"; level: 2 }
+                Controls.Label {
+                    Layout.fillWidth: true
+                    wrapMode: Text.WordWrap
+                    text: "Before every system update ReyOS saves a snapshot of your system files and keeps the last " + page.snapshots.keep + ". They take little space, and older ones are removed first when the disk gets full. If an update breaks something, restart and pick \"ReyOS snapshot (before update, …)\" in the boot menu, or restore one in Timeshift."
+                }
+            }
+        }
 
         Kirigami.AbstractCard {
             Layout.fillWidth: true
@@ -34,6 +60,8 @@ Kirigami.ScrollablePage {
 
         Kirigami.AbstractCard {
             Layout.fillWidth: true
+            // Timeshift is already set up when automatic snapshots are on.
+            visible: !page.snapshots.on
             padding: Kirigami.Units.gridUnit
             contentItem: ColumnLayout {
                 spacing: Kirigami.Units.smallSpacing

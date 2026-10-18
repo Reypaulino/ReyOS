@@ -861,6 +861,24 @@ class Backend(QObject):
         except FileNotFoundError:
             self.actionFinished.emit(False, "Timeshift is not installed yet. Reboot into the next ReyOS ISO build.")
 
+    @Slot(result="QVariantMap")
+    def snapshotStatus(self):
+        """Automatic btrfs snapshots (reyos-base's reyos-snapshots): on/off,
+        how many are kept, and whether this boot runs from one."""
+        try:
+            out = subprocess.run(["/usr/share/reyos/bin/reyos-snapshots", "status"],
+                                 capture_output=True, text=True, timeout=10).stdout
+            status = json.loads(out.strip().splitlines()[-1])
+        except (OSError, ValueError, IndexError, subprocess.TimeoutExpired):
+            return {"on": False, "keep": 0, "bootedFrom": ""}
+        when = ""
+        if status.get("bootedFrom"):
+            try:
+                when = time.strftime("%B %-d at %H:%M", time.strptime(status["bootedFrom"], "%Y-%m-%d_%H-%M-%S"))
+            except ValueError:
+                when = status["bootedFrom"]
+        return {"on": bool(status.get("on")), "keep": int(status.get("keep", 0)), "bootedFrom": when}
+
     @Slot(bool)
     def setStatsActive(self, active):
         # Counted, not a flag: when one stats page replaces another, the new

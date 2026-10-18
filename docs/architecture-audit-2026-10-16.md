@@ -51,7 +51,7 @@ Shipped as control-center-gui 126, welcome 33, update-channel 2026.10.10-2, cont
 
 ### Phase 1 — Rollback that works by default
 
-**Phase 1a DONE 2026-10-16** (`fixes.md`): `reyos-boot` — LTS backup kernel and a Limine menu kept in step with the installed kernels (normal, LTS, fallback), on existing installs through a normal update. **Phase 1b next:** btrfs + automatic snapshots for new installs (decided: btrfs), snapshot boot entries, exercising the ISO "ReyOS Recovery" entry; needs an ISO build and install tests. Existing ext4 installs don't get automatic snapshots (a near-full disk like the laptop's would fill up); Control Center will offer them with a space check.
+**Phase 1a DONE 2026-10-16** (`fixes.md`): `reyos-boot` — LTS backup kernel and a Limine menu kept in step with the installed kernels (normal, LTS, fallback), on existing installs through a normal update. **Phase 1b DONE 2026-10-18** (`fixes.md`): btrfs default, Timeshift btrfs snapshots before updates (2 kept, space guard, cache trim), snapshot boot entries; VM-tested end to end, not yet in a published ISO. Still open: exercising the ISO "ReyOS Recovery" entry. Existing ext4 installs don't get automatic snapshots (a near-full disk like the laptop's would fill up); Control Center will offer them with a space check.
 
 
 - **Snapshots on by default.** Welcome (or first boot) configures Timeshift on the system disk with a small retention (e.g. 3 update snapshots), or, for new installs, switch the default file system to **btrfs** with Snapper/Timeshift-btrfs snapshots (instant, cheap) — design decision below. Keep ext4 installs supported with rsync snapshots and a disk-space check.

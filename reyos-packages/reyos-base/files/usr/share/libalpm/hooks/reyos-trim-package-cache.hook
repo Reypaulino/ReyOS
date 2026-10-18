@@ -1,0 +1,14 @@
+# With automatic btrfs snapshots on, the snapshots hold the previous package
+# versions, so the cache only keeps the installed ones (reyos-snapshots
+# does nothing on installs without them).
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Operation = Remove
+Type = Package
+Target = *
+
+[Action]
+Description = Trimming the package cache...
+When = PostTransaction
+Exec = /usr/share/reyos/bin/reyos-snapshots trim-cache

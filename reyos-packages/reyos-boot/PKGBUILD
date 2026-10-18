@@ -1,8 +1,8 @@
 # Maintainer: Rey Paulino
 pkgname=reyos-boot
 pkgver=1.0.0
-pkgrel=1
-pkgdesc="ReyOS boot safety: LTS backup kernel and a Limine boot menu kept in step with the installed kernels"
+pkgrel=2
+pkgdesc="ReyOS boot safety: LTS backup kernel and a Limine boot menu kept in step with the installed kernels and automatic snapshots"
 arch=('any')
 license=('MIT')
 depends=('linux-lts' 'python' 'mkinitcpio')

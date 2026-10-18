@@ -1,0 +1,11 @@
+[Unit]
+Description=Remove boot entries of deleted ReyOS snapshots
+ConditionPathExists=/etc/timeshift/timeshift.json
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/share/reyos/bin/reyos-snapshots sync
+
+[Install]
+WantedBy=multi-user.target

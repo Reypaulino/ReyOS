@@ -1,0 +1,366 @@
+#!/usr/bin/python3 -I
+"""ReyOS automatic snapshots on btrfs installs.
+
+New installs use btrfs with the @ / @home subvolume layout. This helper
+points Timeshift at the system disk in btrfs mode and takes one snapshot
+before every system update, kept small because ReyOS partitions are small:
+
+- Only the last KEEP automatic snapshots stay (the ones this helper made,
+  recognized by their comment); snapshots a person makes in Timeshift are
+  never touched.
+- Space guard: when the system disk has less than MIN_FREE free or is more
+  than MAX_USED full, automatic snapshots are deleted oldest first, then
+  the "Before restoring" snapshot Timeshift keeps of the system it replaced
+  on a restore; if that isn't enough the update runs without a snapshot. A snapshot never blocks
+  or fails an update.
+- Boot menu: the kernel and initramfs live on the EFI partition, which no
+  snapshot contains, so booting an old snapshot with a newer kernel would
+  find no matching modules. The running kernel's files are copied to
+  <ESP>/reyos-snapshots/<name>/ (when the EFI partition has room) and
+  reyos-boot's reyos-limine-entries adds a boot entry for each.
+- With snapshots on, the package cache keeps only the installed version of
+  each package: the snapshots hold the previous ones.
+
+Commands:
+  setup        configure Timeshift (installer; reyos-base's upgrade on a btrfs
+               install where Timeshift was never set up)
+  pre-update   pacman PreTransaction hook
+  trim-cache   pacman PostTransaction hook
+  sync         at boot: drop boot entries of deleted snapshots
+  status       one line of JSON, for Control Center
+
+Ext4 installs, and Timeshift set up by hand in rsync mode, keep the old
+behavior (one snapshot before each update, Timeshift's own retention).
+"""
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+KEEP = 2
+MIN_FREE = 5 * 1024 ** 3
+MAX_USED = 0.85
+COMMENT = "Automatic snapshot before system update"
+PRE_RESTORE = "Before restoring"  # Timeshift's comment on the replaced system
+CONFIG = Path("/etc/timeshift/timeshift.json")
+FSTAB = Path("/etc/fstab")
+LIMINE_DEFAULTS = Path("/etc/default/limine")
+KERNEL = ("vmlinuz-linux", "initramfs-linux.img")
+ESP_MARGIN = 64 * 1024 ** 2
+TOP = Path("/run/reyos-snapshots/top")
+SNAPSHOT_CMDLINE = re.compile(r"rootflags=\S*subvol=/?timeshift-btrfs/snapshots/([^/,\s]+)/@")
+
+
+def log(msg):
+    print(f"reyos-snapshots: {msg}", flush=True)
+
+
+def run(cmd, **kw):
+    return subprocess.run(cmd, capture_output=True, text=True, **kw)
+
+
+def root_btrfs():
+    """(uuid, subvol) of / from fstab when it's btrfs, else None."""
+    try:
+        for line in FSTAB.read_text().splitlines():
+            f = line.split()
+            if len(f) >= 4 and not f[0].startswith("#") and f[1] == "/" and f[2] == "btrfs":
+                m = re.search(r"(?:^|,)subvol=/?([^,]+)", f[3])
+                uuid = f[0][5:] if f[0].startswith("UUID=") else ""
+                return uuid, (m.group(1) if m else "")
+    except OSError:
+        pass
+    return None
+
+
+def config():
+    try:
+        return json.loads(CONFIG.read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def configured(cfg):
+    return bool(cfg.get("backup_device_uuid"))
+
+
+def btrfs_on(cfg):
+    return configured(cfg) and str(cfg.get("btrfs_mode")).lower() == "true"
+
+
+def booted_from_snapshot():
+    try:
+        m = SNAPSHOT_CMDLINE.search(Path("/proc/cmdline").read_text())
+        return m.group(1) if m else ""
+    except OSError:
+        return ""
+
+
+def esp_path():
+    try:
+        m = re.search(r'^ESP_PATH="?([^"\n]+)"?', LIMINE_DEFAULTS.read_text(), re.M)
+        if m:
+            return Path(m.group(1))
+    except OSError:
+        pass
+    return Path("/boot")
+
+
+def setup():
+    rb = root_btrfs()
+    if not rb or rb[1] != "@" or not rb[0]:
+        log("system disk isn't btrfs with the @ layout; automatic snapshots stay off")
+        return 0
+    if configured(config()):
+        log("Timeshift is already set up; leaving it as it is")
+        return 0
+    cfg = {
+        "backup_device_uuid": rb[0],
+        "parent_device_uuid": "",
+        "do_first_run": "false",
+        "btrfs_mode": "true",
+        "include_btrfs_home_for_backup": "false",
+        "include_btrfs_home_for_restore": "false",
+        "stop_cron_emails": "true",
+        "schedule_monthly": "false",
+        "schedule_weekly": "false",
+        "schedule_daily": "false",
+        "schedule_hourly": "false",
+        "schedule_boot": "false",
+        "count_monthly": "2",
+        "count_weekly": "3",
+        "count_daily": "5",
+        "count_hourly": "6",
+        "count_boot": "5",
+        "date_format": "%Y-%m-%d %H:%M:%S",
+        "exclude": [],
+        "exclude-apps": [],
+    }
+    CONFIG.parent.mkdir(parents=True, exist_ok=True)
+    tmp = CONFIG.with_suffix(".reyos-new")
+    tmp.write_text(json.dumps(cfg, indent=2) + "\n")
+    os.replace(tmp, CONFIG)
+    log(f"automatic snapshots on (btrfs, {rb[0]}, last {KEEP} kept)")
+    return 0
+
+
+class TopLevel:
+    """The btrfs top level (subvolid 5), where Timeshift keeps its snapshots."""
+
+    def __init__(self, uuid):
+        self.uuid = uuid
+        self.mounted = False
+
+    def __enter__(self):
+        TOP.mkdir(parents=True, exist_ok=True)
+        if os.path.ismount(TOP):
+            run(["umount", str(TOP)])
+        r = run(["mount", "-t", "btrfs", "-o", "subvolid=5", f"UUID={self.uuid}", str(TOP)])
+        self.mounted = r.returncode == 0
+        if not self.mounted:
+            log(f"couldn't mount the btrfs top level: {r.stderr.strip()}")
+        return self
+
+    def __exit__(self, *exc):
+        if self.mounted:
+            run(["umount", str(TOP)])
+
+    def snapshots(self):
+        """[(name, comment)] oldest first."""
+        out = []
+        base = TOP / "timeshift-btrfs" / "snapshots"
+        if not self.mounted or not base.is_dir():
+            return out
+        for d in sorted(base.iterdir()):
+            if not (d / "@").is_dir():
+                continue
+            comment = ""
+            try:
+                comment = json.loads((d / "info.json").read_text()).get("comments", "")
+            except (OSError, ValueError):
+                pass
+            out.append((d.name, comment))
+        return out
+
+
+def disk_ok():
+    st = os.statvfs("/")
+    free = st.f_bavail * st.f_frsize
+    total = st.f_blocks * st.f_frsize
+    used = 1 - (st.f_bfree / st.f_blocks) if st.f_blocks else 0
+    return free >= MIN_FREE and used <= MAX_USED, free, total, used
+
+
+def delete_snapshot(name):
+    r = run(["timeshift", "--delete", "--snapshot", name, "--scripted"], timeout=600)
+    if r.returncode != 0:
+        log(f"couldn't delete snapshot {name}: {r.stdout.strip()[-300:]} {r.stderr.strip()[-300:]}")
+        return False
+    log(f"deleted snapshot {name}")
+    return True
+
+
+def sync_boot_entries(existing):
+    """Removes kernel copies of snapshots that no longer exist, then lets
+    reyos-boot rewrite the Limine menu."""
+    base = esp_path() / "reyos-snapshots"
+    changed = False
+    if base.is_dir():
+        for d in base.iterdir():
+            if d.name not in existing:
+                shutil.rmtree(d, ignore_errors=True)
+                changed = True
+    entries = Path("/usr/share/reyos/bin/reyos-limine-entries")
+    if entries.exists():
+        r = run([str(entries)])
+        if r.stdout.strip():
+            print(r.stdout.strip())
+    return changed
+
+
+def copy_kernel(name):
+    esp = esp_path()
+    src = [esp / f for f in KERNEL]
+    if not all(p.is_file() for p in src):
+        log("no linux kernel on the EFI partition; snapshot has no boot entry")
+        return
+    need = sum(p.stat().st_size for p in src) + ESP_MARGIN
+    st = os.statvfs(esp)
+    if st.f_bavail * st.f_frsize < need:
+        log("EFI partition is nearly full; snapshot has no boot entry (restore it with Timeshift)")
+        return
+    dst = esp / "reyos-snapshots" / name
+    tmp = esp / "reyos-snapshots" / f".{name}.part"
+    shutil.rmtree(tmp, ignore_errors=True)
+    tmp.mkdir(parents=True)
+    for p in src:
+        shutil.copyfile(p, tmp / p.name)
+    when = time.strftime("%b %-d %H:%M", time.strptime(name, "%Y-%m-%d_%H-%M-%S"))
+    (tmp / "info.json").write_text(json.dumps({
+        "name": name,
+        "subvol": f"/timeshift-btrfs/snapshots/{name}/@",
+        "title": f"ReyOS snapshot (before update, {when})",
+    }) + "\n")
+    shutil.rmtree(dst, ignore_errors=True)
+    os.replace(tmp, dst)
+    os.sync()
+
+
+def pre_update():
+    cfg = config()
+    if not configured(cfg):
+        return 0
+    if not btrfs_on(cfg):
+        # Timeshift set up by hand (rsync): as before.
+        run(["timeshift", "--create", "--comments", COMMENT, "--tags", "D", "--scripted"], timeout=3600)
+        return 0
+    if booted_from_snapshot():
+        log("running from a snapshot; no new snapshot (restore it with Timeshift or restart into ReyOS)")
+        return 0
+    with TopLevel(cfg["backup_device_uuid"]) as top:
+        if not top.mounted:
+            return 0
+        auto = [n for n, c in top.snapshots() if c == COMMENT]
+        # Make room for the new one: keep KEEP - 1, then free space if short.
+        while len(auto) > KEEP - 1 and delete_snapshot(auto[0]):
+            auto.pop(0)
+        ok, free, total, used = disk_ok()
+        spare = auto + [n for n, c in top.snapshots() if c.startswith(PRE_RESTORE)]
+        while not ok and spare and delete_snapshot(spare[0]):
+            spare.pop(0)
+            ok, free, total, used = disk_ok()
+        if not ok:
+            log(f"only {free / 1024 ** 3:.1f} GB free ({used:.0%} used); updating without a snapshot")
+            sync_boot_entries({n for n, _ in top.snapshots()})
+            return 0
+        before = {n for n, _ in top.snapshots()}
+        r = run(["timeshift", "--create", "--comments", COMMENT, "--tags", "O", "--scripted"], timeout=3600)
+        after = {n for n, _ in top.snapshots()}
+        new = sorted(after - before)
+        if r.returncode != 0 or not new:
+            log(f"snapshot failed; updating anyway: {r.stdout.strip()[-300:]} {r.stderr.strip()[-300:]}")
+        else:
+            log(f"snapshot {new[-1]} taken")
+            # Taken while pacman holds its lock: without this, pacman refuses
+            # to run after booting or restoring the snapshot ("could not lock
+            # database").
+            lock = TOP / "timeshift-btrfs" / "snapshots" / new[-1] / "@" / "var/lib/pacman/db.lck"
+            try:
+                lock.unlink()
+            except FileNotFoundError:
+                pass
+            except OSError as e:
+                log(f"couldn't remove pacman's lock from the snapshot: {e}")
+            try:
+                copy_kernel(new[-1])
+            except OSError as e:
+                log(f"couldn't copy the kernel for the boot entry: {e}")
+        sync_boot_entries(after)
+    return 0
+
+
+def trim_cache():
+    if not btrfs_on(config()) or not shutil.which("paccache"):
+        return 0
+    # Installed version only; nothing of uninstalled packages.
+    run(["paccache", "-rqk1"])
+    run(["paccache", "-rquk0"])
+    return 0
+
+
+def forget_last_boot_entry():
+    """Limine's remember_last_entry would keep starting the snapshot on every
+    restart. A snapshot is for looking around or restoring with Timeshift;
+    the next restart goes back to the normal ReyOS entry."""
+    for var in Path("/sys/firmware/efi/efivars").glob("LimineLastBootedEntry-*"):
+        run(["chattr", "-i", str(var)])
+        try:
+            var.unlink()
+            log("started from a snapshot; the next restart goes back to ReyOS")
+        except OSError as e:
+            log(f"couldn't reset Limine's last entry: {e}")
+
+
+def sync():
+    cfg = config()
+    if not btrfs_on(cfg):
+        return 0
+    if booted_from_snapshot():
+        forget_last_boot_entry()
+        return 0
+    with TopLevel(cfg["backup_device_uuid"]) as top:
+        if top.mounted:
+            sync_boot_entries({n for n, _ in top.snapshots()})
+    return 0
+
+
+def status():
+    cfg = config()
+    out = {"on": btrfs_on(cfg), "keep": KEEP, "snapshots": [], "bootedFrom": booted_from_snapshot()}
+    if out["on"] and os.geteuid() == 0:
+        with TopLevel(cfg["backup_device_uuid"]) as top:
+            out["snapshots"] = [n for n, c in top.snapshots() if c == COMMENT]
+    print(json.dumps(out))
+    return 0
+
+
+def main(argv):
+    cmd = argv[0] if argv else ""
+    actions = {"setup": setup, "pre-update": pre_update, "trim-cache": trim_cache,
+               "sync": sync, "status": status}
+    if cmd not in actions:
+        print(__doc__)
+        return 2
+    try:
+        return actions[cmd]()
+    except Exception as e:  # never break a pacman transaction or a boot
+        log(f"{cmd} failed: {e!r}")
+        return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
