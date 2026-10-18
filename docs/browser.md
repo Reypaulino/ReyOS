@@ -2,7 +2,7 @@
 
 Reyva is ReyOS's private-by-default web browser: a native PySide6 / Qt Quick application on Qt WebEngine (Chromium). It is not a Firefox wrapper. The package and source folder are still called `reyos-browser` (renamed to Reyva on 2026-10-04).
 
-Current version: **0.1.9** (`APP_VERSION` in `main.py`, shown in Settings; bump it with every release).
+Current version: **0.1.10** (`APP_VERSION` in `main.py`, shown in Settings; bump it with every release).
 
 ## Where it runs
 
@@ -21,7 +21,7 @@ Only the newest GitHub Release of each build is kept.
 - **Shields:** refreshable ad/tracker domain blocklist with per-site on/off, HTTPS upgrade, tracking-parameter stripping, canvas/WebGL/audio fingerprint noise.
 - **Passwords:** saved in the system keyring (Secret Service / KWallet; Windows Credential Manager), save prompt and autofill, CSV import from other browsers.
 - **Bookmarks** with folders and HTML import, a bookmarks bar.
-- **Downloads** list with progress, notifications, Open, and Show in Folder (file manager's `org.freedesktop.FileManager1`, file selected; Explorer `/select` on Windows). Optional "Ask where to save each file": downloaded to Downloads, then moved to the folder picked in the save dialog (in the Flatpak the portal's `/run/user/<uid>/doc/...` path is mapped to the real one with the document portal's `GetHostPaths`).
+- **Downloads** list with progress, notifications, Open, and Show in Folder (file manager's `org.freedesktop.FileManager1`, file selected; Explorer `/select` on Windows). Optional "Ask where to save each file": the dialog comes before `accept()` and the download goes straight into the picked folder when Reyva can write there (`canDownloadInto`; the Flatpak has `--filesystem=/run/media` and `/media` for USB sticks and other drives); only a folder the sandbox can't reach falls back to Downloads-then-move. The portal's `/run/user/<uid>/doc/...` path is mapped to the real one with the document portal's `GetHostPaths`; `safe_file_name()` replaces characters exFAT/FAT/NTFS refuse. Clear button and per-row ✕ remove finished downloads from the list (files stay).
 - **Colors follow the ReyOS Look:** `look_palette()` reads the accent from `kdeglobals` (only on ReyOS) and derives the shades with `looks.py`'s HSL targets scaled by the accent's own saturation relative to copper's (so Graphite stays grey); copper everywhere else.
 - **Printing:** print preview (printer, pages, copies, layout, paper, color, two-sided) and Save as PDF.
 - **Install a site as an app:** its own window and launcher, persistent sign-in for that app (DynamicLauncher portal in the Flatpak).
