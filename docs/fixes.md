@@ -2,6 +2,14 @@
 
 Real bugs found and fixed, with root cause. Newest first. See `bugs.md` for what's still open.
 
+## 2026-10-18 — ISO 2026.10.18 published
+
+GitHub Release `reyos-2026.10.18` (Latest), sha256 `afb765f6…`, 3.0 GB in two parts. Built in RAM on the Dev VM (16 GB, tmpfs, ~8 min) from `origin/main`'s `reyos-iso` (the VM's copy was older: live session still Wayland — replaced, old copy kept as `reyos-iso.prev-20261018`). Contents checked from the package list: reyos-base 1.1.0-9, reyos-boot 1.0.0-2, reyos-calamares 1.3.6-54, reyos-sddm 1.0.3-17, control-center-gui 1.0.0-128, reyos-connect 1.0.0-20, reyos-screenshot/shortcuts-cheatsheet 1.0.0-4, krdc, linux-lts, timeshift; live session `plasmax11`.
+
+- First build attempt stopped at `pacman -Sy`: reyos-local "signature … is unknown trust" although the key was locally signed — `pacman-key --updatedb` fixed it (stale trustdb on the build VM).
+- VM install test (throwaway `ReyOS-ISO-Test`, 34 GB raw disk in /dev/shm, Secure Boot off): Calamares erase-disk with btrfs preselected, all 44 jobs, "All done". Installed system: SDDM preselects "ReyOS Desktop" (X11), login, Welcome → Skip sets up the ReyOS desktop, `findmnt /` = btrfs zstd `subvol=/@`, Timeshift Mode BTRFS, a package reinstall took "Automatic snapshot before system update" with a Limine entry and kernel copy in `/boot/reyos-snapshots/`, the snapshot has no `db.lck`, 4.0 GB used. ReyOS Connect opens with the new design and icon. Not tested on real hardware.
+- User decision: from this ISO on, app updates ship only through Control Center → Updates, not new ISOs.
+
 ## 2026-10-18 — ReyOS Connect 1.0.0-20 redesign; new icons for Connect, Screenshot, Shortcuts
 
 - **Connect redesign** (user: "the menu is linked to the other one and my paired devices are overlooked"). Cause of the first: Kirigami's page stack showed a section *beside* the dashboard as a second column, and each page had its own "Menu" button. Now a permanent sidebar and one page at a time. Paired devices come first as large tiles with their main actions; pairing requests above them. Remote desktop (both directions) + SSH have their own page; on X11 it explains the Wayland requirement for sharing (see `bugs.md`). Details: `docs/connect.md` → "1.0.0-19/-20".
