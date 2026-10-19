@@ -121,7 +121,7 @@ class InstallWorker(QThread):
 
             if self.pacman_groups:
                 joined = " ".join(self.pacman_groups)
-                if "wine" in joined or "steam" in joined:
+                if "wine" in joined or "steam" in joined or "lib32-" in joined:
                     self._ensure_multilib()
                 pkgs = joined.split()
                 if "steam" in pkgs:

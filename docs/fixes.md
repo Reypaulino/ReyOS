@@ -2,6 +2,12 @@
 
 Real bugs found and fixed, with root cause. Newest first. See `bugs.md` for what's still open.
 
+## 2026-10-19 — Welcome: GameMode + MangoHud failed with "target not found" (reyos-welcome 3.3.3-34)
+
+Found by the user on a fresh install of ISO 2026.10.16 on the laptop. `~/.cache/reyos-welcome.log`: `error: target not found: lib32-gamemode` / `lib32-mangohud`; the sync listed only reyos-local, core and extra. multilib ships commented out in ReyOS's `pacman.conf`, and Welcome only ran `enable-multilib.sh` when Steam or Wine was selected (`main.py`), so picking the "GameMode + MangoHud" group on its own always failed. Control Center's Gaming install always enables multilib and wasn't affected. Fix: also enable multilib when any selected package is `lib32-…`.
+
+Tested on the Dev VM with multilib commented out and lib32-gamemode/lib32-mangohud removed, running Welcome's real `InstallWorker` with only that group: 3.3.3-33 → the same two "target not found" errors; 3.3.3-34 → "Enabling multilib repository…", both lib32 packages installed, "All done!", `pacman.conf` otherwise unchanged. **ISOs 2026.10.16/2026.10.18 still carry Welcome 33** (Welcome runs before the first update): on those, run Update everything, then open ReyOS Welcome from the app menu again, or use Control Center → Gaming.
+
 ## 2026-10-18 — ISO 2026.10.18 published
 
 GitHub Release `reyos-2026.10.18` (Latest), sha256 `afb765f6…`, 3.0 GB in two parts. Built in RAM on the Dev VM (16 GB, tmpfs, ~8 min) from `origin/main`'s `reyos-iso` (the VM's copy was older: live session still Wayland — replaced, old copy kept as `reyos-iso.prev-20261018`). Contents checked from the package list: reyos-base 1.1.0-9, reyos-boot 1.0.0-2, reyos-calamares 1.3.6-54, reyos-sddm 1.0.3-17, control-center-gui 1.0.0-128, reyos-connect 1.0.0-20, reyos-screenshot/shortcuts-cheatsheet 1.0.0-4, krdc, linux-lts, timeshift; live session `plasmax11`.

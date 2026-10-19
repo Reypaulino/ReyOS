@@ -6,6 +6,14 @@ This file was rewritten from scratch on 2026-08-18 after a full audit of the wor
 
 **2026-10-08 verification pass:** see `BUG_VERIFICATION_REPORT.md` for what was re-tested and how. Entries below carry a "Status 2026-10-08" line where they were checked; resolved entries moved to the "Resolved" section at the end.
 
+## Connect: phone not found because the firewall blocks KDE Connect
+
+Added 2026-10-19 (laptop, real install). ufw is active with default deny incoming and nothing opens KDE Connect's ports, so a paired iPhone stayed invisible (`[UFW BLOCK] … DPT=1716` every few seconds in the kernel log). Fixed by hand with `ufw allow kdeconnect`. Not fixed in ReyOS: reyos-connect should allow it (install hook or first start) and its Diagnostics should say "the firewall is blocking your phone". The 3389 rule for desktop sharing (entry below) could be the same "allow ReyOS Connect through the firewall" action.
+
+## Desktop sharing logins fail on current Arch (FreeRDP 3.32 + krdp 6.7.5)
+
+Added 2026-10-19 (laptop). Every login from Windows App/an RDP client is refused: krdp log `ntlm_fetch_ntlm_v2_hash: Could not find user in SAM database` → `SEC_E_NO_CREDENTIALS`. FreeRDP 3.32 regression (FreeRDP #13567/#13688, KDE bug 526928), fixed in krdp MR !248, not yet in Arch. Laptop workaround: freerdp 3.31.0-1 from the Arch archive + `IgnorePkg = freerdp` (since lost to a reinstall). Not fixed in ReyOS: consider holding freerdp in the stable channel until krdp ships the fix, or a Connect note. Also: with `SystemUserEnabled=true` the password asked for is the ReyOS login password, not the one set in Connect's dialog — Connect's text should say so.
+
 ## Connect: sharing this desktop (KRDP) doesn't work in the default X11 session
 
 Added 2026-10-18 (Dev VM). `krdpserver` uses the XDG RemoteDesktop/ScreenCast portals and doesn't listen in an X11 session; since reyos-sddm 17 the default session is X11. Workarounds: log into "ReyOS Desktop (Wayland)", or use RustDesk (Control Center) on X11. **Partly addressed in reyos-connect 1.0.0-20:** the Remote Desktop page detects X11, says this and hides Start sharing instead of offering a session that can't start. Sharing itself still needs Wayland.
