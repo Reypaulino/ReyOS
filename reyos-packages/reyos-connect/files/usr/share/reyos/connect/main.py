@@ -15,6 +15,7 @@ APP_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(APP_DIR))
 
 from PySide6.QtCore import QObject, QProcess, QThread, QTimer, QUrl, Signal, Slot
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtGui import QGuiApplication, QIcon
 from PySide6.QtQml import QQmlApplicationEngine
 
@@ -97,6 +98,8 @@ class Backend(QObject):
     connectionDiagnosticsReady = Signal("QVariantList")
     remoteCommandsReady = Signal("QVariantList")
     remoteDesktopConnectFinished = Signal(bool, str)
+    tailscaleSignInUrl = Signal(str)
+    tailscaleSignInFinished = Signal(bool, str)
 
     def __init__(self):
         super().__init__()
@@ -385,6 +388,72 @@ class Backend(QObject):
     @Slot(bool)
     def setTailscaleConnected(self, connect):
         self._run(lambda: vpn_provider.tailscale_set_connected(connect))
+
+    @Slot()
+    def setupTailscale(self):
+        self._run(vpn_provider.tailscale_setup)
+
+    @Slot()
+    def turnOffTailscale(self):
+        self._run(vpn_provider.tailscale_off)
+
+    @Slot()
+    def signInTailscale(self):
+        """`tailscale up` as this user: it prints a sign-in link, then waits
+        until the browser sign-in is done. The link is opened right away."""
+        if getattr(self, "_ts_proc", None) is not None:
+            return
+        self._ts_output = ""
+        self._ts_url = ""
+        self._ts_retried = False
+        self._start_tailscale_up(vpn_provider.tailscale_up_command())
+
+    def _start_tailscale_up(self, cmd):
+        proc = QProcess(self)
+        proc.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels)
+        proc.readyReadStandardOutput.connect(self._tailscale_output)
+        proc.finished.connect(self._tailscale_finished)
+        self._ts_proc = proc
+        self._ts_cmd = cmd
+        self._ts_timeout = QTimer(self, singleShot=True, interval=10 * 60 * 1000)
+        self._ts_timeout.timeout.connect(self.cancelTailscaleSignIn)
+        self._ts_timeout.start()
+        proc.start(cmd[0], cmd[1:])
+
+    def _tailscale_output(self):
+        self._ts_output += bytes(self._ts_proc.readAllStandardOutput()).decode(errors="replace")
+        match = vpn_provider.LOGIN_URL.search(self._ts_output)
+        if match and not self._ts_url:
+            self._ts_url = match.group(0)
+            self.tailscaleSignInUrl.emit(self._ts_url)
+            QDesktopServices.openUrl(QUrl(self._ts_url))
+
+    @Slot()
+    def cancelTailscaleSignIn(self):
+        if getattr(self, "_ts_proc", None) is not None:
+            self._ts_cancelled = True
+            self._ts_proc.kill()
+
+    def _tailscale_finished(self, code, _status):
+        self._ts_timeout.stop()
+        output, self._ts_proc = self._ts_output, None
+        cancelled, self._ts_cancelled = getattr(self, "_ts_cancelled", False), False
+        if cancelled:
+            self.tailscaleSignInFinished.emit(False, "Sign-in cancelled.")
+            return
+        if code != 0 and not self._ts_retried:
+            suggested = vpn_provider.suggested_up_command(output)
+            if suggested and suggested != self._ts_cmd:
+                self._ts_retried = True
+                self._ts_output = ""
+                self._start_tailscale_up(suggested)
+                return
+        if code == 0:
+            self.tailscaleSignInFinished.emit(True, "Signed in. This computer is on your Tailscale network.")
+        else:
+            lines = [l for l in output.strip().splitlines() if l.strip()]
+            self.tailscaleSignInFinished.emit(False, lines[-1] if lines else "Sign-in failed.")
+        self.refreshVpnStatus()
 
     @Slot(str, str)
     def connectWireguard(self, name, source):

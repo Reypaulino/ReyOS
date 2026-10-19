@@ -2,6 +2,10 @@
 
 Real bugs found and fixed, with root cause. Newest first. See `bugs.md` for what's still open.
 
+## 2026-10-19 — ReyOS Connect 1.0.0-21: set up and sign in to Tailscale from the VPN page
+
+Tailscale ships with ReyOS Connect (off until set up). "Set up Tailscale" (one password prompt) turns it on and lets the user control it; "Sign in" opens Tailscale's sign-in page; Connect/Disconnect without a password; "Turn off Tailscale" stops and disables it. Details, the `tailscale up` gotchas found live, and test results: `docs/connect.md` → "1.0.0-21".
+
 ## 2026-10-19 — Games folder: library follows it, no nested folder; ReyOS Games opens on All (control-center-gui 1.0.0-129)
 
 Redoes the laptop's lost "patch 0017" (it only existed on the ReyOS install that was reinstalled). User's report: after changing Control Center → Gaming → "Added games are kept in", Control Center and ReyOS Games kept looking at the old folder, and adding games created a folder inside the chosen one; also ReyOS Games opened on Super Nintendo instead of All.

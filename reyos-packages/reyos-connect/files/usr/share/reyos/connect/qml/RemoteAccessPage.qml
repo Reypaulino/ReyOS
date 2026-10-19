@@ -13,6 +13,8 @@ Kirigami.ScrollablePage {
     property bool testReady: false
     property bool testRun: false
     property bool busy: false
+    property bool signingIn: false
+    property string signInUrl: ""
     readonly property bool hasTailscale: !!(vpnInfo.backends && vpnInfo.backends.tailscale)
     readonly property bool hasWireguard: !!(vpnInfo.backends && vpnInfo.backends.wireguard)
     readonly property var ts: vpnInfo.tailscale || {}
@@ -37,6 +39,13 @@ Kirigami.ScrollablePage {
             page.testRun = true
         }
         function onActionFinished(ok, message) { page.refresh() }
+        function onTailscaleSignInUrl(url) { page.signInUrl = url }
+        function onTailscaleSignInFinished(ok, message) {
+            page.signingIn = false
+            page.signInUrl = ""
+            applicationWindow().showPassiveNotification(message, "long")
+            page.refresh()
+        }
     }
 
     actions: [
@@ -102,17 +111,86 @@ Kirigami.ScrollablePage {
                                 text: page.ts.selfIp ? "This computer: " + page.ts.selfIp : "No address yet"
                             }
                         }
-                        StatusPill { text: page.ts.connected ? "Connected" : "Not connected"; tone: page.ts.connected ? "positive" : "muted" }
+                        StatusPill {
+                            text: page.ts.connected ? "Connected" : !page.ts.serviceActive ? "Off"
+                                : page.ts.authenticated ? "Not connected" : "Not signed in"
+                            tone: page.ts.connected ? "positive" : "muted"
+                        }
                     }
-                    Controls.Label {
-                        visible: !page.ts.authenticated
+
+                    // Off, or set up outside ReyOS Connect: one password prompt.
+                    ColumnLayout {
+                        visible: !page.ts.serviceActive || !page.ts.canControl
                         Layout.fillWidth: true
-                        wrapMode: Text.Wrap
-                        opacity: 0.7
-                        text: "Not signed in yet. Sign in once from a terminal with “tailscale up”; ReyOS Connect never starts a sign-in for you."
+                        spacing: Kirigami.Units.smallSpacing
+                        Controls.Label {
+                            Layout.fillWidth: true
+                            wrapMode: Text.Wrap
+                            opacity: 0.8
+                            text: !page.ts.serviceActive
+                                ? "Tailscale puts this computer, your phone and your other computers on one private network, wherever they are. It's off until you set it up. You need a free Tailscale account, and the Tailscale app on your phone."
+                                : "Tailscale was set up outside ReyOS Connect. Set it up here once so you can sign in, connect and disconnect from this page."
+                        }
+                        Controls.Button {
+                            text: "Set up Tailscale"
+                            icon.name: "network-vpn"
+                            highlighted: true
+                            enabled: !page.busy
+                            onClicked: { page.busy = true; backend.setupTailscale() }
+                        }
+                        Controls.Label {
+                            opacity: 0.6
+                            font.pointSize: Kirigami.Theme.smallFont.pointSize
+                            text: "Asks for your password once."
+                        }
                     }
+
+                    // On, not signed in yet.
+                    ColumnLayout {
+                        visible: page.ts.serviceActive && page.ts.canControl && !page.ts.authenticated
+                        Layout.fillWidth: true
+                        spacing: Kirigami.Units.smallSpacing
+                        Controls.Label {
+                            Layout.fillWidth: true
+                            wrapMode: Text.Wrap
+                            opacity: 0.8
+                            text: page.signingIn
+                                ? "Finish signing in in your browser. This page updates by itself when you're done."
+                                : "Sign in with your Tailscale account to add this computer to your Tailscale network."
+                        }
+                        Flow {
+                            Layout.fillWidth: true
+                            spacing: Kirigami.Units.smallSpacing
+                            Controls.Button {
+                                visible: !page.signingIn
+                                text: "Sign in"
+                                icon.name: "go-next"
+                                highlighted: true
+                                onClicked: { page.signingIn = true; backend.signInTailscale() }
+                            }
+                            Controls.Button {
+                                visible: page.signingIn && page.signInUrl !== ""
+                                text: "Open the sign-in page again"
+                                icon.name: "internet-web-browser"
+                                onClicked: Qt.openUrlExternally(page.signInUrl)
+                            }
+                            Controls.Button {
+                                visible: page.signingIn
+                                text: "Cancel"
+                                onClicked: backend.cancelTailscaleSignIn()
+                            }
+                            Controls.BusyIndicator {
+                                visible: page.signingIn
+                                running: visible
+                                Layout.preferredHeight: Kirigami.Units.iconSizes.medium
+                                Layout.preferredWidth: Kirigami.Units.iconSizes.medium
+                            }
+                        }
+                    }
+
+                    // Signed in.
                     Controls.Button {
-                        visible: !!page.ts.authenticated
+                        visible: page.ts.serviceActive && page.ts.canControl && !!page.ts.authenticated
                         text: page.ts.connected ? "Disconnect" : "Connect"
                         icon.name: page.ts.connected ? "network-disconnect" : "network-connect"
                         highlighted: !page.ts.connected
@@ -178,6 +256,14 @@ Kirigami.ScrollablePage {
                     }
                 }
 
+                Controls.Button {
+                    visible: page.selectedBackend === "tailscale" && !!page.ts.serviceActive
+                    text: "Turn off Tailscale"
+                    icon.name: "system-shutdown"
+                    flat: true
+                    enabled: !page.busy && !page.signingIn
+                    onClicked: { page.busy = true; backend.turnOffTailscale() }
+                }
                 Controls.Button {
                     text: "VPN settings (Control Center)"
                     icon.name: "configure"

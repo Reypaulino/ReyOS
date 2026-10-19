@@ -1,0 +1,32 @@
+#!/bin/bash
+# The parts of ReyOS Connect's Tailscale setup that need root, run through
+# pkexec (password prompt). The account to hand control to comes from
+# PKEXEC_UID, never from an argument.
+set -euo pipefail
+
+user=""
+if [ -n "${PKEXEC_UID:-}" ]; then
+    user=$(id -nu "$PKEXEC_UID")
+fi
+
+case "${1:-}" in
+    setup)
+        [ -n "$user" ] || { echo "Run this through pkexec." >&2; exit 2; }
+        systemctl enable --now tailscaled.service
+        for _ in $(seq 40); do
+            [ -S /run/tailscale/tailscaled.sock ] && break
+            sleep 0.25
+        done
+        # From now on this account can sign in, connect and disconnect
+        # without a password.
+        tailscale set --operator="$user"
+        ;;
+    off)
+        tailscale down 2>/dev/null || true
+        systemctl disable --now tailscaled.service
+        ;;
+    *)
+        echo "usage: $0 setup|off" >&2
+        exit 2
+        ;;
+esac

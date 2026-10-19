@@ -2,17 +2,17 @@
 
 Two real backends are detected, never bundled/auto-installed:
 
-- Tailscale: found live on the user's own host during Phase 0 audit
-  (`tailscale status --json`, already authenticated, a real tailnet
-  including an iPhone entry). Never calls `tailscale login` -- toggling
-  is only offered once `tailscale status --json` already reports the
-  node as authenticated, and goes through `pkexec` (a real graphical
-  auth prompt) rather than bare `sudo`, since ReyOS's sudoers only grants
-  NOPASSWD for a fixed set of ReyOS-shipped commands (see
-  `shellprocess_sudoers_reyos_menu.conf`) and Tailscale isn't one of
-  them -- a bare `sudo tailscale up` from this GUI would hang with no
-  controlling terminal, the same class of bug documented in that file
-  for unlisted pacman/systemctl calls.
+- Tailscale: ships with reyos-connect but stays off until the user turns
+  it on from the VPN page. "Set up Tailscale" runs the root helper
+  `reyos-connect-tailscale setup` through pkexec (one password prompt):
+  it starts tailscaled and makes the user Tailscale's operator, so sign-in,
+  connect and disconnect then run as the user, without a password.
+  Every `tailscale up` repeats `--operator=<user>`: a plain `tailscale up`
+  resets prefs not mentioned and silently drops the operator (confirmed
+  live), after which every command says "Access denied". If the user set
+  other options by hand (e.g. --hostname), tailscale refuses and prints
+  the command that restates them; that command is used instead of
+  --reset, so nothing the user chose is lost.
 
 - WireGuard: ReyOS Control Center already has two independent, real
   mechanisms for this (see docs/connect.md's v2 audit) -- raw
@@ -31,13 +31,18 @@ Two real backends are detected, never bundled/auto-installed:
   have been imported but never started -- and reports `profilesReadable`
   honestly rather than pretending "empty" means "none configured."
 """
+import getpass
 import json
+import re
+import shlex
 import shutil
 import socket
 import subprocess
 from pathlib import Path
 
 WIREGUARD_DIR = Path("/etc/wireguard")
+TAILSCALE_HELPER = "/usr/share/reyos/connect/reyos-connect-tailscale"
+LOGIN_URL = re.compile(r"https://login\.tailscale\.com/\S+")
 
 
 def _run(cmd, timeout=6):
@@ -65,12 +70,19 @@ def tailscale_status():
     empty = {
         "installed": False, "running": False, "authenticated": False,
         "connected": False, "backendState": "", "selfIp": "", "peers": [],
+        "serviceActive": False, "canControl": False, "authUrl": "",
     }
     if not tailscale_installed():
         return empty
+    active = _run(["systemctl", "is-active", "tailscaled"])
+    empty = {**empty, "installed": True,
+             "serviceActive": bool(active and active.stdout.strip() == "active")}
+    if not empty["serviceActive"]:
+        return empty
+    empty["canControl"] = tailscale_operator() == getpass.getuser()
     result = _run(["tailscale", "status", "--json"])
     if result is None or result.returncode != 0 or not result.stdout.strip():
-        return {**empty, "installed": True}
+        return empty
     try:
         data = json.loads(result.stdout)
     except json.JSONDecodeError:
@@ -96,7 +108,8 @@ def tailscale_status():
             "os": peer.get("OS", ""),
         })
     return {
-        "installed": True,
+        **empty,
+        "authUrl": data.get("AuthURL") or "",
         "running": running,
         "authenticated": authenticated,
         "connected": running and authenticated,
@@ -106,20 +119,100 @@ def tailscale_status():
     }
 
 
+def _tailscale_prefs():
+    result = _run(["tailscale", "debug", "prefs"])
+    if result is None or result.returncode != 0:
+        return {}
+    try:
+        return json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return {}
+
+
+def tailscale_operator():
+    """The account allowed to control Tailscale without root ("" if none)."""
+    return _tailscale_prefs().get("OperatorUser", "")
+
+
+def tailscale_up_command():
+    # Before the first sign-in tailscale doesn't refuse an `up` that leaves
+    # out a hand-set device name, it just drops it, so keep it explicitly.
+    cmd = ["tailscale", "up", f"--operator={getpass.getuser()}"]
+    hostname = _tailscale_prefs().get("Hostname", "")
+    if hostname:
+        cmd.append(f"--hostname={hostname}")
+    return cmd
+
+
+def suggested_up_command(output):
+    """tailscale's own "re-run with all non-default flags" command, if it
+    printed one (only a plain `tailscale up --flag=value ...`)."""
+    for line in output.splitlines():
+        line = line.strip()
+        if line.startswith("tailscale up "):
+            try:
+                cmd = shlex.split(line)
+            except ValueError:
+                return None
+            if all(a.startswith("--") for a in cmd[2:]):
+                return cmd
+    return None
+
+
+def tailscale_setup():
+    """Starts tailscaled and makes this user its operator (password prompt)."""
+    if not shutil.which("pkexec"):
+        return False, "pkexec is missing, so Tailscale can't be set up from here."
+    result = _run(["pkexec", TAILSCALE_HELPER, "setup"], timeout=90)
+    if result is None:
+        return False, "Setting up Tailscale took too long."
+    if result.returncode == 126:
+        return False, "Not set up: the password prompt was cancelled."
+    if result.returncode == 127:
+        return False, "Not set up: the password wasn't accepted, or no password prompt could be shown."
+    if result.returncode != 0:
+        return False, (result.stderr.strip().splitlines() or ["Couldn't set up Tailscale."])[-1]
+    return True, "Tailscale is on. Sign in to add this computer to your Tailscale network."
+
+
+def tailscale_off():
+    if not shutil.which("pkexec"):
+        return False, "pkexec is missing, so Tailscale can't be turned off from here."
+    result = _run(["pkexec", TAILSCALE_HELPER, "off"], timeout=60)
+    if result is None:
+        return False, "Turning Tailscale off took too long."
+    if result.returncode == 126:
+        return False, "Not turned off: the password prompt was cancelled."
+    if result.returncode == 127:
+        return False, "Not turned off: the password wasn't accepted, or no password prompt could be shown."
+    if result.returncode != 0:
+        return False, (result.stderr.strip().splitlines() or ["Couldn't turn Tailscale off."])[-1]
+    return True, "Tailscale is off."
+
+
 def tailscale_set_connected(connect):
     status = tailscale_status()
     if not status["authenticated"]:
-        return False, ("Tailscale isn't logged in yet. Authenticate it once from a terminal "
-                        "(`tailscale up`) or Control Center -- ReyOS Connect never starts a login flow.")
-    if not shutil.which("pkexec"):
-        return False, "pkexec is required to change Tailscale's connection state."
-    result = _run(["pkexec", "tailscale", "up" if connect else "down"], timeout=20)
-    if result is None:
-        return False, "Timed out talking to tailscaled."
-    ok = result.returncode == 0
-    if ok:
-        return True, "Connected." if connect else "Disconnected."
-    return False, (result.stderr.strip() or "Failed.")
+        return False, "Sign in to Tailscale first."
+    if not status["canControl"]:
+        return False, "Press \"Set up Tailscale\" once so ReyOS Connect may control it."
+    if not connect:
+        result = _run(["tailscale", "down"], timeout=20)
+        if result is None:
+            return False, "Timed out talking to Tailscale."
+        return (True, "Disconnected.") if result.returncode == 0 else (False, result.stderr.strip() or "Failed.")
+    cmd = tailscale_up_command()
+    for _ in range(2):
+        result = _run(cmd, timeout=30)
+        if result is None:
+            return False, "Timed out talking to Tailscale."
+        if result.returncode == 0:
+            return True, "Connected."
+        suggested = suggested_up_command(result.stderr + result.stdout)
+        if not suggested or suggested == cmd:
+            break
+        cmd = suggested
+    return False, (result.stderr.strip().splitlines() or ["Failed."])[-1]
 
 
 # -- WireGuard -----------------------------------------------------------

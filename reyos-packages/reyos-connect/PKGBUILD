@@ -1,13 +1,12 @@
 # Maintainer: Rey Paulino
 pkgname=reyos-connect
 pkgver=1.0.0
-pkgrel=20
+pkgrel=21
 pkgdesc="ReyOS Connect — unified device dashboard: KDE Connect (LAN), VPN remote access, remote desktop, Bluetooth, and Sync/Migration"
 arch=('any')
 license=('MIT')
-depends=('reyos-control-center-gui' 'kdeconnect' 'pyside6' 'kirigami' 'libnotify' 'bluez' 'bluez-utils' 'syncthing' 'python-setproctitle' 'krdc' 'freerdp' 'libvncserver')
-optdepends=('tailscale: Remote Access VPN backend'
-            'wireguard-tools: Remote Access VPN backend (bring-your-own config, via Control Center)'
+depends=('reyos-control-center-gui' 'kdeconnect' 'pyside6' 'kirigami' 'libnotify' 'bluez' 'bluez-utils' 'syncthing' 'python-setproctitle' 'krdc' 'freerdp' 'libvncserver' 'tailscale')
+optdepends=('wireguard-tools: Remote Access VPN backend (bring-your-own config, via Control Center)'
             'openssh: SSH Remote Terminal status/detection'
             'krdp: Remote Desktop backend (KDE Plasma Remote Desktop, Wayland, disabled by default)')
 source=()
@@ -18,4 +17,5 @@ package() {
     find "$pkgdir/usr/share" -type f -exec chmod 644 {} \;
     chmod 755 "$pkgdir/usr/bin/reyos-connect"
     chmod 755 "$pkgdir/usr/share/reyos/connect/main.py"
+    chmod 755 "$pkgdir/usr/share/reyos/connect/reyos-connect-tailscale"
 }
