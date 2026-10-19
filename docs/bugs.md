@@ -6,6 +6,14 @@ This file was rewritten from scratch on 2026-08-18 after a full audit of the wor
 
 **2026-10-08 verification pass:** see `BUG_VERIFICATION_REPORT.md` for what was re-tested and how. Entries below carry a "Status 2026-10-08" line where they were checked; resolved entries moved to the "Resolved" section at the end.
 
+## Connect: sharing this desktop (KRDP) doesn't work in the default X11 session
+
+Added 2026-10-18 (Dev VM). `krdpserver` uses the XDG RemoteDesktop/ScreenCast portals and doesn't listen in an X11 session; since reyos-sddm 17 the default session is X11. ReyOS Connect's device page still offers Remote Desktop Settings / Start Session there, so on the default session "Start Session" can't work. Workarounds: log into "ReyOS Desktop (Wayland)", or use RustDesk (Control Center) on X11. Not fixed. Likely fix: Connect detects `XDG_SESSION_TYPE=x11` and says so next to Start Session (pointing at the Wayland session or RustDesk) instead of offering a session that can't start.
+
+## Connect: Start Session doesn't open the firewall, so nobody can connect
+
+Added 2026-10-18 (code review, not yet seen on real hardware). Installs enable ufw with default deny incoming (`shellprocess_firewall.conf`), and nothing in Connect or Control Center adds a rule for RDP port 3389. A KRDP session that starts fine is unreachable from a phone or another PC until the user runs e.g. `sudo ufw allow in on tailscale0 to any port 3389 proto tcp`. Not fixed. Likely fix: when Start Session succeeds, offer "Allow on Tailscale / home network" through `reyos-admin` (password prompt), and remove the rule on Stop.
+
 ## Installer: the live ISO's recovery autostart is copied into new installs
 
 Added 2026-10-16 (ISO 2026.10.16 test install). `~/.config/autostart/reyos-recovery-launch.desktop` ends up in the installed user's home (from the live `/etc/skel`). Harmless: `reyos-recovery-launch.sh` exits unless booted with `reyos.recovery`. Fix: add it to `shellprocess_live_cleanup.conf` like the live wallpaper/panel autostarts.
