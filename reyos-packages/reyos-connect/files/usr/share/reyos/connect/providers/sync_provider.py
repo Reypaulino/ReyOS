@@ -20,6 +20,8 @@ WireGuard addresses (added as explicit static device addresses), never via
 Syncthing's own public relay/discovery infrastructure.
 """
 import json
+import ipaddress
+import urllib.parse
 import logging
 import shutil
 import subprocess
@@ -91,15 +93,29 @@ def _read_config_xml():
 
 
 def _base_url():
+    """Keep API-key requests on the local machine, never a remote GUI."""
     _, address, use_tls = _read_config_xml()
-    scheme = "https" if use_tls else "http"
-    # Syncthing's default GUI address is "127.0.0.1:8384"; a bare "0.0.0.0:8384"
-    # (listen-on-all-interfaces) is still reached fine via localhost.
-    host = address.split(":")[-2] if address.count(":") > 1 else "127.0.0.1"
-    if host in ("0.0.0.0", ""):
+    try:
+        parsed = urllib.parse.urlsplit("//" + address.strip())
+        host, port = parsed.hostname, parsed.port
+        allowed = host in ("localhost", "0.0.0.0", "::")
+        if not allowed and host:
+            allowed = ipaddress.ip_address(host).is_loopback
+    except (ValueError, TypeError) as exc:
+        raise SyncApiError("Invalid Syncthing GUI address") from exc
+    if not allowed or not port:
+        raise SyncApiError("Syncthing GUI must use a loopback address and port")
+    if host in ("localhost", "0.0.0.0", "::"):
         host = "127.0.0.1"
-    port = address.rsplit(":", 1)[-1]
-    return f"{scheme}://127.0.0.1:{port}" if host == "127.0.0.1" else f"{scheme}://{host}:{port}"
+    elif ":" in host:
+        host = f"[{host}]"
+    return f"{'https' if use_tls else 'http'}://{host}:{port}"
+
+
+def _resource_id(value):
+    if not isinstance(value, str) or not value or len(value) > 255 or any(ord(c) < 32 for c in value):
+        raise ValueError("Invalid Syncthing resource ID")
+    return urllib.parse.quote(value, safe="")
 
 
 def _request(method, path, data=None):
@@ -221,7 +237,7 @@ def pending_devices():
 
 def add_device(device_id, name):
     """Explicit user-authorized pairing action -- never called automatically."""
-    _put(f"/rest/config/devices/{device_id}", {
+    _put(f"/rest/config/devices/{_resource_id(device_id)}", {
         "deviceID": device_id,
         "name": name,
         "addresses": ["dynamic"],
@@ -229,7 +245,7 @@ def add_device(device_id, name):
 
 
 def remove_device(device_id):
-    _request("DELETE", f"/rest/config/devices/{device_id}")
+    _request("DELETE", f"/rest/config/devices/{_resource_id(device_id)}")
 
 
 def list_folders():
@@ -240,7 +256,7 @@ def list_folders():
     for f in cfg.get("folders", []):
         folder_id = f["id"]
         try:
-            db_status = _get(f"/rest/db/status?folder={folder_id}")
+            db_status = _get("/rest/db/status?" + urllib.parse.urlencode({"folder": folder_id}))
         except SyncApiError:
             db_status = {}
         folders.append({
@@ -292,8 +308,12 @@ def add_folder(folder_id, label, local_path, device_ids, folder_type="sendreceiv
     /home/other/Documents/Work on another)."""
     if folder_type not in FOLDER_TYPES:
         raise ValueError(f"Unknown folder type: {folder_type}")
-    Path(local_path).mkdir(parents=True, exist_ok=True)
-    _put(f"/rest/config/folders/{folder_id}", {
+    target = Path(local_path).expanduser().resolve()
+    if target == Path.home().resolve() or target == Path("/"):
+        raise ValueError("Choose a dedicated sync folder, not home or root")
+    target.mkdir(parents=True, exist_ok=True)
+    local_path = str(target)
+    _put(f"/rest/config/folders/{_resource_id(folder_id)}", {
         "id": folder_id,
         "label": label,
         "path": local_path,
@@ -307,13 +327,13 @@ def add_folder(folder_id, label, local_path, device_ids, folder_type="sendreceiv
 
 
 def remove_folder(folder_id):
-    _request("DELETE", f"/rest/config/folders/{folder_id}")
+    _request("DELETE", f"/rest/config/folders/{_resource_id(folder_id)}")
 
 
 def set_folder_paused(folder_id, paused):
-    cfg = _get(f"/rest/config/folders/{folder_id}")
+    cfg = _get(f"/rest/config/folders/{_resource_id(folder_id)}")
     cfg["paused"] = paused
-    _put(f"/rest/config/folders/{folder_id}", cfg)
+    _put(f"/rest/config/folders/{_resource_id(folder_id)}", cfg)
 
 
 SUGGESTED_EXCLUSIONS = [
@@ -334,7 +354,7 @@ def folder_completion(folder_id, device_id):
     """0-100 sync completion percentage for one folder against one remote
     device -- the real number behind a 'Syncing -- 72%' row."""
     try:
-        result = _get(f"/rest/db/completion?folder={folder_id}&device={device_id}")
+        result = _get("/rest/db/completion?" + urllib.parse.urlencode({"folder": folder_id, "device": device_id}))
         return result.get("completion", 0)
     except SyncApiError:
         return None

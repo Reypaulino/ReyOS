@@ -179,7 +179,7 @@ def main():
     app = QGuiApplication(sys.argv)
     app.setApplicationName("ReyOS Shortcuts")
     app.setDesktopFileName("reyos-shortcuts-cheatsheet")
-    app.setWindowIcon(QIcon.fromTheme("input-keyboard"))
+    app.setWindowIcon(QIcon.fromTheme("reyos-shortcuts-cheatsheet"))
 
     engine = QQmlApplicationEngine()
     backend = Backend()

@@ -23,7 +23,7 @@ Kirigami.ScrollablePage {
             adapter = info.adapter || {available: false, hasAdapter: false, powered: false}
             devices = info.devices || []
         }
-        function onActionFinished(ok, message) { statusLabel.text = message }
+        function onActionFinished(ok, message) { refresh() }
         function onPhoneCapabilitiesReady(mac, result) {
             probingMac = ""
             var updated = Object.assign({}, probeResults)
@@ -33,8 +33,6 @@ Kirigami.ScrollablePage {
     }
 
     actions: [
-        Kirigami.Action { text: "Close"; icon.name: "window-close"; onTriggered: applicationWindow().pageStack.pop() },
-        Kirigami.Action { text: "Menu"; icon.name: "application-menu"; onTriggered: applicationWindow().globalDrawer.open() },
         Kirigami.Action { text: "Refresh"; icon.name: "view-refresh"; onTriggered: refresh() }
     ]
 
@@ -50,14 +48,14 @@ Kirigami.ScrollablePage {
 
         ReyOSProgressBar { Layout.fillWidth: true; indeterminate: true; visible: busy }
 
-        Kirigami.AbstractCard {
+        SectionCard {
             Layout.fillWidth: true
             padding: Kirigami.Units.gridUnit
             visible: !busy && !adapter.available
             contentItem: RowLayout {
                 spacing: Kirigami.Units.largeSpacing
                 Kirigami.Icon {
-                    source: "preferences-system-bluetooth"
+                    source: "network-bluetooth"
                     Layout.preferredWidth: Kirigami.Units.iconSizes.large
                     Layout.preferredHeight: Kirigami.Units.iconSizes.large
                 }
@@ -75,14 +73,14 @@ Kirigami.ScrollablePage {
             }
         }
 
-        Kirigami.AbstractCard {
+        SectionCard {
             Layout.fillWidth: true
             padding: Kirigami.Units.gridUnit
             visible: !busy && adapter.available && !adapter.hasAdapter
             contentItem: RowLayout {
                 spacing: Kirigami.Units.largeSpacing
                 Kirigami.Icon {
-                    source: "preferences-system-bluetooth"
+                    source: "network-bluetooth"
                     Layout.preferredWidth: Kirigami.Units.iconSizes.large
                     Layout.preferredHeight: Kirigami.Units.iconSizes.large
                 }
@@ -92,7 +90,7 @@ Kirigami.ScrollablePage {
 
         Repeater {
             model: devices
-            delegate: Kirigami.AbstractCard {
+            delegate: SectionCard {
                 Layout.fillWidth: true
                 padding: Kirigami.Units.gridUnit
                 contentItem: ColumnLayout {
@@ -184,6 +182,5 @@ Kirigami.ScrollablePage {
             text: "No paired Bluetooth devices."
         }
 
-        Controls.Label { id: statusLabel; Layout.fillWidth: true; wrapMode: Text.Wrap }
     }
 }

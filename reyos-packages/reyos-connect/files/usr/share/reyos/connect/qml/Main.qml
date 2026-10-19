@@ -6,283 +6,128 @@ import org.kde.kirigami as Kirigami
 Kirigami.ApplicationWindow {
     id: appWindow
     title: "ReyOS Connect"
-    width: 760
-    height: 640
-    minimumWidth: 480
+    width: 980
+    height: 720
+    minimumWidth: 520
     minimumHeight: 480
-
-    ListModel { id: deviceModel }
-    ListModel { id: customDeviceModel }
 
     property bool backendAvailable: false
     property bool kdeconnectInstalled: true
     property var diagnostics: ({})
+    property string section: "devices"
 
-    function refreshDevices() {
-        var devices = backend.listDevices()
-        deviceModel.clear()
-        for (var i = 0; i < devices.length; i++) deviceModel.append(devices[i])
+    readonly property var sectionPages: ({
+        "devices": "DevicesPage.qml",
+        "remote-desktop": "RemoteDesktopPage.qml",
+        "vpn": "RemoteAccessPage.qml",
+        "bluetooth": "BluetoothPage.qml",
+        "diagnostics": "DiagnosticsPage.qml"
+    })
+
+    function openSection(name) {
+        section = name
+        pageStack.clear()
+        pageStack.push(Qt.resolvedUrl(sectionPages[name]))
+        if (globalDrawer.modal) globalDrawer.close()
     }
 
-    function refreshCustomDevices() {
-        var addrs = backend.listCustomDevices()
-        customDeviceModel.clear()
-        for (var i = 0; i < addrs.length; i++) customDeviceModel.append({address: addrs[i]})
+    function openDevice(deviceId) {
+        if (section !== "devices") openSection("devices")
+        while (pageStack.depth > 1) pageStack.pop()
+        pageStack.push(Qt.resolvedUrl("DeviceDetailPage.qml"), {deviceId: deviceId})
     }
 
-    function stateLabel(state) {
-        switch (state) {
-            case "available": return "Available"
-            case "pairingOutgoing": return "Pairing…"
-            case "pairingIncoming": return "Wants to pair"
-            case "connected": return "Connected"
-            case "disconnected": return "Paired · Disconnected"
-            case "unreachable": return "Unreachable"
-            default: return state
-        }
-    }
+    function askFirewall() { confirmFirewall.open() }
+
+    pageStack.columnView.columnResizeMode: Kirigami.ColumnView.SingleColumn
+    pageStack.globalToolBar.style: Kirigami.ApplicationHeaderStyle.ToolBar
+    pageStack.globalToolBar.showNavigationButtons: Kirigami.ApplicationHeaderStyle.ShowBackButton
 
     Connections {
         target: backend
-        function onBackendAvailableChanged(available) {
-            backendAvailable = available
-            if (available) refreshDevices()
-        }
-        function onDevicesChanged() { refreshDevices(); refreshCustomDevices() }
+        function onBackendAvailableChanged(available) { backendAvailable = available }
         function onDiagnosticsReady(info) { diagnostics = info }
-        function onActionFinished(ok, message) {
-            statusBanner.text = message
-            statusBanner.type = ok ? Kirigami.MessageType.Positive : Kirigami.MessageType.Error
-            statusBanner.visible = true
-            bannerTimer.restart()
-        }
-        function onPairingFailedSignal(deviceId, error) {
-            statusBanner.text = "Pairing failed: " + error
-            statusBanner.type = Kirigami.MessageType.Error
-            statusBanner.visible = true
-            bannerTimer.restart()
-        }
+        function onActionFinished(ok, message) { if (message) showPassiveNotification(message) }
+        function onPairingFailedSignal(deviceId, error) { showPassiveNotification("Pairing failed: " + error, "long") }
         function onFileReceived(deviceId, path) {
-            receivedBanner.filePath = path
-            receivedBanner.visible = true
+            showPassiveNotification("Received " + (path.split("/").pop() || "a file"), "long", "Open Folder",
+                                    function() { backend.openContainingFolder(path) })
         }
     }
-
-    Timer { id: bannerTimer; interval: 6000; onTriggered: statusBanner.visible = false }
 
     Component.onCompleted: {
         kdeconnectInstalled = backend.isKdeconnectInstalled()
         backendAvailable = backend.isDaemonRunning()
-        if (backendAvailable) { refreshDevices(); refreshCustomDevices() }
+        backend.refreshDiagnostics()
+        openSection("devices")
     }
-
-    function goHome() { while (pageStack.depth > 1) pageStack.pop() }
-    function navigateTo(url) { goHome(); pageStack.push(url) }
 
     globalDrawer: Kirigami.GlobalDrawer {
-        title: "ReyOS Connect"
-        titleIcon: "org.reyos.Connect"
+        id: drawer
+        modal: !appWindow.wideScreen
+        drawerOpen: !modal
+        handleVisible: modal
         isMenu: false
-        actions: [
-            Kirigami.Action { text: "Dashboard"; icon.name: "go-home"; onTriggered: goHome() },
-            Kirigami.Action { text: "Remote Access"; icon.name: "network-vpn"; onTriggered: navigateTo(Qt.resolvedUrl("RemoteAccessPage.qml")) },
-            Kirigami.Action { text: "Bluetooth"; icon.name: "preferences-system-bluetooth"; onTriggered: navigateTo(Qt.resolvedUrl("BluetoothPage.qml")) },
-            Kirigami.Action { text: "Diagnostics"; icon.name: "diagnostics"; onTriggered: navigateTo(Qt.resolvedUrl("DiagnosticsPage.qml")) }
-        ]
-    }
+        width: Kirigami.Units.gridUnit * 13
 
-    pageStack.initialPage: Kirigami.ScrollablePage {
-        title: "ReyOS Connect"
-        actions: [
-            Kirigami.Action { text: "Menu"; icon.name: "application-menu"; onTriggered: globalDrawer.open() },
-            Kirigami.Action {
-                text: "Refresh"
-                icon.name: "view-refresh"
-                enabled: backendAvailable
-                onTriggered: { backend.refreshDiagnostics(); if (backendAvailable) refreshDevices() }
-            }
-        ]
-
-        ColumnLayout {
-            width: parent.width
+        header: RowLayout {
             spacing: Kirigami.Units.largeSpacing
-
-            Kirigami.InlineMessage {
-                id: statusBanner
-                Layout.fillWidth: true
-                visible: false
-                showCloseButton: true
-            }
-
-            Kirigami.InlineMessage {
-                id: receivedBanner
-                property string filePath: ""
-                Layout.fillWidth: true
-                visible: false
-                showCloseButton: true
-                type: Kirigami.MessageType.Positive
-                text: "Received " + (filePath.split("/").pop() || "")
-                actions: [
-                    Kirigami.Action {
-                        text: "Open Folder"
-                        onTriggered: backend.openContainingFolder(receivedBanner.filePath)
-                    }
-                ]
-            }
-
-            // -- KDE Connect missing entirely --------------------------------
-            Kirigami.PlaceholderMessage {
-                Layout.fillWidth: true
-                Layout.topMargin: Kirigami.Units.gridUnit * 3
-                visible: !kdeconnectInstalled
-                icon.name: "dialog-warning"
-                text: "KDE Connect is required for ReyOS Connect."
-                explanation: "The kdeconnect package could not be found. Reinstall reyos-connect to pull it back in."
-            }
-
-            // -- Installed but the daemon isn't running ----------------------
-            Kirigami.PlaceholderMessage {
-                Layout.fillWidth: true
-                Layout.topMargin: Kirigami.Units.gridUnit * 3
-                visible: kdeconnectInstalled && !backendAvailable
-                icon.name: "network-disconnect"
-                text: "KDE Connect isn't running"
-                explanation: "It normally starts automatically when you log in."
-                helpfulAction: Kirigami.Action {
-                    text: "Start KDE Connect"
-                    icon.name: "media-playback-start"
-                    onTriggered: backend.startDaemon()
-                }
-            }
-
-            // -- Dashboard -----------------------------------------------------
-            ColumnLayout {
-                Layout.fillWidth: true
-                visible: kdeconnectInstalled && backendAvailable
-                spacing: Kirigami.Units.largeSpacing
-
-                Kirigami.Heading { text: "Nearby Devices"; level: 3 }
-                Repeater {
-                    model: deviceModel
-                    delegate: Loader {
-                        active: !model.isPaired
-                        Layout.fillWidth: true
-                        sourceComponent: active ? deviceCardComponent : null
-                        onLoaded: { item.deviceData = Qt.binding(function() { return model }) }
-                    }
-                }
-                Controls.Label {
-                    Layout.fillWidth: true
-                    opacity: 0.6
-                    visible: {
-                        for (var i = 0; i < deviceModel.count; i++) if (!deviceModel.get(i).isPaired) return false
-                        return true
-                    }
-                    text: "No unpaired devices nearby. Open KDE Connect on your phone and make sure it's on the same network."
-                }
-
-                Kirigami.Separator { Layout.fillWidth: true; Layout.topMargin: Kirigami.Units.smallSpacing }
-
-                Kirigami.Heading { text: "Your Devices"; level: 3 }
-                Repeater {
-                    model: deviceModel
-                    delegate: Loader {
-                        active: model.isPaired
-                        Layout.fillWidth: true
-                        sourceComponent: active ? deviceCardComponent : null
-                        onLoaded: { item.deviceData = Qt.binding(function() { return model }) }
-                    }
-                }
-                Controls.Label {
-                    Layout.fillWidth: true
-                    opacity: 0.6
-                    visible: {
-                        for (var i = 0; i < deviceModel.count; i++) if (deviceModel.get(i).isPaired) return false
-                        return true
-                    }
-                    text: "No paired devices yet. Pair a nearby device above to get started."
-                }
-            }
-
-            Kirigami.Separator { Layout.fillWidth: true; visible: kdeconnectInstalled && backendAvailable }
-
-            // -- Troubleshooting ------------------------------------------------
-            Kirigami.AbstractCard {
-                Layout.fillWidth: true
+            Kirigami.Icon {
+                source: "org.reyos.Connect"
+                Layout.preferredWidth: Kirigami.Units.iconSizes.medium
+                Layout.preferredHeight: Kirigami.Units.iconSizes.medium
+                Layout.leftMargin: Kirigami.Units.largeSpacing
                 Layout.topMargin: Kirigami.Units.largeSpacing
-                padding: Kirigami.Units.gridUnit
-                contentItem: ColumnLayout {
-                    spacing: Kirigami.Units.smallSpacing
-                    Kirigami.Heading { text: "Can't find your phone?"; level: 4 }
-                    Controls.Label { Layout.fillWidth: true; wrapMode: Text.Wrap; text: "1. Make sure ReyOS and your phone are connected to the same network." }
-                    Controls.Label { Layout.fillWidth: true; wrapMode: Text.Wrap; text: "2. Open KDE Connect on the phone." }
-                    Controls.Label { Layout.fillWidth: true; wrapMode: Text.Wrap; text: "3. Make sure KDE Connect is running on ReyOS." }
-                    Controls.Label { Layout.fillWidth: true; wrapMode: Text.Wrap; text: "4. Check the firewall." }
-                    Controls.Label { Layout.fillWidth: true; wrapMode: Text.Wrap; text: "5. On a different network (VPN, hotspot)? Add its IP address below." }
-                    RowLayout {
-                        Controls.Button {
-                            text: "Check Connection"
-                            icon.name: "network-connect"
-                            onClicked: backend.refreshDiagnostics()
-                        }
-                        Controls.Button {
-                            text: "Allow in Firewall"
-                            icon.name: "security-medium"
-                            visible: diagnostics.firewallOpen === false
-                            onClicked: confirmFirewall.open()
-                        }
-                    }
-                    Controls.Label {
-                        Layout.fillWidth: true
-                        wrapMode: Text.WordWrap
-                        visible: diagnostics.daemonRunning !== undefined
-                        text: {
-                            var lines = []
-                            lines.push("KDE Connect installed: " + (diagnostics.installed ? "yes" : "no"))
-                            lines.push("Service running: " + (diagnostics.daemonRunning ? "yes" : "no"))
-                            if (diagnostics.selfName) lines.push("This device is announced as: " + diagnostics.selfName)
-                            if (diagnostics.firewallDetail) lines.push(diagnostics.firewallDetail)
-                            return lines.join("\n")
-                        }
-                    }
-
-                    Kirigami.Separator { Layout.fillWidth: true; Layout.topMargin: Kirigami.Units.smallSpacing }
-                    Kirigami.Heading { text: "Connect by IP Address"; level: 5 }
-                    Controls.Label {
-                        Layout.fillWidth: true
-                        wrapMode: Text.WordWrap
-                        opacity: 0.7
-                        text: "KDE Connect normally finds devices by broadcasting on the local network. If your phone is reachable but on a different network segment, add its IP address here instead."
-                    }
-                    RowLayout {
-                        Layout.fillWidth: true
-                        Controls.TextField {
-                            id: customIpField
-                            Layout.fillWidth: true
-                            placeholderText: "192.168.1.42"
-                            onAccepted: { backend.addCustomDevice(text); text = "" }
-                        }
-                        Controls.Button {
-                            text: "Add"
-                            icon.name: "list-add"
-                            onClicked: { backend.addCustomDevice(customIpField.text); customIpField.text = "" }
-                        }
-                    }
-                    Repeater {
-                        model: customDeviceModel
-                        delegate: RowLayout {
-                            Layout.fillWidth: true
-                            Controls.Label { Layout.fillWidth: true; text: model.address }
-                            Controls.Button {
-                                text: "Remove"
-                                icon.name: "edit-delete-remove"
-                                onClicked: backend.removeCustomDevice(model.address)
-                            }
-                        }
-                    }
+                Layout.bottomMargin: Kirigami.Units.largeSpacing
+            }
+            ColumnLayout {
+                spacing: 0
+                Kirigami.Heading { text: "ReyOS Connect"; level: 4 }
+                Controls.Label {
+                    text: !kdeconnectInstalled ? "KDE Connect missing" : backendAvailable ? "Ready" : "Service stopped"
+                    color: backendAvailable ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.neutralTextColor
+                    font.pointSize: Kirigami.Theme.smallFont.pointSize
                 }
             }
         }
+
+        actions: [
+            Kirigami.Action {
+                text: "Devices"
+                icon.name: "smartphone"
+                checkable: true
+                checked: appWindow.section === "devices"
+                onTriggered: openSection("devices")
+            },
+            Kirigami.Action {
+                text: "Remote Desktop"
+                icon.name: "computer"
+                checkable: true
+                checked: appWindow.section === "remote-desktop"
+                onTriggered: openSection("remote-desktop")
+            },
+            Kirigami.Action {
+                text: "VPN"
+                icon.name: "network-vpn"
+                checkable: true
+                checked: appWindow.section === "vpn"
+                onTriggered: openSection("vpn")
+            },
+            Kirigami.Action {
+                text: "Bluetooth"
+                icon.name: "network-bluetooth"
+                checkable: true
+                checked: appWindow.section === "bluetooth"
+                onTriggered: openSection("bluetooth")
+            },
+            Kirigami.Action {
+                text: "Diagnostics"
+                icon.name: "system-search"
+                checkable: true
+                checked: appWindow.section === "diagnostics"
+                onTriggered: openSection("diagnostics")
+            }
+        ]
     }
 
     Controls.Dialog {
@@ -290,22 +135,13 @@ Kirigami.ApplicationWindow {
         title: "Allow KDE Connect through the firewall?"
         modal: true
         anchors.centerIn: Controls.Overlay.overlay
+        width: Math.min(Kirigami.Units.gridUnit * 26, appWindow.width - Kirigami.Units.gridUnit * 2)
         standardButtons: Controls.Dialog.Yes | Controls.Dialog.No
         onAccepted: backend.openFirewallForKdeConnect()
         Controls.Label {
+            width: parent.width
             wrapMode: Text.Wrap
             text: "This opens ports 1714-1764 (TCP and UDP) — the range KDE Connect itself needs to discover and talk to your devices. No other ports are affected."
-        }
-    }
-
-    Component {
-        id: deviceCardComponent
-        DeviceCard {
-            onPairRequested: backend.requestPairing(deviceData.id)
-            onAcceptRequested: backend.acceptPairing(deviceData.id)
-            onRejectRequested: backend.rejectPairing(deviceData.id)
-            onOpenRequested: pageStack.push(Qt.resolvedUrl("DeviceDetailPage.qml"), {deviceId: deviceData.id})
-            onSendFileRequested: backend.openFilePickerAndSend(deviceData.id)
         }
     }
 }

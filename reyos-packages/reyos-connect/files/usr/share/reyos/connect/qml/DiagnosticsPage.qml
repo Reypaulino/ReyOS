@@ -4,7 +4,7 @@ import QtQuick.Controls as Controls
 import org.kde.kirigami as Kirigami
 
 Kirigami.ScrollablePage {
-    title: "Connection Diagnostics"
+    title: "Diagnostics"
 
     property var rows: []
     property bool busy: false
@@ -19,8 +19,6 @@ Kirigami.ScrollablePage {
     }
 
     actions: [
-        Kirigami.Action { text: "Close"; icon.name: "window-close"; onTriggered: applicationWindow().pageStack.pop() },
-        Kirigami.Action { text: "Menu"; icon.name: "application-menu"; onTriggered: applicationWindow().globalDrawer.open() },
         Kirigami.Action { text: "Refresh"; icon.name: "view-refresh"; onTriggered: refresh() }
     ]
 
@@ -36,7 +34,7 @@ Kirigami.ScrollablePage {
 
         ReyOSProgressBar { Layout.fillWidth: true; indeterminate: true; visible: busy }
 
-        Kirigami.AbstractCard {
+        SectionCard {
             Layout.fillWidth: true
             padding: Kirigami.Units.gridUnit
             contentItem: ColumnLayout {
@@ -49,10 +47,9 @@ Kirigami.ScrollablePage {
                         RowLayout {
                             Layout.fillWidth: true
                             Controls.Label { text: modelData.check; font.bold: true; Layout.preferredWidth: Kirigami.Units.gridUnit * 8 }
-                            Controls.Label {
-                                text: modelData.result.replace("_", " ")
-                                color: resultColor(modelData.result)
-                                font.bold: true
+                            StatusPill {
+                                text: modelData.result === "PASS" ? "Pass" : modelData.result === "FAIL" ? "Fail" : "Not tested"
+                                tone: modelData.result === "PASS" ? "positive" : modelData.result === "FAIL" ? "negative" : "muted"
                             }
                         }
                         Controls.Label {

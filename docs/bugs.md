@@ -8,7 +8,7 @@ This file was rewritten from scratch on 2026-08-18 after a full audit of the wor
 
 ## Connect: sharing this desktop (KRDP) doesn't work in the default X11 session
 
-Added 2026-10-18 (Dev VM). `krdpserver` uses the XDG RemoteDesktop/ScreenCast portals and doesn't listen in an X11 session; since reyos-sddm 17 the default session is X11. ReyOS Connect's device page still offers Remote Desktop Settings / Start Session there, so on the default session "Start Session" can't work. Workarounds: log into "ReyOS Desktop (Wayland)", or use RustDesk (Control Center) on X11. Not fixed. Likely fix: Connect detects `XDG_SESSION_TYPE=x11` and says so next to Start Session (pointing at the Wayland session or RustDesk) instead of offering a session that can't start.
+Added 2026-10-18 (Dev VM). `krdpserver` uses the XDG RemoteDesktop/ScreenCast portals and doesn't listen in an X11 session; since reyos-sddm 17 the default session is X11. Workarounds: log into "ReyOS Desktop (Wayland)", or use RustDesk (Control Center) on X11. **Partly addressed in reyos-connect 1.0.0-20:** the Remote Desktop page detects X11, says this and hides Start sharing instead of offering a session that can't start. Sharing itself still needs Wayland.
 
 ## Connect: Start Session doesn't open the firewall, so nobody can connect
 

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import logging
+import os
 import shutil
 import subprocess
 import sys
@@ -456,6 +457,10 @@ class Backend(QObject):
             ok, err = remote_provider.stop_remote_desktop()
             return ok, ("Remote Desktop session stopped." if ok else f"Failed to stop: {err}")
         self._run(task)
+
+    @Slot(result=str)
+    def sessionType(self):
+        return os.environ.get("XDG_SESSION_TYPE", "")
 
     @Slot(result=bool)
     def remoteDesktopClientAvailable(self):

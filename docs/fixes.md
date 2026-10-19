@@ -2,6 +2,12 @@
 
 Real bugs found and fixed, with root cause. Newest first. See `bugs.md` for what's still open.
 
+## 2026-10-18 — ReyOS Connect 1.0.0-20 redesign; new icons for Connect, Screenshot, Shortcuts
+
+- **Connect redesign** (user: "the menu is linked to the other one and my paired devices are overlooked"). Cause of the first: Kirigami's page stack showed a section *beside* the dashboard as a second column, and each page had its own "Menu" button. Now a permanent sidebar and one page at a time. Paired devices come first as large tiles with their main actions; pairing requests above them. Remote desktop (both directions) + SSH have their own page; on X11 it explains the Wayland requirement for sharing (see `bugs.md`). Details: `docs/connect.md` → "1.0.0-19/-20".
+- **Syncthing provider** keeps its API key on loopback and refuses home/`/` as sync folders (8 tests in `tests/`).
+- **Icons** from the user's sheet: `reyos-connect` 1.0.0-20, `reyos-screenshot` 1.0.0-4 (SVG replaced by PNGs), `reyos-shortcuts-cheatsheet` 1.0.0-4 (own icon instead of `input-keyboard`).
+
 ## 2026-10-18 — ReyOS Connect can open other computers' desktops (reyos-connect 1.0.0-18); README refresh
 
 - **Connect to a Computer** (Remote Access page): RDP/VNC client through KDE's KRDC, with address validation, a reachability check, Recent targets and Tailscale peers. `krdc`, `freerdp`, `libvncserver` are now dependencies. Details and test results: `docs/connect.md` → "Connect to a Computer".

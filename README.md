@@ -15,7 +15,7 @@ ReyOS is a calm, dependable KDE Plasma Linux distribution built on Arch: easy en
 - **KDE Plasma 6** (X11 session by default, Wayland available), tuned for a clean, low-clutter default desktop.
 - **Reyva** (the ReyOS browser) — a native PySide6/Qt WebEngine (Chromium) browser, not a wrapper around another browser. Low Memory Mode tab freezing, Reader Mode, Find in Page, printing, downloads to any folder, ReyOS Shields ad/tracker blocking and Install as App. Also available as a Flatpak for any distro, an Ubuntu `.deb` and for Windows.
 - **ReyOS Reader** — a native EPUB, PDF and comic (CBZ/CBR) reader with search and PDF annotations.
-- **ReyOS Connect** — phone pairing over KDE Connect, file sharing, Tailscale/WireGuard remote access, **Connect to a Computer** (open a Windows, KDE or VNC desktop over RDP/VNC), sharing this desktop via KDE Remote Desktop, and Bluetooth device linking.
+- **ReyOS Connect** — your phone and computers in one place: pair over KDE Connect, send files, links and the clipboard, use the phone as a remote, open another computer's desktop (RDP/VNC), share this desktop (KDE Remote Desktop, Wayland session), Tailscale/WireGuard VPN, and Bluetooth device linking.
 - **Control Center** — one place for updates (ReyOS packages and Flatpaks together), firewall, drivers, backups, Looks (whole-desktop styles), gaming and system settings. Anything that changes the system asks for your password.
 - **Stable updates** — Arch packages come from a tested snapshot (the stable channel), moved forward weekly after an automated check that ReyOS's apps still start on it. Updates are never partial: every install button goes through the same full update.
 - **Rollback** — new installs use btrfs with an automatic snapshot before every update; each snapshot gets its own boot menu entry, plus an LTS backup kernel.
@@ -39,6 +39,7 @@ docs/             developer guide, roadmap, bug/fix logs, per-app notes (browser
 flatpak/          Flatpak packaging for Reyva
 tools/            stable-channel snapshot check and promotion scripts
 website/          source of reyos.reyapps.com
+tests/            unit tests (e.g. ReyOS Connect's Syncthing provider)
 ```
 
 See [docs/DEVELOPER.md](docs/DEVELOPER.md) for the full build workflow.
