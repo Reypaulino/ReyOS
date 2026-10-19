@@ -140,9 +140,11 @@ Kirigami.Page {
         if (sig !== gamesSignature) {
             gamesSignature = sig
             allGames = games
+            // "All" unless a tab was picked (and still exists).
             if (!filterChosen || !gameSystems.some(function (s) { return s.id === gameFilter }))
-                gameFilter = gameSystems.length > 0 ? gameSystems[0].id : ""
+                gameFilter = ""
             applyFilter()
+            syncTab()
         }
         backend.fetchCovers()
     }
@@ -159,7 +161,14 @@ Kirigami.Page {
         }
     }
 
-    onGameFilterChanged: applyFilter()
+    // Set, not bound: clicking a tab breaks a currentIndex binding, after
+    // which the highlighted tab and the listed games could disagree.
+    function syncTab() {
+        var i = gameSystems.findIndex(function (s) { return s.id === gameFilter })
+        systemTabs.currentIndex = i >= 0 ? i : gameSystems.length - 1
+    }
+
+    onGameFilterChanged: { applyFilter(); syncTab() }
     onGameSearchChanged: applyFilter()
     Component.onCompleted: {
         reload()
@@ -434,7 +443,6 @@ Kirigami.Page {
             id: systemTabs
             visible: gameSystems.length > 1 && gameSearch === ""
             Layout.fillWidth: true
-            currentIndex: Math.max(0, gameSystems.findIndex(function (s) { return s.id === gameFilter }))
             Repeater {
                 model: gameSystems
                 Controls.TabButton {

@@ -83,6 +83,29 @@ def rom_dirs(system):
     return [GAMES_DIR / "ROMs" / d for d in system.get("dirs", [system["id"]])]
 
 
+def storage_system_dir(root, folder):
+    """A console's folder inside the "Added games are kept in" folder. When
+    that folder is itself a console's folder (…/Games/ps2), it's used as is
+    and the other consoles get a folder next to it, never …/ps2/ps2."""
+    root = Path(root)
+    name = root.name.lower()
+    if name == folder.lower():
+        return root
+    if name in {d.lower() for s in EMU_SYSTEMS for d in s.get("dirs", [s["id"]])}:
+        return root.parent / folder
+    return root / folder
+
+
+def library_dirs(system, settings=None):
+    """~/Games/ROMs/<system> plus the same console's folder in the "Added
+    games are kept in" folder, so games already there show up too."""
+    dirs = list(rom_dirs(system))
+    storage = (settings or load_settings())["game_storage"]
+    if storage:
+        dirs += [storage_system_dir(storage, d) for d in system.get("dirs", [system["id"]])]
+    return dirs
+
+
 def core_path(system):
     return LIBRETRO_DIR / f"{system.get('core', '')}_libretro.so"
 
@@ -1409,11 +1432,21 @@ _COVER_EXTS = (".png", ".jpg", ".jpeg", ".webp")
 
 
 def scan_games(system):
-    for folder in rom_dirs(system):
+    """Each game once: a link in ~/Games/ROMs and the file it points to in
+    the games folder are the same game. Hidden folders (.adding, a half
+    done "Add games") are skipped."""
+    seen = set()
+    for folder in library_dirs(system):
         if not folder.is_dir():
             continue
         for path in sorted(folder.rglob("*")):
+            if any(part.startswith(".") for part in path.relative_to(folder).parts):
+                continue
             if path.is_file() and path.suffix.lower() in system["exts"]:
+                real = os.path.realpath(path)
+                if real in seen:
+                    continue
+                seen.add(real)
                 yield path
 
 

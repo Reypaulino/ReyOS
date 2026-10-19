@@ -359,7 +359,7 @@ Kirigami.ScrollablePage {
                         text: "Added games are kept in " + (emuSettings.game_storage ? emuSettings.game_storage : "~/Games/ROMs")
                     }
                     Kirigami.ContextualHelpButton {
-                        toolTipText: "Pick a bigger drive (another partition or an external disk) to keep games off this one. They still show up in the library."
+                        toolTipText: "Your games folder, for example on another partition or a USB drive. Games already in it (or in its ps2, psp… folders) show up in the library, and games you add are kept there."
                     }
                     Controls.Button {
                         text: "Change…"

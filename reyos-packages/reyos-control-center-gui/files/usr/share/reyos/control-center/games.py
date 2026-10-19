@@ -115,9 +115,11 @@ class GamesBackend(QObject):
         emulation.prepare_folders()
         dirs = {str(emulation.GAMES_DIR / "ROMs")}
         for system in EMU_SYSTEMS:
-            for folder in emulation.rom_dirs(system):
+            for folder in emulation.library_dirs(system):
+                if not folder.is_dir():
+                    continue
                 dirs.add(str(folder))
-                dirs.update(str(p) for p in folder.rglob("*") if p.is_dir())
+                dirs.update(str(p) for p in folder.rglob("*") if p.is_dir() and not p.name.startswith("."))
         new = sorted(dirs - set(self._watcher.directories()))
         if new:
             self._watcher.addPaths(new)
@@ -223,7 +225,11 @@ class GamesBackend(QObject):
     @Slot(str)
     def openGamesFolder(self, system_id):
         emulation.prepare_folders()
-        folder = emulation.GAMES_DIR / "ROMs" / system_id if system_id else emulation.GAMES_DIR / "ROMs"
+        storage = emulation.load_settings()["game_storage"]
+        if storage and Path(storage).is_dir():
+            folder = emulation.storage_system_dir(storage, system_id) if system_id else Path(storage)
+        else:
+            folder = emulation.GAMES_DIR / "ROMs" / system_id if system_id else emulation.GAMES_DIR / "ROMs"
         folder.mkdir(parents=True, exist_ok=True)
         subprocess.Popen(["xdg-open", str(folder)], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                          stderr=subprocess.DEVNULL, start_new_session=True)

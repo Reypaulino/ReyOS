@@ -35,6 +35,19 @@ def storage_root(settings=None):
     return Path(path) if path else emulation.GAMES_DIR / "ROMs"
 
 
+def _in_games_folder(path, settings):
+    """A game already in the "Added games are kept in" folder (or, when that
+    is a console's folder, in the folder above it): shrink it where it is."""
+    storage = settings.get("game_storage") or ""
+    if not storage:
+        return False
+    root = Path(storage)
+    if any(root == emulation.storage_system_dir(root, d)
+           for s in emulation.EMU_SYSTEMS for d in s.get("dirs", [s["id"]])):
+        root = root.parent
+    return Path(path).absolute().is_relative_to(root.absolute())
+
+
 def _cue_track(cue):
     m = re.search(r'^\s*FILE\s+(?:"([^"]+)"|(\S+))', Path(cue).read_text(errors="replace"), re.M | re.I)
     return Path(cue).parent / (m.group(1) or m.group(2)) if m else None
@@ -153,13 +166,14 @@ def add_game(source, emit, settings=None, beside_original=False):
     # A game picked from the library (often a link to a file on another
     # drive) is shrunk where its real file is, and the real file is what
     # may be deleted afterwards -- not the link, and not onto this drive.
-    if source.absolute().is_relative_to(library.absolute()) or source.is_symlink():
+    settings = settings or emulation.load_settings()
+    if source.absolute().is_relative_to(library.absolute()) or source.is_symlink() \
+            or _in_games_folder(source, settings):
         beside_original = True
     if beside_original:
         source = source.resolve()
     if source.suffix.lower() == ".bin" and source.with_suffix(".cue").is_file():
         source = source.with_suffix(".cue")  # a link to a CD's track: shrink the whole CD
-    settings = settings or emulation.load_settings()
     root = storage_root(settings)
     work = None
     try:
@@ -186,7 +200,7 @@ def add_game(source, emit, settings=None, beside_original=False):
         if system is None:
             return False, f"{source.name}: not a PlayStation 2, PSP or PlayStation game.", []
         title = emulation.game_title(disc)
-        out_dir = disc.parent if beside_original else root / system
+        out_dir = disc.parent if beside_original else emulation.storage_system_dir(root, system)
         out_dir.mkdir(parents=True, exist_ok=True)
         out = out_dir / (disc.stem + ".chd")
 

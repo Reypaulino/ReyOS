@@ -1165,8 +1165,11 @@ class Backend(QObject):
     @Slot(str)
     def openGamesFolder(self, system_id):
         self._emu_prepare_folders()
+        storage = emulation.load_settings()["game_storage"]
         if system_id == "bios":
             folder = emulation.BIOS_DIR
+        elif not system_id and storage and Path(storage).is_dir():
+            folder = Path(storage)
         else:
             folder = GAMES_DIR / "ROMs" / system_id if system_id else GAMES_DIR / "ROMs"
             folder.mkdir(parents=True, exist_ok=True)
@@ -1207,10 +1210,12 @@ class Backend(QObject):
     def setEmulationSettings(self, settings):
         try:
             emulation.save_settings(dict(settings))
-            # A new "Added games are kept in" folder: PCSX2 needs to read it.
-            ps2 = next(s for s in EMU_SYSTEMS if s["id"] == "ps2")
-            if settings.get("game_storage") and emulation.system_installed(ps2):
-                emulation.prepare_flatpak(ps2)
+            # A new "Added games are kept in" folder: the Flatpak emulators
+            # (PCSX2, Azahar) need to be allowed to read it.
+            if settings.get("game_storage"):
+                for system in EMU_SYSTEMS:
+                    if "flatpak" in system and emulation.system_installed(system):
+                        emulation.prepare_flatpak(system)
         except OSError as e:
             self.actionFinished.emit(False, f"Couldn't save game settings: {e}")
             return

@@ -2,6 +2,17 @@
 
 Real bugs found and fixed, with root cause. Newest first. See `bugs.md` for what's still open.
 
+## 2026-10-19 — Games folder: library follows it, no nested folder; ReyOS Games opens on All (control-center-gui 1.0.0-129)
+
+Redoes the laptop's lost "patch 0017" (it only existed on the ReyOS install that was reinstalled). User's report: after changing Control Center → Gaming → "Added games are kept in", Control Center and ReyOS Games kept looking at the old folder, and adding games created a folder inside the chosen one; also ReyOS Games opened on Super Nintendo instead of All.
+
+- **The library only scanned `~/Games/ROMs`.** The chosen folder was only where *added* games were written (with a link in `~/Games/ROMs`), so games already in it (e.g. a USB stick's `Games/ps2`) never showed. New `emulation.library_dirs()`: `~/Games/ROMs/<console>` plus that console's folder in the chosen folder; `scan_games()` lists each game once (a link and its file count as one) and skips hidden folders (`.adding`).
+- **`…/ps2/ps2`:** added games went to `<chosen>/<console>`. New `emulation.storage_system_dir()`: if the chosen folder is itself a console folder it's used as is, and other consoles go next to it. Shrinking a game that already lives in the chosen folder now puts the `.chd` next to it.
+- **"Open folder"** (Gaming page, ReyOS Games) opens the chosen folder; ReyOS Games watches it. Saving a new folder re-grants read access to every installed Flatpak emulator (PCSX2 and Azahar, was PCSX2 only).
+- **ReyOS Games tab:** each reload picked the *first console* unless a tab had been clicked, and the tab bar's `currentIndex` binding broke on the first click (highlighted tab ≠ listed games). Now defaults to All and sets the highlighted tab whenever the filter changes.
+
+Tested on the Dev VM with fake PS2 discs (xorriso) in a temp home, old vs new code: chosen folder `stick/Games/ps2` and `stick/Games` → old: 0 games, new: found; link + file → once; `.adding` ignored; Add games into `Games/ps2` → old `ps2/ps2/`, new `ps2/`; shrinking a game inside the folder → `.chd` beside it. On screen (installed 129): ReyOS Games opens on All with a PlayStation 2 tab for the stick-like folder; Super Nintendo stayed selected and matched the list while a new file was picked up; Control Center counts 18 and shows the folder. Not tested: a real USB stick, a real chdman shrink of a full-size game.
+
 ## 2026-10-19 — Welcome: GameMode + MangoHud failed with "target not found" (reyos-welcome 3.3.3-34)
 
 Found by the user on a fresh install of ISO 2026.10.16 on the laptop. `~/.cache/reyos-welcome.log`: `error: target not found: lib32-gamemode` / `lib32-mangohud`; the sync listed only reyos-local, core and extra. multilib ships commented out in ReyOS's `pacman.conf`, and Welcome only ran `enable-multilib.sh` when Steam or Wine was selected (`main.py`), so picking the "GameMode + MangoHud" group on its own always failed. Control Center's Gaming install always enables multilib and wasn't affected. Fix: also enable multilib when any selected package is `lib32-…`.
