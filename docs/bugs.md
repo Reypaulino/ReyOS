@@ -6,10 +6,6 @@ This file was rewritten from scratch on 2026-08-18 after a full audit of the wor
 
 **2026-10-08 verification pass:** see `BUG_VERIFICATION_REPORT.md` for what was re-tested and how. Entries below carry a "Status 2026-10-08" line where they were checked; resolved entries moved to the "Resolved" section at the end.
 
-## Broadcom Wi-Fi driver isn't built for the LTS backup kernel
-
-Added 2026-10-20 (Dev VM, full update to snapshot 2026/10/19). Every kernel update prints `==> ERROR: Missing 6.18.57-2-lts kernel headers for module broadcom-wl`. The ISO installs `broadcom-wl-dkms` and `linux-headers` but, since Phase 1a added `linux-lts` (reyos-boot), not `linux-lts-headers`. Effect: on a PC with an old Broadcom Wi-Fi card, booting the backup LTS kernel has no Wi-Fi. Fix: add `linux-lts-headers` to reyos-boot's depends (~130 MB installed on small partitions) — waiting on the user's call.
-
 ## Desktop sharing logins fail on current Arch (FreeRDP 3.32 + krdp 6.7.5)
 
 Added 2026-10-19 (laptop). Every login from Windows App/an RDP client is refused: krdp log `ntlm_fetch_ntlm_v2_hash: Could not find user in SAM database` → `SEC_E_NO_CREDENTIALS`. FreeRDP 3.32 regression (FreeRDP #13567/#13688, KDE bug 526928), fixed in krdp MR !248, not yet in Arch. Laptop workaround: freerdp 3.31.0-1 from the Arch archive + `IgnorePkg = freerdp` (since lost to a reinstall). Not fixed in ReyOS: consider holding freerdp in the stable channel until krdp ships the fix, or a Connect note. Also: with `SystemUserEnabled=true` the password asked for is the ReyOS login password, not the one set in Connect's dialog — Connect's text should say so.
@@ -128,6 +124,10 @@ Status 2026-10-20: seen on the 2026-08-20 ISO only; not seen in the 2026.10.08/1
 Right-click desktop → Configure Desktop and Wallpaper opens Folder View's own settings dialog, which always includes a generic plugin "About" tab appended automatically by Plasma's own config-dialog framework — not specific to ReyOS's config, and no kiosk restriction found to suppress it. Purely cosmetic; disproportionate effort to fix (would mean patching Plasma itself). Deprioritized.
 
 ## Resolved
+
+### Broadcom Wi-Fi driver wasn't built for the LTS backup kernel — fixed in reyos-boot 1.0.0-3
+
+`linux-lts-headers` is now a dependency of reyos-boot (user's OK), so DKMS builds `broadcom-wl` for the LTS kernel too. Dev VM through the normal update: `dkms status` lists broadcom-wl for both `7.2.11-arch1-1` and `6.18.57-2-lts`, no ERROR line. Costs ~306 MB on disk.
 
 ### Mouse page: per-device settings lost at login on X11 — resolved by the move to Wayland (reyos-sddm 18)
 

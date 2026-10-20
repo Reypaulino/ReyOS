@@ -2,6 +2,10 @@
 
 Real bugs found and fixed, with root cause. Newest first. See `bugs.md` for what's still open.
 
+## 2026-10-20 — LTS kernel headers for DKMS Wi-Fi (reyos-boot 1.0.0-3)
+
+The Plasma 6.8 update on the Dev VM printed `ERROR: Missing 6.18.57-2-lts kernel headers for module broadcom-wl`: the ISO installs `broadcom-wl-dkms` + `linux-headers`, but Phase 1a's backup `linux-lts` came without `linux-lts-headers`, so old Broadcom Wi-Fi had no driver on the backup kernel. reyos-boot now depends on `linux-lts-headers` (user's OK; ~306 MB installed). Tested on the Dev VM via a local repo + `reyos-channel upgrade --yes`: headers installed in the same transaction, `dkms install broadcom-wl … -k 6.18.57-2-lts` ran, `dkms status` shows both kernels.
+
 ## 2026-10-20 — Firewall vs ReyOS Connect; installer recovery autostart; bugs.md pass (reyos-connect 1.0.0-22, reyos-calamares 1.3.6-56)
 
 User asked to work through `bugs.md`.

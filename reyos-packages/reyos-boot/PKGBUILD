@@ -1,11 +1,13 @@
 # Maintainer: Rey Paulino
 pkgname=reyos-boot
 pkgver=1.0.0
-pkgrel=2
+pkgrel=3
 pkgdesc="ReyOS boot safety: LTS backup kernel and a Limine boot menu kept in step with the installed kernels and automatic snapshots"
 arch=('any')
 license=('MIT')
-depends=('linux-lts' 'python' 'mkinitcpio')
+# linux-lts-headers: DKMS modules the ISO installs (broadcom-wl-dkms) must also
+# build for the backup kernel, or old Broadcom Wi-Fi has no driver on it.
+depends=('linux-lts' 'linux-lts-headers' 'python' 'mkinitcpio')
 backup=('etc/mkinitcpio.d/linux-lts.preset')
 install=reyos-boot.install
 source=()
