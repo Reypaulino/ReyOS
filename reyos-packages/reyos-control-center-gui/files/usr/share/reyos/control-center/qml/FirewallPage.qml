@@ -28,6 +28,7 @@ Kirigami.ScrollablePage {
     function refresh() {
         busy = true
         backend.refreshFirewallStatus()
+        backend.refreshFirewallListening()
     }
 
     Connections {
@@ -38,6 +39,10 @@ Kirigami.ScrollablePage {
             defaultPolicy = info.defaultPolicy || ""
             ruleModel.clear()
             for (var i = 0; i < info.rules.length; i++) ruleModel.append(info.rules[i])
+        }
+        function onFirewallListeningReady(rows) {
+            listeningModel.clear()
+            for (var i = 0; i < rows.length; i++) listeningModel.append(rows[i])
         }
         function onActionFinished(ok, message) {
             busy = false
@@ -50,6 +55,7 @@ Kirigami.ScrollablePage {
     Component.onCompleted: refresh()
 
     ListModel { id: ruleModel }
+    ListModel { id: listeningModel }
 
     // Disabling only weakens your own protection (no local-escalation risk),
     // but it's still easy to click by accident right next to Enable -- same
@@ -129,6 +135,64 @@ Kirigami.ScrollablePage {
             Layout.fillWidth: true
             padding: Kirigami.Units.gridUnit
             contentItem: ColumnLayout {
+                spacing: Kirigami.Units.smallSpacing
+                Kirigami.Heading { text: "Listening on this computer"; level: 3 }
+                Controls.Label {
+                    text: "Programs here that accept connections from other computers, and whether the firewall lets them through."
+                    wrapMode: Text.Wrap
+                    Layout.fillWidth: true
+                    opacity: 0.7
+                }
+                Repeater {
+                    model: listeningModel
+                    delegate: RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Kirigami.Units.largeSpacing
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 0
+                            Controls.Label { text: name; font.bold: true; Layout.fillWidth: true; elide: Text.ElideRight }
+                            Controls.Label {
+                                text: "Port " + port + " · " + protos
+                                opacity: 0.6
+                                font: Kirigami.Theme.smallFont
+                            }
+                        }
+                        Controls.Label {
+                            text: status === "allowed" ? "Allowed"
+                                  : status === "open" ? "Open (firewall off)"
+                                  : status === "outgoing" ? "Works without a rule"
+                                  : "Blocked"
+                            color: status === "allowed" ? Kirigami.Theme.positiveTextColor
+                                   : status === "open" ? Kirigami.Theme.neutralTextColor
+                                   : status === "blocked" ? Kirigami.Theme.negativeTextColor
+                                   : Kirigami.Theme.textColor
+                            Controls.ToolTip.visible: status === "outgoing" && statusHover.hovered
+                            Controls.ToolTip.text: "It connects out first, so replies get through without an allow rule."
+                            HoverHandler { id: statusHover }
+                        }
+                        Controls.Button {
+                            text: "Allow"
+                            visible: status === "blocked"
+                            enabled: !busy
+                            onClicked: { busy = true; backend.addFirewallRule(rule, true) }
+                        }
+                    }
+                }
+                Controls.Label {
+                    visible: listeningModel.count === 0
+                    text: "Nothing on this computer is listening for connections from other computers."
+                    wrapMode: Text.Wrap
+                    Layout.fillWidth: true
+                    opacity: 0.7
+                }
+            }
+        }
+
+        Kirigami.AbstractCard {
+            Layout.fillWidth: true
+            padding: Kirigami.Units.gridUnit
+            contentItem: ColumnLayout {
                 spacing: Kirigami.Units.largeSpacing
                 Kirigami.Heading { text: "Add rule"; level: 3 }
                 RowLayout {
@@ -179,7 +243,7 @@ Kirigami.ScrollablePage {
                 }
                 Controls.Label {
                     visible: ruleModel.count === 0 && !busy
-                    text: "No rules yet."
+                    text: fwEnabled ? "No rules yet: everything other computers try to open is blocked." : "No rules yet."
                     opacity: 0.7
                 }
             }

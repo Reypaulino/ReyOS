@@ -783,6 +783,7 @@ class Backend(QObject):
     driverStatusReady = Signal("QVariantMap")
     screenSleepReady = Signal("QVariantMap")
     firewallStatusReady = Signal("QVariantMap")
+    firewallListeningReady = Signal("QVariantList")
     vpnStatusReady = Signal("QVariantMap")
     vpnConfigSelected = Signal(str)
     securityOverviewReady = Signal("QVariantMap")
@@ -823,6 +824,7 @@ class Backend(QObject):
         self._about_worker = None
         self._driver_worker = None
         self._firewall_worker = None
+        self._listening_worker = None
         self._users_worker = None
         self._pkgsearch_worker = None
         self._flatpak_worker = None
@@ -2487,8 +2489,9 @@ class Backend(QObject):
 
     @Slot(str, bool)
     def addFirewallRule(self, port, allow):
+        port = port.strip()
+
         def task(emit):
-            port = port.strip()
             if not port:
                 return False, "Enter a port (e.g. 22 or 22/tcp) or service name."
             verb = "allow" if allow else "deny"
@@ -2506,6 +2509,106 @@ class Backend(QObject):
             ok = result.returncode == 0
             return ok, (f"Rule {rule_num} removed." if ok else (result.stderr.strip() or "Failed to remove rule."))
         self._run_action(task)
+
+    # Programs listening for connections from other computers, and whether
+    # the firewall lets them through -- so a fresh install with no rules
+    # still shows what the firewall is actually blocking.
+    _KNOWN_PORTS = {
+        22: "SSH (remote login)", 53: "DNS", 631: "Printing (CUPS)", 1716: "KDE Connect",
+        3389: "Remote Desktop (RDP)", 5353: "Network discovery (mDNS)", 5355: "Name lookup (LLMNR)",
+        5900: "Screen sharing (VNC)", 21116: "RustDesk", 21118: "RustDesk", 41641: "Tailscale",
+    }
+    _KNOWN_PROGRAMS = {"rustdesk": "RustDesk", "kdeconnectd": "KDE Connect", "sshd": "SSH (remote login)"}
+    # Let through by ufw's own before.rules (multicast mDNS / SSDP), no rule needed.
+    _BUILTIN_ALLOWED = {(5353, "udp"), (1900, "udp")}
+    # These connect out first (NAT traversal), so the firewall's
+    # "reply to my own connection" rule lets them work without an allow rule.
+    _CONNECTS_OUT = {"RustDesk", "Tailscale"}
+
+    @staticmethod
+    def _firewall_allowed_ports(verbose_lines):
+        # `ufw status verbose` spells app rules out as ports, e.g.
+        # "1714:1764/udp (KDEConnect) ALLOW IN Anywhere".
+        allowed = []
+        for line in verbose_lines:
+            m = re.match(r"([0-9][0-9,:]*)(?:/(tcp|udp))?\s.*?\b(ALLOW|DENY|REJECT|LIMIT) IN\b", line.strip())
+            if not m or m.group(3) not in ("ALLOW", "LIMIT"):
+                continue
+            for part in m.group(1).split(","):
+                lo, _, hi = part.partition(":")
+                allowed.append((int(lo), int(hi or lo), m.group(2)))
+        return allowed
+
+    @staticmethod
+    def _compute_firewall_listening():
+        try:
+            ss = subprocess.check_output(["ss", "-tulnpH"], text=True, stderr=subprocess.DEVNULL)
+        except Exception:
+            return []
+        try:
+            verbose = subprocess.check_output(
+                ["sudo", "-n", REYOS_ADMIN, "firewall", "status", "verbose"], text=True, stderr=subprocess.STDOUT,
+            ).splitlines()
+        except Exception:
+            verbose = []
+        active = any(l.startswith("Status: active") for l in verbose)
+        allowed = Backend._firewall_allowed_ports(verbose)
+
+        found = {}
+        for line in ss.splitlines():
+            cols = line.split()
+            if len(cols) < 5:
+                continue
+            proto, local = cols[0], cols[4]
+            host, _, port = local.rpartition(":")
+            # Loopback is unreachable from other computers anyway, and
+            # Tailscale's own 100.x / fd7a: listeners are its internals.
+            if (not port.isdigit() or host.startswith(("127.", "[::1]", "100.", "[fd7a:115c:a1e0"))
+                    or "%lo" in host):
+                continue
+            port = int(port)
+            m = re.search(r'users:\(\("([^"]+)"', line)
+            prog = m.group(1) if m else ""
+            name = (Backend._KNOWN_PORTS.get(port) or Backend._KNOWN_PROGRAMS.get(prog)
+                    or prog or "System service")
+            entry = found.setdefault(port, {"name": name, "port": port, "protos": set()})
+            entry["protos"].add(proto)
+
+        rows = []
+        for port, e in sorted(found.items()):
+            protos = sorted(e["protos"])
+            ok = all((port, proto) in Backend._BUILTIN_ALLOWED
+                     or any(lo <= port <= hi and p in (None, proto) for lo, hi, p in allowed) for proto in protos)
+            if not active:
+                status = "open"
+            elif ok:
+                status = "allowed"
+            else:
+                status = "outgoing" if e["name"] in Backend._CONNECTS_OUT else "blocked"
+            if e["name"] == "KDE Connect":
+                # ufw's app profile: 1714-1764, file transfers use 1739+.
+                rule = "kdeconnect"
+            elif len(protos) > 1:
+                # Both protocols -> one plain-port rule covers them.
+                rule = str(port)
+            else:
+                rule = f"{port}/{protos[0]}"
+            rows.append({
+                "name": e["name"], "port": port,
+                "protos": " + ".join(p.upper() for p in protos),
+                "rule": rule,
+                "status": status,
+            })
+        return rows
+
+    @Slot()
+    def refreshFirewallListening(self):
+        running = self._listening_worker
+        if running is not None and running.isRunning():
+            return
+        self._listening_worker = ListWorker(self._compute_firewall_listening)
+        self._listening_worker.ready.connect(self.firewallListeningReady.emit)
+        self._listening_worker.start()
 
     # --- VPN (WireGuard, bring-your-own-config) -------------------------------
     # No bundled provider -- users import a .conf from whatever WireGuard-based

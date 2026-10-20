@@ -2,6 +2,17 @@
 
 Real bugs found and fixed, with root cause. Newest first. See `bugs.md` for what's still open.
 
+## 2026-10-20 — Firewall page: what's listening, one-click Allow, and "Add rule" fixed (control-center-gui 1.0.0-130)
+
+From the laptop's patch 0001 (`~/reyos-handoff/patches/`). User's report: Control Center → Firewall showed nothing on a fresh install with the firewall on. The backend worked; a fresh install just has zero ufw rules, and the page only listed rules, so it never showed what the firewall was actually blocking (KDE Connect, RustDesk, Tailscale…).
+
+- **"Add rule" never worked.** In `addFirewallRule` the nested `task` did `port = port.strip()`, which makes `port` local to `task` and raised `UnboundLocalError` on every click. The strip now happens before `task`.
+- **New "Listening on this computer" card**: every non-loopback listener from `ss -tulnpH` with a friendly name and its status from `ufw status verbose` (app profiles such as KDEConnect 1714:1764 count, plus ufw's built-in mDNS/SSDP): Allowed, Blocked (with an **Allow** button), Works without a rule (RustDesk and Tailscale connect out first) or Open (firewall off). Tailscale's own 100.x/fd7a: listeners are skipped.
+- KDE Connect's Allow adds the `kdeconnect` ufw profile (1714–1764) rather than just port 1716, since file transfers use 1739+ (found while testing the patch).
+- Empty Rules text says everything inbound is blocked when the firewall is on.
+
+Tested on the Dev VM with 130 installed (X11): the card listed SSH Allowed, KDE Connect Blocked, mDNS Allowed, LLMNR Blocked; a real click on KDE Connect's Allow added `KDEConnect` + `KDEConnect (v6)`, toast "Rule added", row turned Allowed. Not tested: the laptop, a phone pairing through the new rule. Still open in `bugs.md`: nothing allows KDE Connect by default.
+
 ## 2026-10-19 — ReyOS Connect 1.0.0-21: set up and sign in to Tailscale from the VPN page
 
 Tailscale ships with ReyOS Connect (off until set up). "Set up Tailscale" (one password prompt) turns it on and lets the user control it; "Sign in" opens Tailscale's sign-in page; Connect/Disconnect without a password; "Turn off Tailscale" stops and disables it. Details, the `tailscale up` gotchas found live, and test results: `docs/connect.md` → "1.0.0-21".
