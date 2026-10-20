@@ -2,6 +2,12 @@
 
 Real bugs found and fixed, with root cause. Newest first. See `bugs.md` for what's still open.
 
+## 2026-10-20 — Firewall page: Rules list hidden behind Show/Hide (control-center-gui 1.0.0-132)
+
+User request. The Rules card is collapsed by default: heading "Rules (N)" and a Show/Hide button (only when there are rules); "No rules yet…" still shows when empty. Show checked on screen on the Dev VM (4 rules listed, button turned to Hide); Hide uses the same toggle but wasn't seen on screen (QMP clicks lagged and landed on the sidebar).
+
+Gotcha found while testing: Control Center and ReyOS Connect rename their processes (setproctitle), so `pkill -f control-center/main.py` matches nothing and each test launch stacked another window. Kill by name (`reyos-control-center`, `reyos-connect`) instead.
+
 ## 2026-10-20 — Firewall page: "blocked by default" note (control-center-gui 1.0.0-131)
 
 User asked for a note on the Firewall page. While the firewall is on, an information message under Status says all incoming connections are blocked by default, only programs marked Allowed are reachable, to keep SSH / Remote Desktop / LLMNR blocked unless needed, and that RustDesk and Tailscale connect out so the firewall doesn't stop them (turn the apps off instead). Checked on screen on the Dev VM.

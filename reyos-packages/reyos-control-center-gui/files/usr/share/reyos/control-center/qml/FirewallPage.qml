@@ -16,6 +16,7 @@ Kirigami.ScrollablePage {
     // true unless set).
     property bool fwEnabled: false
     property string defaultPolicy: ""
+    property bool showRules: false
 
     actions: [
         Kirigami.Action {
@@ -230,9 +231,22 @@ Kirigami.ScrollablePage {
             padding: Kirigami.Units.gridUnit
             contentItem: ColumnLayout {
                 spacing: Kirigami.Units.smallSpacing
-                Kirigami.Heading { text: "Rules"; level: 3 }
+                RowLayout {
+                    Layout.fillWidth: true
+                    Kirigami.Heading {
+                        text: ruleModel.count > 0 ? "Rules (" + ruleModel.count + ")" : "Rules"
+                        level: 3
+                    }
+                    Item { Layout.fillWidth: true }
+                    Controls.Button {
+                        visible: ruleModel.count > 0
+                        text: showRules ? "Hide" : "Show"
+                        icon.name: showRules ? "go-up" : "go-down"
+                        onClicked: showRules = !showRules
+                    }
+                }
                 Repeater {
-                    model: ruleModel
+                    model: showRules ? ruleModel : null
                     delegate: RowLayout {
                         Layout.fillWidth: true
                         Controls.Label { text: "[" + num + "]"; opacity: 0.6; Layout.preferredWidth: 40 }
