@@ -4,6 +4,7 @@ import QtQuick.Controls as Controls
 import org.kde.kirigami as Kirigami
 
 Kirigami.ScrollablePage {
+    id: page
     title: "Updates"
 
     // Reopening the page mid-update must keep the buttons locked.
@@ -253,6 +254,13 @@ Kirigami.ScrollablePage {
             }
         }
 
+        Kirigami.InlineMessage {
+            Layout.fillWidth: true
+            visible: true  // InlineMessage starts hidden
+            type: Kirigami.MessageType.Information
+            text: "To delete old packages, open ReyOS System Tools → System updates → Remove old packages. Or here: More options → Remove unused packages and old downloads."
+        }
+
         RowLayout {
             Layout.fillWidth: true
             spacing: Kirigami.Units.largeSpacing
@@ -388,9 +396,15 @@ Kirigami.ScrollablePage {
             }
         }
 
+        // Fill the rest of the window instead of a fixed 320 px that ran past
+        // its bottom edge; at least ~8 lines when the cards above are tall.
         Controls.ScrollView {
+            id: logScroll
             Layout.fillWidth: true
-            Layout.preferredHeight: 320
+            // Column offset (y: gridUnit) + a gridUnit margin below + the page's padding.
+            Layout.preferredHeight: Math.max(Kirigami.Units.gridUnit * 8,
+                page.flickable.height - logScroll.y - Kirigami.Units.gridUnit * 2
+                - page.topPadding - page.bottomPadding)
             Controls.TextArea {
                 id: logArea
                 text: logText

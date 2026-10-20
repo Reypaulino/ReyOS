@@ -86,11 +86,31 @@ pkg_full() {
     sudo pacman -Syu
   fi
 }
+pkg_cache_mb() { du -sm /var/cache/pacman/pkg 2>/dev/null | cut -f1; }
 pkg_clean() {
   local -a ORPHANS=()
+  local before after
+  before=$(pkg_cache_mb)
+  printf "\n  ${CYN}Looking for packages nothing needs anymore...${RST}\n"
   mapfile -t ORPHANS < <(pacman -Qtdq 2>/dev/null)
-  ((${#ORPHANS[@]})) && sudo pacman -Rns --noconfirm "${ORPHANS[@]}"
-  sudo pacman -Sc --noconfirm
+  if ((${#ORPHANS[@]})); then
+    printf "  Removing %d unused package(s): %s\n\n" "${#ORPHANS[@]}" "${ORPHANS[*]}"
+    if sudo pacman -Rns --noconfirm "${ORPHANS[@]}"; then
+      printf "\n  ${GRN}Removed %d unused package(s).${RST}\n" "${#ORPHANS[@]}"
+    else
+      printf "\n  ${RED}Removing them failed -- see pacman's output above.${RST}\n"
+    fi
+  else
+    printf "  ${GRN}No unused packages.${RST}\n"
+  fi
+  printf "\n  ${CYN}Deleting old package downloads (versions you no longer have installed)...${RST}\n\n"
+  if sudo pacman -Sc --noconfirm; then
+    after=$(pkg_cache_mb)
+    printf "\n  ${GRN}Done.${RST} Old downloads: %s MB before, %s MB now (freed %s MB).\n" \
+      "${before:-0}" "${after:-0}" "$(( ${before:-0} - ${after:-0} ))"
+  else
+    printf "\n  ${RED}Cleaning old downloads failed -- see pacman's output above.${RST}\n"
+  fi
 }
 pkg_list_orphans() { pacman -Qtdq 2>/dev/null; }
 
@@ -370,22 +390,55 @@ show_network() {
   done
 }
 
+# Same boxed look as the main menu, prompt inside the box.
+draw_updates_menu() {
+  local ch
+  clear
+  borders
+  LINE_COUNT=0
+  ch=$(reyos-channel status 2>/dev/null)
+  border_line "$TOP"
+  crow "  ${WHT}SYSTEM UPDATES${RST}   ${DIM}${ch:+channel: $ch}${RST}"
+  border_line "$MID"
+  crow "  ${CYN}[1]${RST}  Check for updates (no changes)"
+  crow "  ${CYN}[2]${RST}  Install updates (whole system, from your update channel)"
+  crow "  ${CYN}[3]${RST}  Remove old packages (frees disk space)"
+  border_line "$MID"
+  crow "  ${RED}[0]${RST}  Back"
+  border_line "$MID"
+  crow "  ${YLW}Select option:${RST} "
+  printf '%s\n' "$BOT"
+  # Back up onto the prompt line, after "║   Select option: ".
+  printf '\033[2A\r\033[19C'
+}
+
 system_updates() {
-  local updates update_rc confirm log_before
+  local updates update_rc confirm log_before changed
   while true; do
-    printf "\n  System Updates (pacman)\n\n  [1] Check for updates (no changes)\n  [2] Install updates (whole system, from your update channel)\n  [3] Remove old packages\n  [0] Back\n\n  Select: "
+    draw_updates_menu
     read -r upd_choice
+    # Enter left the cursor on the box's bottom border; start below it.
+    printf '\n'
     case $upd_choice in
-      1) updates=$(pkg_check_updates); update_rc=$?
+      1) printf "\n  ${CYN}Checking for updates...${RST}\n"
+         updates=$(pkg_check_updates); update_rc=$?
          if [ "$update_rc" -eq 0 ]; then printf "%s\n" "$updates"; elif [ "$update_rc" -eq 2 ]; then printf "  Your packages are up to date.\n"; else printf "  Could not check updates. Verify your network connection.\n"; fi
          read -rp "  Press Enter to return..." ;;
       2) ensure_sudo || continue
          log_before=$(wc -l < /var/log/pacman.log 2>/dev/null || echo 0)
+         printf "\n  ${CYN}Updating the whole system from your update channel...${RST}\n\n"
          if pkg_full; then
-           touch "$UPDATE_STAMP"; printf "  Updates installed.\n"
-           # Same restart prompt as Control Center's Updates page -- only
-           # when this run actually upgraded/installed something.
-           if tail -n +"$((log_before + 1))" /var/log/pacman.log 2>/dev/null | grep -qE '\[ALPM\] (upgraded|installed|reinstalled) '; then
+           touch "$UPDATE_STAMP"
+           # Only what this run actually upgraded/installed counts (pacman
+           # says "there is nothing to do" otherwise).
+           changed=$(tail -n +"$((log_before + 1))" /var/log/pacman.log 2>/dev/null | grep -cE '\[ALPM\] (upgraded|installed|reinstalled|downgraded) ')
+           if [ "${changed:-0}" -eq 0 ]; then
+             printf "\n  ${GRN}Already up to date${RST} -- nothing to install.\n"
+           else
+             printf "\n  ${GRN}Updates installed:${RST} %s package(s).\n" "$changed"
+           fi
+           # Same restart prompt as Control Center's Updates page.
+           if [ "${changed:-0}" -gt 0 ]; then
              printf "\n  ${YLW}Restart to finish updating${RST} -- the desktop and your apps keep\n  using the old versions until you restart. Save any open work first.\n"
              printf "  Restart now? (y/N): "; read -r confirm
              if [[ "$confirm" =~ ^[Yy]$ ]]; then
@@ -393,14 +446,15 @@ system_updates() {
                return
              fi
            fi
-         else printf "  Update failed; no completion record was written.\n"; fi
+         else printf "\n  ${RED}Update failed${RST} -- see the messages above.\n"; fi
          read -rp "  Press Enter to return..." ;;
       3) ensure_sudo || continue
-         printf "  Remove orphaned packages and clean cache? (y/N): "; read -r confirm
-         [[ "$confirm" =~ ^[Yy]$ ]] && pkg_clean
+         printf "\n  Removes packages nothing needs anymore and deletes downloaded\n  copies of old package versions (frees disk space).\n"
+         printf "  Remove old packages now? (y/N): "; read -r confirm
+         if [[ "$confirm" =~ ^[Yy]$ ]]; then pkg_clean; else printf "  ${DIM}Cancelled.${RST}\n"; fi
          read -rp "  Press Enter to return..." ;;
       0|"") return ;;
-      *) printf "  Invalid selection.\n" ;;
+      *) printf "  Invalid selection.\n"; sleep 1 ;;
     esac
   done
 }

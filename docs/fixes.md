@@ -2,6 +2,16 @@
 
 Real bugs found and fixed, with root cause. Newest first. See `bugs.md` for what's still open.
 
+## 2026-10-20 — Updates log box fits the window; System Tools updates say what they're doing (control-center-gui 1.0.0-133, reyos-control-center 1.0.0-27)
+
+User report: the Updates page's Log box was cut off at the bottom, and ReyOS System Tools → System updates gave no messages of its own (only pacman's raw output), even when removing old packages.
+
+- **Log box:** fixed `Layout.preferredHeight: 320` under the cards ran past the window's bottom edge. It now fills the space left in the window (flickable height − its y − column offset − page padding − a margin), minimum ~8 lines; checked on screen, the whole box shows with a margin.
+- **Note on the Updates page** (user request): "To delete old packages, open ReyOS System Tools → System updates → Remove old packages. Or here: More options → Remove unused packages and old downloads." (Kirigami `InlineMessage` is hidden by default; needs `visible: true`.)
+- **System Tools → System updates** is drawn in the same orange box as the main menu (title with the update channel, options, Back, prompt inside the box) and clears the old menu first. Install updates: "Updating the whole system…" before, then "Already up to date -- nothing to install." or "Updates installed: N package(s)." (counted from pacman.log; was always "Updates installed."). Remove old packages: explains what it does, then "Looking for packages nothing needs anymore…" / "No unused packages." or "Removed N unused package(s).", "Deleting old package downloads…", and "Done. Old downloads: X MB before, Y MB now (freed Z MB)." Failures say so. Check for updates: "Checking for updates…".
+
+Tested on the Dev VM in a real Konsole (keys via QMP): boxed menu, Remove old packages (no unused packages, 14 MB → 14 MB), Install updates ("Already up to date"); Updates page screenshot with the note and the fitted log box. Not tested: a run that actually removes orphans or installs updates.
+
 ## 2026-10-20 — Firewall page: Rules list hidden behind Show/Hide (control-center-gui 1.0.0-132)
 
 User request. The Rules card is collapsed by default: heading "Rules (N)" and a Show/Hide button (only when there are rules); "No rules yet…" still shows when empty. Show checked on screen on the Dev VM (4 rules listed, button turned to Hide); Hide uses the same toggle but wasn't seen on screen (QMP clicks lagged and landed on the sidebar).
