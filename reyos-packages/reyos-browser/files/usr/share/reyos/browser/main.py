@@ -18,7 +18,7 @@ from pathlib import Path
 
 # Reyva's own version, shown in Settings. Bump it with every release (and the
 # Flatpak metainfo <release>); the .deb/Windows package numbers are separate.
-APP_VERSION = "0.1.10"
+APP_VERSION = "0.1.11"
 
 IS_WINDOWS = sys.platform == "win32"
 IS_FLATPAK = os.path.exists("/.flatpak-info")
@@ -60,6 +60,13 @@ else:
     # Flatpak points XDG_DATA_HOME into the app's own sandboxed data dir.
     BROWSER_STATE_DIR = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share") / "reyos-browser"
 PASSWORD_BLOCKLIST_PATH = BROWSER_STATE_DIR / "password-blocklist.json"
+# Shown when the Secret Service has no default wallet (a fresh KDE install
+# creates none), instead of the raw "No such object path .../aliases/default".
+WALLET_SETUP_NOTE = (
+    "Reyva keeps passwords in KDE Wallet, and it isn't set up yet. "
+    "Open KWalletManager from the app menu, choose File \u2192 New Wallet, name it kdewallet, "
+    "pick Blowfish encryption and create a password for it (your login password works well). Then try again."
+)
 SETTINGS_PATH = BROWSER_STATE_DIR / "settings.json"
 PASSWORD_AUTOFILL_SCRIPT_PATH = APP_DIR / "password-autofill.js"
 FINGERPRINT_PROTECTION_SCRIPT_PATH = APP_DIR / "fingerprint-protection.js"
@@ -265,6 +272,18 @@ class _LinuxPasswordVault:
                 raise RuntimeError("Password wallet is locked.")
             self._collection.unlock()
         return self._collection
+
+    def wallet_missing(self) -> bool:
+        # No default collection: secretstorage and linux_dbus both end up
+        # asking for /org/freedesktop/secrets/aliases/default, which doesn't
+        # exist. A locked wallet is not "missing" -- it just prompts.
+        try:
+            self._get_collection()
+        except Exception as error:
+            self._collection = None
+            text = str(error)
+            return "aliases/default" in text or "No such object" in text
+        return False
 
     def save_credential(self, origin: str, username: str, password: str) -> None:
         collection = self._get_collection(allow_unlock=True)
@@ -982,7 +1001,10 @@ class BrowserBackend(QObject):
             self.passwordImportFinished.emit(0, f"Could not import passwords: {error}")
             return
         except Exception as error:
-            self.passwordImportFinished.emit(0, f"Could not import passwords: {error}")
+            if self.passwordWalletMissing():
+                self.passwordImportFinished.emit(0, WALLET_SETUP_NOTE)
+            else:
+                self.passwordImportFinished.emit(0, f"Could not import passwords: {error}")
             return
 
         self.passwordsChanged.emit()
@@ -998,6 +1020,15 @@ class BrowserBackend(QObject):
             message = "No passwords found in the file."
         self.passwordImportFinished.emit(imported, message)
 
+    @Slot(result=bool)
+    def passwordWalletMissing(self) -> bool:
+        check = getattr(self._password_vault, "wallet_missing", None)
+        return bool(check and check())
+
+    @Slot(result=str)
+    def passwordWalletSetupNote(self) -> str:
+        return WALLET_SETUP_NOTE
+
     @Slot(str, str, str)
     def savePassword(self, origin: str, username: str, password: str) -> None:
         normalized_origin = normalize_origin(origin)
@@ -1007,7 +1038,7 @@ class BrowserBackend(QObject):
         try:
             self._password_vault.save_credential(normalized_origin, cleaned_username, password)
         except Exception as error:
-            self.notify("Passwords unavailable", str(error))
+            self.notify("Passwords unavailable", WALLET_SETUP_NOTE if self.passwordWalletMissing() else str(error))
             return
         self.passwordsChanged.emit()
 

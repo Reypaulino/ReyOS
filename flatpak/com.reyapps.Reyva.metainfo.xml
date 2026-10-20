@@ -67,6 +67,13 @@
   </requires>
 
   <releases>
+    <release version="0.1.11" date="2026-10-20">
+      <description>
+        <p>Add Shortcut, Find in page, Session History and Privacy &amp; Shields now look like the other Reyva windows (rounded corners, same header and buttons).</p>
+        <p>When no password wallet is set up, Reyva says so and explains how to create one, instead of failing silently.</p>
+        <p>The address bar shows the page address when Reyva is opened with a link.</p>
+      </description>
+    </release>
     <release version="0.1.10" date="2026-10-17">
       <description>
         <p>With "Ask where to save each file" on, a download goes straight into the folder you pick, including USB sticks and other drives, instead of filling Downloads first.</p>

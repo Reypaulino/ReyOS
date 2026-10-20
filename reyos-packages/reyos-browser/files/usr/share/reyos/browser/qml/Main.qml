@@ -590,6 +590,7 @@ ApplicationWindow {
             passwordPrompt.origin = origin
             passwordPrompt.username = username
             passwordPrompt.password = password
+            passwordPrompt.walletMissing = browserBackend.passwordWalletMissing()
             passwordPrompt.open()
         }
     }
@@ -1200,6 +1201,7 @@ ApplicationWindow {
         property string origin: ""
         property string username: ""
         property string password: ""
+        property bool walletMissing: false
         x: Math.max(12, window.contentItem.width - width - 16)
         y: headerLayout.height + 14
         width: Math.min(410, window.width - 24)
@@ -1227,7 +1229,16 @@ ApplicationWindow {
                 wrapMode: Text.Wrap
                 Layout.fillWidth: true
             }
+            WalletSetupNote { visible: passwordPrompt.walletMissing; Layout.fillWidth: true }
             RowLayout {
+                visible: passwordPrompt.walletMissing
+                Layout.fillWidth: true
+                ThemedButton { text: "Open KWalletManager"; visible: !browserBackend.sandboxed; onClicked: browserBackend.openSystemPasswordManager() }
+                Item { Layout.fillWidth: true }
+                ThemedButton { text: "OK"; onClicked: passwordPrompt.close() }
+            }
+            RowLayout {
+                visible: !passwordPrompt.walletMissing
                 Layout.fillWidth: true
                 Button {
                     text: "Save"
@@ -1527,7 +1538,9 @@ ApplicationWindow {
         property var originsModel: []
         property var entries: []
         property string importMessage: ""
+        property bool walletMissing: false
         function refresh() {
+            walletMissing = browserBackend.passwordWalletMissing()
             originsModel = browserBackend.passwordOrigins
             var list = []
             for (var i = 0; i < originsModel.length; i++) {
@@ -1570,8 +1583,10 @@ ApplicationWindow {
                 if (passwordsDialog.visible) passwordsDialog.refresh()
             }
             function onPasswordImportFinished(imported, message) {
-                passwordsDialog.importMessage = message
                 if (passwordsDialog.visible) passwordsDialog.refresh()
+                // With no wallet the note in the window already says why;
+                // the one-line footer would only cut it off.
+                passwordsDialog.importMessage = passwordsDialog.walletMissing ? "" : message
             }
         }
         header: Item {
@@ -1645,11 +1660,13 @@ ApplicationWindow {
                 visible: passwordsDialog.groups.length === 0
                 spacing: 6
                 Label {
-                    text: passwordsDialog.entries.length === 0 ? "No saved passwords yet" : "No passwords match"
+                    text: passwordsDialog.walletMissing ? "KDE Wallet isn't set up yet"
+                          : passwordsDialog.entries.length === 0 ? "No saved passwords yet" : "No passwords match"
                     color: "#FFF3E6"; font.pixelSize: 14; Layout.alignment: Qt.AlignHCenter
                 }
+                WalletSetupNote { visible: passwordsDialog.walletMissing; Layout.fillWidth: true }
                 Label {
-                    visible: passwordsDialog.entries.length === 0
+                    visible: passwordsDialog.entries.length === 0 && !passwordsDialog.walletMissing
                     text: "Reyva offers to save a password when you sign in to a site, and fills it in only on that same site. You can also Import… a CSV from another browser."
                     color: "#D7C1AA"; font.pixelSize: 12; wrapMode: Text.Wrap
                     horizontalAlignment: Text.AlignHCenter; Layout.fillWidth: true
@@ -1776,25 +1793,22 @@ ApplicationWindow {
 
     Dialog {
         id: siteSafetyDialog
-        title: "Site Safety"
         parent: window.contentItem
         modal: false
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
         width: Math.min(400, window.width - 24)
         x: Math.max(12, window.contentItem.width - width - 60)
         y: 4
-        padding: 18
-        background: Rectangle { color: accentSurfaceRaised; border.color: accentBorder; border.width: 1; radius: 12 }
+        padding: 20
+        topPadding: 14
+        background: Rectangle { color: accentSurfaceRaised; border.color: accentBorder; border.width: 1; radius: 14 }
+        header: DialogHeader {
+            title: "Privacy & Shields"
+            subtitle: browserBackend.currentSite.length ? browserBackend.currentSite : "New Tab"
+            onCloseClicked: siteSafetyDialog.close()
+        }
         contentItem: ColumnLayout {
             spacing: 12
-            Label {
-                text: browserBackend.currentSite.length ? browserBackend.currentSite : "New Tab"
-                font.bold: true
-                font.pixelSize: 18
-                color: "#FFF3E6"
-                Layout.fillWidth: true
-                elide: Text.ElideMiddle
-            }
             Label {
                 text: currentView && String(currentView.url).indexOf("https:") === 0 ? "Connection: Secure HTTPS" : "Connection: Not secure — this page does not use HTTPS"
                 wrapMode: Text.Wrap
@@ -1816,11 +1830,11 @@ ApplicationWindow {
             }
             RowLayout {
                 Layout.fillWidth: true
-                Button {
+                ThemedButton {
                     text: browserBackend.shieldsEnabled ? "Turn Shields Off" : "Turn Shields On"
                     onClicked: browserBackend.toggleShields()
                 }
-                Button {
+                ThemedButton {
                     visible: browserBackend.currentSite.length > 0
                     text: browserBackend.currentSiteShieldsEnabled ? "Disable for this site" : "Enable for this site"
                     onClicked: browserBackend.toggleCurrentSiteShields()
@@ -1832,7 +1846,6 @@ ApplicationWindow {
                 color: "#D7C1AA"
                 Layout.fillWidth: true
             }
-            Button { text: "Close"; Layout.alignment: Qt.AlignRight; onClicked: siteSafetyDialog.close() }
         }
     }
 
@@ -2191,16 +2204,20 @@ ApplicationWindow {
 
     Dialog {
         id: historyDialog
-        title: "Private Session History"
         modal: true
-        width: 560
-        height: 470
+        width: Math.min(560, window.width - 48)
+        height: Math.min(470, window.height - 72)
         anchors.centerIn: parent
-        padding: 18
-        background: Rectangle { color: accentSurfaceRaised; border.color: accentBorder; border.width: 1; radius: 12 }
+        padding: 20
+        topPadding: 14
+        background: Rectangle { color: accentSurfaceRaised; border.color: accentBorder; border.width: 1; radius: 14 }
+        header: DialogHeader {
+            title: "Session History"
+            subtitle: "Only this browser session · cleared when Reyva closes"
+            onCloseClicked: historyDialog.close()
+        }
         contentItem: ColumnLayout {
             spacing: 10
-            Label { text: "Only this browser session · cleared when Reyva closes"; color: "#D7C1AA"; Layout.fillWidth: true }
             Label { visible: sessionHistory.count === 0; text: "No pages visited in this session"; color: "#F4D5A8"; Layout.fillWidth: true }
             ListView {
                 model: sessionHistory
@@ -2224,33 +2241,31 @@ ApplicationWindow {
             }
             RowLayout {
                 Layout.fillWidth: true
-                Button { text: "Clear Session History"; enabled: sessionHistory.count > 0; onClicked: sessionHistory.clear() }
                 Item { Layout.fillWidth: true }
-                Button { text: "Close"; onClicked: historyDialog.close() }
+                ThemedButton { text: "Clear Session History"; enabled: sessionHistory.count > 0; onClicked: sessionHistory.clear() }
             }
         }
     }
 
     Dialog {
         id: findDialog
-        title: "Find in page"
         modal: false
         width: 430
         x: Math.max(12, window.width - width - 24)
         y: 92
-        padding: 14
-        background: Rectangle { color: accentSurfaceRaised; border.color: accentBorder; border.width: 1; radius: 10 }
+        padding: 10
+        leftPadding: 12
+        background: Rectangle { color: accentSurfaceRaised; border.color: accentBorder; border.width: 1; radius: 14 }
         onClosed: {
             window.findInPage("", false)
             window.findMatchCount = 0
         }
         contentItem: RowLayout {
             spacing: 8
-            TextField {
+            ThemedField {
                 id: findField
                 Layout.fillWidth: true
-                placeholderText: "Find text on this page"
-                selectByMouse: true
+                placeholderText: "Find in page"
                 onTextChanged: window.findInPage(text, false)
                 onAccepted: window.findInPage(text, false)
             }
@@ -2406,6 +2421,66 @@ ApplicationWindow {
                 color: themedButton.hovered ? accentSurfaceHover : accentSurfaceRaised
                 border.color: accentBorder
             }
+        }
+
+        // The Web Apps / Bookmarks dialog header: big title, one-line
+        // subtitle, round close button, thin divider. Replaces Dialog's
+        // default `title:` header, whose square background covered the
+        // dialog's rounded top corners.
+        component DialogHeader: Item {
+            id: dialogHeader
+            property string title
+            property string subtitle
+            signal closeClicked()
+            implicitHeight: 66
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 20
+                anchors.rightMargin: 12
+                spacing: 8
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 2
+                    Label { text: dialogHeader.title; font.bold: true; font.pixelSize: 19; color: "#FFF3E6"; elide: Text.ElideRight; Layout.fillWidth: true }
+                    Label { visible: text.length > 0; text: dialogHeader.subtitle; color: "#D7C1AA"; font.pixelSize: 12; elide: Text.ElideRight; Layout.fillWidth: true }
+                }
+                ToolButton {
+                    implicitWidth: 34
+                    implicitHeight: 34
+                    onClicked: dialogHeader.closeClicked()
+                    contentItem: Text { text: "✕"; color: "#FFF3E6"; font.pixelSize: 15; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    background: Rectangle { radius: 17; color: parent.hovered ? accentSurfaceHover : "transparent" }
+                }
+            }
+            Rectangle { anchors.bottom: parent.bottom; anchors.left: parent.left; anchors.right: parent.right; height: 1; color: Qt.rgba(accentBorder.r, accentBorder.g, accentBorder.b, 0.6) }
+        }
+
+        // Shown wherever a password would be saved while there is no KDE
+        // Wallet yet (fresh installs have none): the steps to make one.
+        component WalletSetupNote: Rectangle {
+            implicitHeight: walletNoteText.implicitHeight + 20
+            radius: 8
+            color: accentSurfaceBase
+            border.color: accentBorder
+            Label {
+                id: walletNoteText
+                anchors.fill: parent
+                anchors.margins: 10
+                text: browserBackend.passwordWalletSetupNote()
+                color: "#F4D5A8"
+                font.pixelSize: 12
+                wrapMode: Text.Wrap
+            }
+        }
+
+        // Same look as the Bookmarks / Passwords search fields.
+        component ThemedField: TextField {
+            id: themedField
+            placeholderTextColor: "#9F8873"
+            color: "#FFF3E6"
+            leftPadding: 12
+            selectByMouse: true
+            background: Rectangle { implicitHeight: 34; radius: 8; color: accentSurfaceBase; border.color: themedField.activeFocus ? accentColor : accentBorder }
         }
 
         // A real on/off switch: accent track with the knob on the right when
@@ -2933,6 +3008,12 @@ ApplicationWindow {
                     window.updateHistoryTitle(url.toString(), title)
                 }
                 onLoadingChanged: function(loadRequest) {
+                    // A start URL that doesn't redirect never sends another
+                    // urlChanged once its tab is current, so the address bar
+                    // stayed on the placeholder (e.g. "https://example.com/a%20b?x=1").
+                    if (index === tabBar.currentIndex && loadRequest.status !== WebEngineLoadingInfo.LoadStartedStatus) {
+                        window.syncCurrentSite()
+                    }
                     if (loadRequest.status === WebEngineLoadingInfo.LoadSucceededStatus && /^https?:/.test(String(url))) {
                         runJavaScript(browserBackend.passwordScriptSource, WebEngineScript.ApplicationWorld, function() {})
                     }
@@ -2963,12 +3044,17 @@ ApplicationWindow {
         id: shortcutDialog
         property int editIndex: -1
         property string errorText: ""
-        title: editIndex >= 0 ? "Edit Shortcut" : "Add Shortcut"
         modal: true
         width: Math.min(420, window.width - 32)
         anchors.centerIn: parent
-        padding: 18
-        background: Rectangle { color: accentSurfaceRaised; border.color: accentBorder; border.width: 1; radius: 12 }
+        padding: 20
+        topPadding: 14
+        background: Rectangle { color: accentSurfaceRaised; border.color: accentBorder; border.width: 1; radius: 14 }
+        header: DialogHeader {
+            title: shortcutDialog.editIndex >= 0 ? "Edit Shortcut" : "Add Shortcut"
+            subtitle: "A site on your new tab page"
+            onCloseClicked: shortcutDialog.close()
+        }
 
         function save() {
             if (browserBackend.updateShortcut(editIndex, shortcutNameField.text, shortcutUrlField.text)) {
@@ -2981,19 +3067,17 @@ ApplicationWindow {
         contentItem: ColumnLayout {
             spacing: 8
             Label { text: "Name"; color: "#D7C1AA" }
-            TextField {
+            ThemedField {
                 id: shortcutNameField
                 Layout.fillWidth: true
                 placeholderText: "GitHub"
-                selectByMouse: true
                 onAccepted: shortcutDialog.save()
             }
             Label { text: "Address"; color: "#D7C1AA"; Layout.topMargin: 4 }
-            TextField {
+            ThemedField {
                 id: shortcutUrlField
                 Layout.fillWidth: true
                 placeholderText: "github.com"
-                selectByMouse: true
                 onTextChanged: shortcutDialog.errorText = ""
                 onAccepted: shortcutDialog.save()
             }
@@ -3016,8 +3100,8 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 Layout.topMargin: 6
                 Item { Layout.fillWidth: true }
-                Button { text: "Cancel"; onClicked: shortcutDialog.close() }
-                Button {
+                ThemedButton { text: "Cancel"; onClicked: shortcutDialog.close() }
+                ThemedButton {
                     text: shortcutDialog.editIndex >= 0 ? "Save" : "Add"
                     enabled: shortcutUrlField.text.trim().length > 0
                     onClicked: shortcutDialog.save()
