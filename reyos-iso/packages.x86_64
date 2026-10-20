@@ -139,14 +139,6 @@ plasma-desktop
 plasma-nm
 plasma-pa
 plasma-workspace
-# plasma-workspace only ships the Wayland session (kwin_wayland) --
-# plasma-x11-session provides kwin_x11 + the X11 xsession entry, which
-# is the only thing that can produce a real desktop in environments
-# without a GPU/DRM render node (e.g. VMs without 3D-accelerated video,
-# like the dev/test VMs this ISO gets validated in): kwin_wayland just
-# spins forever failing "Failed to open drm node" with no fallback.
-# Confirmed live on the dev VM 2026-08-11.
-plasma-x11-session
 # qt6-base (pulled in transitively by KDE frameworks like kxmlgui/kconfig)
 # depends on the virtual opengl-driver/libgl packages. Pin the plain
 # open-source mesa/libglvnd explicitly so it resolves without an

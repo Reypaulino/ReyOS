@@ -12,7 +12,7 @@ ReyOS is a calm, dependable KDE Plasma Linux distribution built on Arch: easy en
 
 ## Features
 
-- **KDE Plasma 6** (X11 session by default, Wayland available), tuned for a clean, low-clutter default desktop.
+- **KDE Plasma 6** (Wayland), tuned for a clean, low-clutter default desktop.
 - **Reyva** (the ReyOS browser) — a native PySide6/Qt WebEngine (Chromium) browser, not a wrapper around another browser. Low Memory Mode tab freezing, Reader Mode, Find in Page, printing, downloads to any folder, ReyOS Shields ad/tracker blocking and Install as App. Also available as a Flatpak for any distro, an Ubuntu `.deb` and for Windows.
 - **ReyOS Reader** — a native EPUB, PDF and comic (CBZ/CBR) reader with search and PDF annotations.
 - **ReyOS Connect** — your phone and computers in one place: pair over KDE Connect, send files, links and the clipboard, use the phone as a remote, open another computer's desktop (RDP/VNC), share this desktop (KDE Remote Desktop, Wayland session), Tailscale/WireGuard VPN, and Bluetooth device linking.
@@ -28,7 +28,7 @@ See [docs/vision-roadmap.md](docs/vision-roadmap.md) for the full product direct
 
 ## Status
 
-ReyOS is in active development. Core install → boot → login → desktop flow is verified on real hardware and VMs; see [docs/bugs.md](docs/bugs.md) and [docs/fixes.md](docs/fixes.md) for the current known-issues and fix log. The latest ISO is [2026.10.18](https://github.com/Reypaulino/ReyOS/releases/tag/reyos-2026.10.18) (btrfs with automatic snapshots, X11 by default, the redesigned ReyOS Connect); after installing, run Control Center → Updates → **Update everything** and restart. App updates arrive through Control Center from here on, not through new ISOs. See [reyos.reyapps.com](https://reyos.reyapps.com) for downloads and installation guidance.
+ReyOS is in active development. Core install → boot → login → desktop flow is verified on real hardware and VMs; see [docs/bugs.md](docs/bugs.md) and [docs/fixes.md](docs/fixes.md) for the current known-issues and fix log. The latest ISO is [2026.10.18](https://github.com/Reypaulino/ReyOS/releases/tag/reyos-2026.10.18) (btrfs with automatic snapshots, the redesigned ReyOS Connect); after installing, run Control Center → Updates → **Update everything** and restart. That update also moves the desktop from X11 to Wayland: Plasma 6.8 no longer has an X11 session. App updates arrive through Control Center from here on, not through new ISOs. See [reyos.reyapps.com](https://reyos.reyapps.com) for downloads and installation guidance.
 
 ## Repository layout
 

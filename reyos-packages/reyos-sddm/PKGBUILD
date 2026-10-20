@@ -1,7 +1,7 @@
 # Maintainer: Rey Paulino
 pkgname=reyos-sddm
 pkgver=1.0.3
-pkgrel=17
+pkgrel=18
 pkgdesc="ReyOS login screen — SilentSDDM restyled with ReyOS colors, ReyOS wallpaper, Look-tracking accent"
 arch=('any')
 license=('MIT')
@@ -16,7 +16,14 @@ backup=('usr/share/sddm/themes/reyos-silent/configs/reyos.conf')
 # greeter fails to exec at all (dynamic linker can't resolve those libs)
 # and sddm crash-loops with "exited with 127". Confirmed live on the dev
 # VM 2026-08-11.
-depends=('sddm' 'qt5-declarative' 'qt6-declarative' 'plasma-workspace' 'plasma-x11-session')
+depends=('sddm' 'qt5-declarative' 'qt6-declarative' 'plasma-workspace')
+# Plasma 6.8 (Arch, 2026-10-16) is Wayland-only: plasma-workspace 6.8
+# conflicts with plasma-x11-session, and a conflict makes `pacman -Su
+# --noconfirm` (Control Center's updates) answer "remove? N" and fail.
+# A replacement is accepted by default, so the X11 session goes away on the
+# update that brings this package, before the stable snapshot moves.
+conflicts=('plasma-x11-session' 'kwin-x11')
+replaces=('plasma-x11-session' 'kwin-x11')
 source=()
 sha256sums=()
 

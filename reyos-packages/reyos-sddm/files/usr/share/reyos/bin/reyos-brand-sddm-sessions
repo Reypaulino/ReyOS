@@ -34,9 +34,9 @@ brand_session() {
     grep -Fqx "Name=${display_name}" "$target_file"
 }
 
-# X11 is the default session (reyos-sddm-default-session), so it gets the
-# plain name; Wayland stays available under its own.
-brand_session /usr/share/xsessions/plasmax11.desktop \
-    /usr/local/share/xsessions/plasmax11.desktop 'ReyOS Desktop'
+# Plasma 6.8 is Wayland-only. Drop the old X11 copy too: it outlives the
+# removed plasma-x11-session and SDDM would list a session that can't start.
+rm -f /usr/local/share/xsessions/plasmax11.desktop
+rmdir --ignore-fail-on-non-empty /usr/local/share/xsessions 2>/dev/null || true
 brand_session /usr/share/wayland-sessions/plasma.desktop \
-    /usr/local/share/wayland-sessions/plasma.desktop 'ReyOS Desktop (Wayland)'
+    /usr/local/share/wayland-sessions/plasma.desktop 'ReyOS Desktop'

@@ -2,6 +2,19 @@
 
 Real bugs found and fixed, with root cause. Newest first. See `bugs.md` for what's still open.
 
+## 2026-10-20 — Plasma 6.8 is Wayland-only: ReyOS back to Wayland (reyos-sddm 1.0.3-18, reyos-calamares 1.3.6-55)
+
+**Why the stable check kept failing** (issues #9–#13, snapshots 2026/10/16 → 2026/10/19): Arch moved to Plasma 6.8 in the 2026/10/16 snapshot, and 6.8 has no X11 session: `kwin-x11` and `plasma-x11-session` are gone from the repos (checked in the archive's `extra.db`: present on 10/10 at 6.7.5-3, absent on 10/16 and 10/19), and `plasma-workspace` 6.8 **conflicts** with `plasma-x11-session`. `reyos-sddm` 17 depended on `plasma-x11-session` (X11 default since 2026-10-17), so the check's install step failed with `unable to satisfy dependency 'plasma-x11-session' required by reyos-sddm`, and stable stayed on 2026/10/10 (Plasma 6.7.5). Worse, a conflict prompt defaults to "N", so Control Center's `pacman -Su --noconfirm` would have failed for every X11 user once stable moved.
+
+User decision: go Wayland (ReyOS is used for games and movies; no unattended remote help needed).
+
+- `reyos-sddm` 18: no `plasma-x11-session` dependency; `conflicts`+`replaces` `plasma-x11-session` and `kwin-x11` (a replacement is accepted by default, so the normal update removes them, before the snapshot moves). `reyos-sddm-default-session` moves a remembered X11 session in `state.conf` and `Session=plasmax11` autologin lines to Wayland; Wayland is labelled "ReyOS Desktop"; the old `/usr/local/share/xsessions/plasmax11.desktop` copy is deleted (it would list a dead session).
+- `reyos-calamares` 55: new installs default to `startplasma-wayland` / `plasma`.
+- ISO source: `plasma-x11-session` removed from `packages.x86_64`, live autologin `Session=plasma` (next ISO). Wayland needs a GPU render node: test VMs need 3D graphics.
+- README and website: Wayland only.
+
+Tested on the Dev VM (X11 before): reyos-sddm 18 from a temporary local repo + `reyos-channel upgrade --yes` → `kwin-x11` and `plasma-x11-session` [removal] with no prompt, state.conf `Session=/usr/local/share/wayland-sessions/plasma.desktop`, no xsessions left; after restarting SDDM the greeter preselected "ReyOS Desktop" and a real login gave `Type=wayland` with `kwin_wayland` and plasmashell. Not tested: the laptop, a full Calamares install with 55.
+
 ## 2026-10-20 — Mouse page: cursor size did nothing on X11 (control-center-gui 1.0.0-134)
 
 From the laptop's "Mouse page doesn't work" (user: "I think it is the cursor size"). Reproduced on the Dev VM (X11): the page and `kcminputrc` said 48 px, `xrdb -query` said `Xcursor.size: 32` and the live cursor (XFixesGetCursorImage) was 32×32. The fix from earlier (write `cursorSize` + broadcast KGlobalSettings CursorChanged) was verified when the Dev VM ran Wayland; on X11 the notice changes nothing, and `plasma-apply-cursortheme <same theme> --size N` is a no-op ("already set"). No `XCURSOR_SIZE` is set in the session, so X11 apps take the size from the `Xcursor.size` resource, which only login wrote.

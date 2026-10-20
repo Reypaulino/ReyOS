@@ -2,26 +2,32 @@
 set -euo pipefail
 
 # The login screen preselects the session SDDM remembers in state.conf
-# ([Last] Session=), or the first one it lists (Wayland) when there is
-# none. ReyOS starts in Plasma X11 by default (2026-10-17): faster on older
-# Intel graphics, and remote help (RustDesk, AnyDesk) works unattended
-# there. Only a system with no remembered session gets it -- a new install,
-# or one where nobody has logged in yet -- so existing users keep the
-# session they picked. Wayland stays installed and selectable.
+# ([Last] Session=), or the first one it lists when there is none. ReyOS
+# used Plasma X11 by default from 2026-10-17; Plasma 6.8 dropped X11, so
+# every system goes (back) to Wayland: a remembered or autologin X11 session
+# would point at a session that no longer exists.
 state=/var/lib/sddm/state.conf
-x11=/usr/local/share/xsessions/plasmax11.desktop
-
-[[ -f "$x11" ]] || exit 0
-if [[ -f "$state" ]] && grep -q '^Session=.' "$state"; then
-    exit 0
-fi
+wayland=/usr/local/share/wayland-sessions/plasma.desktop
+[[ -f "$wayland" ]] || wayland=/usr/share/wayland-sessions/plasma.desktop
 
 install -d /var/lib/sddm
-if [[ -f "$state" ]] && grep -q '^\[Last\]' "$state"; then
-    sed -i -e '/^Session=$/d' -e "/^\[Last\]/a Session=${x11}" "$state"
+if [[ -f "$state" ]] && grep -q '^Session=.*plasmax11' "$state"; then
+    sed -i "s|^Session=.*plasmax11.*$|Session=${wayland}|" "$state"
+elif [[ -f "$state" ]] && grep -q '^Session=.' "$state"; then
+    :
+elif [[ -f "$state" ]] && grep -q '^\[Last\]' "$state"; then
+    sed -i -e '/^Session=$/d' -e "/^\[Last\]/a Session=${wayland}" "$state"
 else
-    printf '[Last]\nSession=%s\n' "$x11" >> "$state"
+    printf '[Last]\nSession=%s\n' "$wayland" >> "$state"
 fi
 if id sddm >/dev/null 2>&1; then
     chown sddm:sddm /var/lib/sddm "$state"
 fi
+
+# Autologin written by the installer or the live ISO (Session=plasmax11).
+for conf in /etc/sddm.conf /etc/sddm.conf.d/*.conf; do
+    [[ -f "$conf" ]] || continue
+    if grep -Eq '^Session=plasmax11(\.desktop)?[[:space:]]*$' "$conf"; then
+        sed -i -E 's/^Session=plasmax11(\.desktop)?[[:space:]]*$/Session=plasma/' "$conf"
+    fi
+done
