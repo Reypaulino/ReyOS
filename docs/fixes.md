@@ -2,6 +2,12 @@
 
 Real bugs found and fixed, with root cause. Newest first. See `bugs.md` for what's still open.
 
+## 2026-10-20 — Reyva 0.1.11: matching dialogs, wallet note, address bar (Flatpak 0.1.11, .deb 0.1.0-127ubuntu1, Windows 0.1.0.113)
+
+Laptop patches 0002 (Add/Edit Shortcut, Find in page, Session History and Privacy & Shields use the Web Apps-style `DialogHeader`, `ThemedField`, themed buttons and radius 14 instead of Dialog's default title, whose square background covered the rounded corners) and 0003 (`wallet_missing()`: with no Secret Service `aliases/default`, the save prompt, Passwords window and import/save errors explain how to create a KDE wallet), plus the known address-bar bug: a start URL that doesn't redirect never re-emitted `urlChanged` once its tab was current, so the address bar kept its placeholder; the current tab now syncs when loading finishes. `APP_VERSION` 0.1.11. Source `215796f`, pin `d38649a`; Flatpak repo commit `3d802497…`.
+
+Tested: the address-bar case in the 0.1.10 Flatpak runtime on the Dev VM (`https://example.com/a%20b?x=1&y=2` shows its address); dialogs/wallet note by the laptop session inside the Flatpak; `.deb` 127 in a clean `ubuntu:24.04` (installs, runs 25 s offscreen as a normal user with no QML/Python errors; as root Chromium refuses without `--no-sandbox`, a test artifact); Windows CI passed. Release assets' sha256 match the local files; 0.1.10/126/0.1.0.112 releases deleted; website relinked (ISO line still says 0.1.10, which that ISO carries).
+
 ## 2026-10-20 — Cursor size reaches GTK/Flatpak apps; password wallet created at login (control-center-gui 1.0.0-135, reyos-sddm 1.0.3-19)
 
 From the laptop's handoff (Wayland, Plasma 6.8).

@@ -32,12 +32,6 @@ Seen 2026-10-05 and 2026-10-06 on the Dev VM. `reyos-browser https://kde.org` (o
 
 Status 2026-10-08: not reproduced in 3 cold starts with `https://kde.org` on the Dev VM (Flatpak 0.1.1); the original trigger (first launch right after a fresh install) wasn't recreated. No fix exists. Kept open.
 
-## Reyva: address bar blank when started with a URL
-
-Seen 2026-10-05/06 on the Dev VM: started with `https://reyos.reyapps.com/#browser-windows` and with `https://example.com/a%20b?x=1&y=2`, the page loaded (tab title right) but the address bar showed its placeholder. Plain `https://example.com` and `https://kde.org/` showed the URL. Not root-caused; first guess was `#fragment` URLs, but the second case has none.
-
-Status 2026-10-08: **still reproducible** with Flatpak 0.1.1 (both URLs above; `https://kde.org` is fine). Cause found in `qml/Main.qml`: the address text is only refreshed by `syncCurrentSite()`, called from the view's `onUrlChanged` (when it's the current tab) and from `tabBar.onCurrentIndexChanged`. The first tab's start URL never emits another `urlChanged` once the tab is current, unless the site redirects (kde.org → kde.org/). Proposed fix, not applied: also call `syncCurrentSite()` when the current tab finishes loading.
-
 ## ReyOS Reader: PDF viewer header toolbar becomes nearly invisible after clicking into page content
 
 Found live (2026-09-12) while investigating a different PDF complaint ("also in the pdf dont go under the tools like zoom or soenthing") — likely what the user actually meant by that report, but not yet confirmed as the same thing since it wasn't re-raised after the pagination/annotation work that session. Reproduced: open a PDF, zoom in/out/fit-width all work correctly in isolation, but after clicking into the page content area and navigating with `Page Down` a couple of times, the header toolbar (Back button, title text, page counter/nav, zoom controls) renders at very low contrast, nearly invisible against the background, while the PDF page content itself displays normally. Not root-caused — no theory recorded yet, this is a bare repro. `PdfReaderPage.qml`'s header changed shape twice since this was found (find bar + annotation toolbar buttons added, then the `PdfAnnotatedMultiPageView` fork) — re-confirm this still reproduces against the current header layout before assuming the same fix location applies.
@@ -120,6 +114,10 @@ Status 2026-10-20: seen on the 2026-08-20 ISO only; not seen in the 2026.10.08/1
 Right-click desktop → Configure Desktop and Wallpaper opens Folder View's own settings dialog, which always includes a generic plugin "About" tab appended automatically by Plasma's own config-dialog framework — not specific to ReyOS's config, and no kiosk restriction found to suppress it. Purely cosmetic; disproportionate effort to fix (would mean patching Plasma itself). Deprioritized.
 
 ## Resolved
+
+### Reyva: address bar blank when started with a URL — fixed in Reyva 0.1.11
+
+The current tab now calls `syncCurrentSite()` when loading finishes. Checked in the Flatpak runtime with `https://example.com/a%20b?x=1&y=2`.
 
 ### Reyva couldn't save passwords on a fresh install (no default wallet) — fixed in reyos-sddm 1.0.3-19 (kwallet-pam)
 
