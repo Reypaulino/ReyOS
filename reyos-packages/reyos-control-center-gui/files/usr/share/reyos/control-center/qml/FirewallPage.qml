@@ -131,6 +131,13 @@ Kirigami.ScrollablePage {
             }
         }
 
+        Kirigami.InlineMessage {
+            Layout.fillWidth: true
+            visible: fwEnabled
+            type: Kirigami.MessageType.Information
+            text: "All incoming connections are blocked by default. Other computers can only reach the programs marked Allowed below, so only allow what you use (for example KDE Connect for your phone). Keep SSH, Remote Desktop and name lookup (LLMNR) blocked unless you need them.\n\nRustDesk and Tailscale connect out on their own, so the firewall doesn't stop them: to stop remote access, turn those apps off."
+        }
+
         Kirigami.AbstractCard {
             Layout.fillWidth: true
             padding: Kirigami.Units.gridUnit

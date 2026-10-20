@@ -2,6 +2,10 @@
 
 Real bugs found and fixed, with root cause. Newest first. See `bugs.md` for what's still open.
 
+## 2026-10-20 — Firewall page: "blocked by default" note (control-center-gui 1.0.0-131)
+
+User asked for a note on the Firewall page. While the firewall is on, an information message under Status says all incoming connections are blocked by default, only programs marked Allowed are reachable, to keep SSH / Remote Desktop / LLMNR blocked unless needed, and that RustDesk and Tailscale connect out so the firewall doesn't stop them (turn the apps off instead). Checked on screen on the Dev VM.
+
 ## 2026-10-20 — Firewall page: what's listening, one-click Allow, and "Add rule" fixed (control-center-gui 1.0.0-130)
 
 From the laptop's patch 0001 (`~/reyos-handoff/patches/`). User's report: Control Center → Firewall showed nothing on a fresh install with the firewall on. The backend worked; a fresh install just has zero ufw rules, and the page only listed rules, so it never showed what the firewall was actually blocking (KDE Connect, RustDesk, Tailscale…).
