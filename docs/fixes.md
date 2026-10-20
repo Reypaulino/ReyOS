@@ -2,6 +2,15 @@
 
 Real bugs found and fixed, with root cause. Newest first. See `bugs.md` for what's still open.
 
+## 2026-10-20 — Firewall vs ReyOS Connect; installer recovery autostart; bugs.md pass (reyos-connect 1.0.0-22, reyos-calamares 1.3.6-56)
+
+User asked to work through `bugs.md`.
+
+- **KDE Connect blocked by ufw** (laptop, 2026-10-19): `reyos-connect.install` runs `ufw allow KDEConnect` once on install/upgrade, with a marker so a removed rule stays removed. Dev VM: rule added on install; after deleting it, a second upgrade left it deleted.
+- **Desktop sharing blocked by ufw**: Remote Desktop page warns when ufw is on and nothing allows 3389/tcp, with "Allow in firewall" (`reyos-admin firewall allow 3389/tcp`); left manual on purpose. Dev VM: warning shown, one click added the rule (v4+v6), warning gone, toast shown. X11 notice names the session "ReyOS Desktop".
+- **Installer**: `shellprocess_live_cleanup.conf` removes the live `reyos-recovery-launch` autostart and script from new installs (next ISO).
+- `bugs.md`: 8 entries moved to Resolved (the two X11 ones by the Wayland move — the Mouse one checked on Wayland after a reboot; laptop disk full obsolete; `%INSTALLED_DB%` old installs only; SSH blocked is the firewall by design), status lines added to the rest, new entry: Broadcom Wi-Fi DKMS module not built for the LTS kernel (no `linux-lts-headers`).
+
 ## 2026-10-20 — Plasma 6.8 is Wayland-only: ReyOS back to Wayland (reyos-sddm 1.0.3-18, reyos-calamares 1.3.6-55)
 
 **Why the stable check kept failing** (issues #9–#13, snapshots 2026/10/16 → 2026/10/19): Arch moved to Plasma 6.8 in the 2026/10/16 snapshot, and 6.8 has no X11 session: `kwin-x11` and `plasma-x11-session` are gone from the repos (checked in the archive's `extra.db`: present on 10/10 at 6.7.5-3, absent on 10/16 and 10/19), and `plasma-workspace` 6.8 **conflicts** with `plasma-x11-session`. `reyos-sddm` 17 depended on `plasma-x11-session` (X11 default since 2026-10-17), so the check's install step failed with `unable to satisfy dependency 'plasma-x11-session' required by reyos-sddm`, and stable stayed on 2026/10/10 (Plasma 6.7.5). Worse, a conflict prompt defaults to "N", so Control Center's `pacman -Su --noconfirm` would have failed for every X11 user once stable moved.

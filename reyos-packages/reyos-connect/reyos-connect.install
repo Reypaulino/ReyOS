@@ -1,0 +1,18 @@
+# KDE Connect can't find phones while ufw (on by default) blocks its ports
+# 1714-1764. Allow its ufw profile once, on install or on the first update
+# that brings this hook; the marker keeps a rule the user removed removed.
+_allow_kdeconnect() {
+    local marker=/var/lib/reyos/connect-firewall-allowed
+    [ -e "$marker" ] && return 0
+    command -v ufw >/dev/null 2>&1 || return 0
+    ufw allow KDEConnect >/dev/null 2>&1 || return 0
+    mkdir -p /var/lib/reyos && touch "$marker"
+}
+
+post_install() {
+    _allow_kdeconnect
+}
+
+post_upgrade() {
+    _allow_kdeconnect
+}

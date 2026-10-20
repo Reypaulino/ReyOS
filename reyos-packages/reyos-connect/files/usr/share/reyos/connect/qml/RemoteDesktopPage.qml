@@ -16,6 +16,7 @@ Kirigami.ScrollablePage {
     property var share: ({available: false, backendId: "", backend: "", enabled: false, active: false})
     property var sshInfo: ({installed: false, enabled: false, active: false})
     property bool x11: false
+    property bool shareFirewallOpen: true
     readonly property var onlinePeers: peers.filter(function(p) { return p.online && p.ip && p.os !== "iOS" && p.os !== "android" })
 
     function refresh() {
@@ -23,6 +24,7 @@ Kirigami.ScrollablePage {
         rdClient = backend.remoteDesktopClientAvailable()
         rdRecent = backend.recentRemoteDesktops()
         share = backend.remoteDesktopStatus()
+        shareFirewallOpen = backend.remoteDesktopFirewallOpen()
         sshInfo = backend.sshStatus()
         backend.refreshVpnStatus()
     }
@@ -44,7 +46,10 @@ Kirigami.ScrollablePage {
             page.rdRecent = backend.recentRemoteDesktops()
         }
         function onVpnStatusReady(info) { page.peers = info.tailscale && info.tailscale.peers ? info.tailscale.peers : [] }
-        function onActionFinished(ok, message) { page.share = backend.remoteDesktopStatus() }
+        function onActionFinished(ok, message) {
+            page.share = backend.remoteDesktopStatus()
+            page.shareFirewallOpen = backend.remoteDesktopFirewallOpen()
+        }
     }
 
     actions: [
@@ -293,9 +298,19 @@ Kirigami.ScrollablePage {
                         Layout.fillWidth: true
                         visible: page.share.available && page.x11 && page.share.backendId === "krdp"
                         type: Kirigami.MessageType.Information
-                        text: "Sharing this desktop needs the Wayland session. Log out and pick “ReyOS Desktop (Wayland)”, or use RustDesk from Control Center on this session."
+                        text: "Sharing this desktop needs the Wayland session. Log out and pick “ReyOS Desktop”, or use RustDesk from Control Center on this session."
                         actions: [
                             Kirigami.Action { text: "Open Control Center"; icon.name: "configure"; onTriggered: backend.openControlCenter() }
+                        ]
+                    }
+
+                    Kirigami.InlineMessage {
+                        Layout.fillWidth: true
+                        visible: page.share.available && !page.shareFirewallOpen
+                        type: Kirigami.MessageType.Warning
+                        text: "The firewall blocks desktop sharing (port 3389), so other devices can't connect. Allow it only if you want to share this desktop; the username and password below still protect it."
+                        actions: [
+                            Kirigami.Action { text: "Allow in firewall"; icon.name: "security-medium"; onTriggered: backend.openFirewallForRemoteDesktop() }
                         ]
                     }
 
@@ -323,7 +338,7 @@ Kirigami.ScrollablePage {
                         wrapMode: Text.Wrap
                         opacity: 0.6
                         font.pointSize: Kirigami.Theme.smallFont.pointSize
-                        text: "Set a username and password first (KDE's own settings, stored in KWallet). If the other device can't reach this computer, port 3389 (TCP) has to be allowed in the firewall."
+                        text: "Set a username and password first (KDE's own settings, stored in KWallet)."
                     }
                 }
             }

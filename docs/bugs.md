@@ -6,41 +6,25 @@ This file was rewritten from scratch on 2026-08-18 after a full audit of the wor
 
 **2026-10-08 verification pass:** see `BUG_VERIFICATION_REPORT.md` for what was re-tested and how. Entries below carry a "Status 2026-10-08" line where they were checked; resolved entries moved to the "Resolved" section at the end.
 
-## Mouse page: per-device settings are lost at login on X11
+## Broadcom Wi-Fi driver isn't built for the LTS backup kernel
 
-Added 2026-10-20 (Dev VM, X11). Pointer speed / left-handed / natural scrolling are saved to `kcminputrc` `[Libinput][vendor][product][name]` and applied live via xinput, but on X11 nothing reads those groups at login (they're KWin-Wayland's format; X11's mouse KCM uses global `[Mouse]` keys). Seen: PS/2 mouse saved `PointerAcceleration=0.550`, live `libinput Accel Speed` 0.000 after a login. Likely fix: reapply the saved groups with xinput at login (like `reyos-reapply-look.sh`), or also write the X11 `[Mouse]` keys. Not fixed yet.
-
-## Connect: phone not found because the firewall blocks KDE Connect
-
-Added 2026-10-19 (laptop, real install). ufw is active with default deny incoming and nothing opens KDE Connect's ports, so a paired iPhone stayed invisible (`[UFW BLOCK] … DPT=1716` every few seconds in the kernel log). Fixed by hand with `ufw allow kdeconnect`. Not fixed in ReyOS: reyos-connect should allow it (install hook or first start) and its Diagnostics should say "the firewall is blocking your phone". The 3389 rule for desktop sharing (entry below) could be the same "allow ReyOS Connect through the firewall" action.
+Added 2026-10-20 (Dev VM, full update to snapshot 2026/10/19). Every kernel update prints `==> ERROR: Missing 6.18.57-2-lts kernel headers for module broadcom-wl`. The ISO installs `broadcom-wl-dkms` and `linux-headers` but, since Phase 1a added `linux-lts` (reyos-boot), not `linux-lts-headers`. Effect: on a PC with an old Broadcom Wi-Fi card, booting the backup LTS kernel has no Wi-Fi. Fix: add `linux-lts-headers` to reyos-boot's depends (~130 MB installed on small partitions) — waiting on the user's call.
 
 ## Desktop sharing logins fail on current Arch (FreeRDP 3.32 + krdp 6.7.5)
 
 Added 2026-10-19 (laptop). Every login from Windows App/an RDP client is refused: krdp log `ntlm_fetch_ntlm_v2_hash: Could not find user in SAM database` → `SEC_E_NO_CREDENTIALS`. FreeRDP 3.32 regression (FreeRDP #13567/#13688, KDE bug 526928), fixed in krdp MR !248, not yet in Arch. Laptop workaround: freerdp 3.31.0-1 from the Arch archive + `IgnorePkg = freerdp` (since lost to a reinstall). Not fixed in ReyOS: consider holding freerdp in the stable channel until krdp ships the fix, or a Connect note. Also: with `SystemUserEnabled=true` the password asked for is the ReyOS login password, not the one set in Connect's dialog — Connect's text should say so.
 
-## Connect: sharing this desktop (KRDP) doesn't work in the default X11 session
-
-Added 2026-10-18 (Dev VM). `krdpserver` uses the XDG RemoteDesktop/ScreenCast portals and doesn't listen in an X11 session; since reyos-sddm 17 the default session is X11. Workarounds: log into "ReyOS Desktop (Wayland)", or use RustDesk (Control Center) on X11. **Partly addressed in reyos-connect 1.0.0-20:** the Remote Desktop page detects X11, says this and hides Start sharing instead of offering a session that can't start. Sharing itself still needs Wayland.
-
-## Connect: Start Session doesn't open the firewall, so nobody can connect
-
-Added 2026-10-18 (code review, not yet seen on real hardware). Installs enable ufw with default deny incoming (`shellprocess_firewall.conf`), and nothing in Connect or Control Center adds a rule for RDP port 3389. A KRDP session that starts fine is unreachable from a phone or another PC until the user runs e.g. `sudo ufw allow in on tailscale0 to any port 3389 proto tcp`. Not fixed. Likely fix: when Start Session succeeds, offer "Allow on Tailscale / home network" through `reyos-admin` (password prompt), and remove the rule on Stop.
-
-## Installer: the live ISO's recovery autostart is copied into new installs
-
-Added 2026-10-16 (ISO 2026.10.16 test install). `~/.config/autostart/reyos-recovery-launch.desktop` ends up in the installed user's home (from the live `/etc/skel`). Harmless: `reyos-recovery-launch.sh` exits unless booted with `reyos.recovery`. Fix: add it to `shellprocess_live_cleanup.conf` like the live wallpaper/panel autostarts.
+Status 2026-10-20: stable now ships krdp 6.8.0 + freerdp 3.32.2 (snapshot 2026/10/19), which may include krdp MR !248. Couldn't test from the Dev VM (krdpserver exits at once when started over SSH). **Retest on the laptop** with a real RDP client after Update everything.
 
 ## Games: PCSX2 swaps face buttons for third-party pads in Xbox mode
 
 Added 2026-10-15 (laptop). The user's pad switches between Xbox mode (`045e:02e0`) and PlayStation mode (`054c:05c4`, DualShock 4). In Xbox mode, PCSX2's `SDLControllerEnhancedMode = true` (HIDAPI, "Xbox One Controller") mixes up the face buttons; host SDL3 sees them right. PlayStation mode is fine. Not changed in code: decide whether ReyOS should turn Enhanced Mode off for non-Microsoft "Xbox" pads. The laptop's PCSX2.ini has it off now (set by hand during testing).
 
-## Laptop install: ReyOS root is 97 % full
-
-Added 2026-10-15. The laptop's ReyOS partition is 20 GB (installed before the installer asked for 30 GB). Before the next big update: free space or grow the partition with Partition Manager from the 2026.10.14 stick. Games added with "Add games" can be stored on another drive (Gaming → "Added games are kept in").
-
 ## Unverified from the 124 batch
 
 Wallpaper fix on a fresh install (needs a new ISO), Azahar (3DS) controls with a real game (written at 3DS launch; not yet on the laptop's real config), player 1 with two pads in PCSX2 (`SDL-<n>` follows connection order).
+
+Status 2026-10-20: the wallpaper fix was confirmed on the 2026.10.16 ISO's VM install (slideshow after reboot). Still unverified: Azahar controls with a real game, player 1 with two pads in PCSX2.
 
 ## Reyva can't save passwords on a fresh install: no default wallet
 
@@ -65,14 +49,6 @@ Status 2026-10-08: **still reproducible** with Flatpak 0.1.1 (both URLs above; `
 ## ReyOS Reader: PDF viewer header toolbar becomes nearly invisible after clicking into page content
 
 Found live (2026-09-12) while investigating a different PDF complaint ("also in the pdf dont go under the tools like zoom or soenthing") — likely what the user actually meant by that report, but not yet confirmed as the same thing since it wasn't re-raised after the pagination/annotation work that session. Reproduced: open a PDF, zoom in/out/fit-width all work correctly in isolation, but after clicking into the page content area and navigating with `Page Down` a couple of times, the header toolbar (Back button, title text, page counter/nav, zoom controls) renders at very low contrast, nearly invisible against the background, while the PDF page content itself displays normally. Not root-caused — no theory recorded yet, this is a bare repro. `PdfReaderPage.qml`'s header changed shape twice since this was found (find bar + annotation toolbar buttons added, then the `PdfAnnotatedMultiPageView` fork) — re-confirm this still reproduces against the current header layout before assuming the same fix location applies.
-
-## ReyOS Welcome's software install prints "unknown key '%INSTALLED_DB%' in local database" warning spam
-
-Confirmed live (2026-09-09) on a fresh install: installing anything from Welcome's software picker (e.g. `btop`) prints a wall of `warning: <pkgname>: unknown key '%INSTALLED_DB%' in local database` lines, one per already-installed package, before the actual install proceeds and succeeds. Cosmetic — the transaction completes fine — but looks alarming in the log view. Root cause not investigated; likely an unescaped/unresolved format-string token somewhere in the install worker's own pacman invocation or output parsing, unrelated to the real keyring/signing fixes from the same session.
-
-Update 2026-10-09: not Welcome-specific. A plain `sudo pacman -Sw reyos-local/reyos-control-center-gui` on the Dev VM printed the same warning for ~110 packages (all from the ISO's package set: `base`, `sudo`, `plasma-desktop`, `sddm`, `zram-generator`, …). So it's in pacman's local database (`/var/lib/pacman/local/*/desc` entries carrying a `%INSTALLED_DB%` key that the installed pacman doesn't know), not in Welcome's code. Unverified guess: written by the newer pacman used to build the ISO, read by the older pacman from the stable snapshot. Check one `desc` file and the pacman versions before fixing.
-
-Update 2026-10-13: not produced by current ISOs. The laptop (installed 2026-10-01) has 0 `desc` files with the key; the Dev VM (installed from a 2026-09-11 ISO) has 113, all ISO-set packages. The pacman that built that ISO wrote it; Arch's pacman (7.1.0) doesn't know it. It disappears from each package when that package is upgraded or reinstalled. Affects old installs only; no fix shipped.
 
 ## Launched apps sometimes never get a taskbar entry, on a real fresh install
 
@@ -121,6 +97,8 @@ Status 2026-10-08: no fix exists and it has only ever been seen on VMs with soft
 
 **Next steps if resumed**: this narrows the search from "KWin compositor" to "the `icontasks` plasmoid's own task-icon rendering" — worth checking `org.kde.plasma.icontasks`' QML source (`plasma-desktop` upstream) for how it populates its icon `Repeater`/model from the window list, and whether there's a known timing/recycling bug in that specific applet on this Plasma/KWin version. Also still untried: `kwin --replace` or an output resize as a repaint trigger (only virtual-desktop-switch was tried this session, and it didn't help); correlating the fluctuation with anything in `journalctl -f` filtered for `plasmashell`/`icontasks` while actively watching the count change (not done this session — was mid-diagnosis when time ran out); and getting a clean read on whether this is `llvmpipe`/software-rendering-specific by testing on real hardware, still not done.
 
+Status 2026-10-20: only ever seen on VMs with software rendering (Plasma 6.7.4), never reported from the laptop (real hardware, daily use). Recheck on Plasma 6.8 before spending more time.
+
 ## Control Center renders without icons/wrong theme if launched while the session is locked
 
 Observed directly (2026-08-18): launching `python3 /usr/share/reyos/control-center/main.py` while the KDE session was still at the lock screen produced a window with the correct layout but a generic light Qt style and no sidebar icons at all. A second launch after the session was fully unlocked and settled rendered correctly (Midnight Copper dark theme, all sidebar icons present). Working theory, not rigorously isolated: Qt/Kirigami's icon-theme and platform-style lookup comes back empty if the app starts before Plasma's theming services are fully live (e.g., right at/before unlock), and it silently falls back instead of retrying. Low priority — no normal user workflow launches Control Center from a locked screen — but worth a real isolated repro if it's ever hit organically (e.g. via an autostart entry that races the lock screen on login).
@@ -139,21 +117,49 @@ Status 2026-10-08: **still reproducible** after the 2026-09-29 Light/Dark rework
 
 The relaunch-based fix below is confirmed working for the Dark→Light direction. The Light→Dark direction hit the separate, deeper bug entry directly above instead (window decoration updates, content doesn't) — that one is NOT yet fixed. Original notes, still accurate as background: sidebar icons were already confirmed to refresh fine after the `plasmashell` restart `applyLookAndFeel()` does; this bug was specifically about the window's own chrome/style.
 
-## SSH to a real ReyOS-Test install times out (silently dropped, not refused)
-
-Observed 2026-08-21 trying to live-repro the icon bugs below: booted `ReyOS-Test` fresh into its real installed system (not live-boot — SDDM showed a real login prompt, no autologin, matching installed-system behavior). `virsh domifaddr --source agent` confirmed the correct IP, but every SSH attempt (`liveuser`, `reyrubi`) timed out with no response at all — not "connection refused," which would mean sshd isn't listening; a silent timeout is what a default-deny firewall produces. Notable: a live-boot session on this exact same VM earlier the same day could SSH in fine. `ufw` ships in `packages.x86_64` but nothing in `customize_airootfs.sh` enables `ufw.service` by default, so this shouldn't be firewall-caused unless something else turned it on — not confirmed, `virsh send-key`/QMP keyboard input into the console was also unresponsive this session (screenshots updated live, confirming the VM itself was fine, but no typed input ever landed — a known flaky path, see `reyos-vm-gui-automation` notes), so there was no way to get a shell to check `ufw status` directly. Needs revisiting with working console/input access, or SSH retried after confirming from the actual console that the install is fully booted and idle.
-
-**Confirmed 2026-08-25**: `ufw status` on a live-boot `ReyOS-Test` session (via QMP-driven shell, see `reyos-vm-gui-automation`) returned `Status: active` — the firewall theory above was right: this VM's ufw genuinely blocks unsolicited inbound connections (confirmed two ways — SSH, and separately a diagnostic `python3 -m http.server` that only became reachable after `sudo ufw disable`, then stopped being reachable again after `sudo ufw enable` restored it). **Root cause of why it's active NOT actually confirmed** — traced as far as: `systemctl is-enabled ufw` says `enabled`, but the stock `/usr/lib/systemd/system-preset/99-default.preset` is `disable *` and the `ufw` pacman package itself has no `.install` script and no ALPM hook, so nothing in the shipped package or generic preset explains it. `reyos-control-center`/`reyos-control-center-gui` depend on `ufw` (for their own Firewall control-panel page) but neither auto-enables the service — checked their full source, only the user-facing toggle in `main.py`/`reyos-system-menu.sh` calls `ufw enable`, and only interactively. Calamares' `shellprocess_firewall.conf` deliberately targets `${ROOT}` (the install target) via `systemctl --root=`, not the live session, so it shouldn't be able to touch a live boot either. **Open possibility not yet ruled out**: this specific `ReyOS-Test` libvirt domain may not be a pristine fresh-boot-every-time live ISO — if its disk has persistence or was previously used for a real install/testing session where Control Center's Firewall page was toggled on by hand, that state could simply have carried over rather than being a build-time default at all. Needs a check on a guaranteed-fresh boot (new/reset domain disk) before treating "ufw enabled by default on live ISO" as a confirmed build behavior.
-
 ## Live-boot session sometimes creates zero Plasma panels
 
 Confirmed on 2 of 3 fresh `ReyOS-Test` live boots off the 2026-08-20 ISO (2026-08-20): `qdbus6 org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript "print(panelIds.length)"` returned `0` minutes after login, with `plasmashell`/`kwin_wayland` both alive and initially consuming real CPU, then settling to near-idle by ~5 minutes uptime — genuinely stalled, not still mid-bootstrap (ruled out the documented "Plasma's first-boot bootstrap races any script" gotcha in `docs/DEVELOPER.md`, since idle CPU at 5+ minutes means nothing is still working on it). Confirmed NOT caused by `reyos-live-wallpaper.sh` (the live-ISO-only wallpaper script) — read its full source, it only writes wallpaper config via `qdbus6`/`kwriteconfig6`, never touches panels, and its own journal output was clean (the "malformed"-looking log lines turned out to just be its own `qdbus6 org.kde.plasmashell` healthcheck listing object paths, not an error). Root cause not yet found. Interestingly, Calamares itself renders fine as its own window regardless of this — so the stall is specific to Plasma's own panel/containment creation, not a general compositor failure. Reproduce again on the Dev VM (where SSH/shell access exists throughout, unlike a real install) with `journalctl -b` captured from second one to isolate what's failing during containment creation.
+
+Status 2026-10-20: seen on the 2026-08-20 ISO only; not seen in the 2026.10.08/16/18 ISO tests. Recheck on the next ISO (first one with Plasma 6.8).
 
 ## Desktop Folder Settings dialog shows a stock "About" tab
 
 Right-click desktop → Configure Desktop and Wallpaper opens Folder View's own settings dialog, which always includes a generic plugin "About" tab appended automatically by Plasma's own config-dialog framework — not specific to ReyOS's config, and no kiosk restriction found to suppress it. Purely cosmetic; disproportionate effort to fix (would mean patching Plasma itself). Deprioritized.
 
 ## Resolved
+
+### Mouse page: per-device settings lost at login on X11 — resolved by the move to Wayland (reyos-sddm 18)
+
+Plasma 6.8 has no X11 session. On Wayland KWin reads the `[Libinput][vendor][product][name]` groups at login: checked 2026-10-20 on the Dev VM after a reboot, the PS/2 mouse came up with the saved `pointerAcceleration` 0.55 and natural scrolling on.
+
+### Connect: phone not found because the firewall blocks KDE Connect — fixed in reyos-connect 1.0.0-22
+
+Installing or updating reyos-connect now runs `ufw allow KDEConnect` once (marker `/var/lib/reyos/connect-firewall-allowed`, so a rule the user removes stays removed). Connect's Devices page already had "Allow in firewall" and a firewall check; Control Center 130's Firewall page also shows KDE Connect with an Allow button. Tested on the Dev VM: rule added on install, not re-added after removal on a second upgrade.
+
+### Connect: KRDP sharing doesn't work in the X11 session — resolved by the move to Wayland
+
+Wayland is the only session since reyos-sddm 18 (Plasma 6.8 dropped X11), so sharing is available again; Connect's X11 notice stays for completeness and now names the session "ReyOS Desktop".
+
+### Connect: desktop sharing blocked by the firewall — fixed in reyos-connect 1.0.0-22
+
+The Remote Desktop page warns when ufw is on and nothing allows 3389/tcp, with an "Allow in firewall" action (`reyos-admin firewall allow 3389/tcp`). Not automatic on purpose: RDP stays closed until the user decides to share. Tested on the Dev VM: warning shown, one click added `3389/tcp` (v4+v6), warning gone. The rule isn't removed on Stop sharing.
+
+### Installer copied the live recovery autostart into new installs — fixed in reyos-calamares 1.3.6-56 (next ISO)
+
+`shellprocess_live_cleanup.conf` now removes `reyos-recovery-launch.desktop` from the target's `/etc/skel` and home autostarts, and `/usr/local/bin/reyos-recovery-launch.sh`. Existing installs keep the harmless file.
+
+### Laptop install: ReyOS root 97 % full — obsolete
+
+The laptop's ReyOS was reinstalled on 2026-10-19 on a 42 GB partition.
+
+### "unknown key '%INSTALLED_DB%'" warnings — old installs only, nothing to fix
+
+Written into the local package database by the pacman that built ISOs up to ~2026-09-11; current ISOs don't produce it (laptop: 0 entries), and each package loses it when it is upgraded or reinstalled. The 2026-10-20 Plasma 6.8 update rewrote most of the Dev VM's entries.
+
+### SSH to an installed system times out — by design
+
+Installs enable ufw with deny incoming (`shellprocess_firewall.conf`), so SSH is dropped until allowed. Since control-center-gui 130 the Firewall page lists SSH as Blocked with an Allow button when sshd is running.
 
 ## Discover can't manage system packages or firmware
 

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -518,6 +519,31 @@ class Backend(QObject):
         def task():
             ok, err = remote_provider.start_remote_desktop()
             return ok, ("Remote Desktop session started." if ok else f"Failed to start: {err}")
+        self._run(task)
+
+    @Slot(result=bool)
+    def remoteDesktopFirewallOpen(self):
+        # True unless the firewall is on and no rule covers 3389/tcp (an
+        # unknown status counts as open, so the page doesn't nag).
+        try:
+            result = subprocess.run(
+                ["sudo", "-n", "/usr/share/reyos/bin/reyos-admin", "firewall", "status"], capture_output=True, text=True, timeout=10,
+            )
+        except Exception:
+            return True
+        if result.returncode != 0 or "inactive" in result.stdout.lower():
+            return True
+        return re.search(r"^3389(/tcp)?\s.*ALLOW", result.stdout, re.M) is not None
+
+    @Slot()
+    def openFirewallForRemoteDesktop(self):
+        def task():
+            result = subprocess.run(
+                ["sudo", "-n", "/usr/share/reyos/bin/reyos-admin", "firewall", "allow", "3389/tcp"], capture_output=True, text=True, timeout=15,
+            )
+            if result.returncode == 0:
+                return True, "Desktop sharing (port 3389) is now allowed through the firewall."
+            return False, (result.stderr.strip() or "Could not update the firewall.")
         self._run(task)
 
     @Slot()
