@@ -22,10 +22,6 @@ Wallpaper fix on a fresh install (needs a new ISO), Azahar (3DS) controls with a
 
 Status 2026-10-20: the wallpaper fix was confirmed on the 2026.10.16 ISO's VM install (slideshow after reboot). Still unverified: Azahar controls with a real game, player 1 with two pads in PCSX2.
 
-## Reyva can't save passwords on a fresh install: no default wallet
-
-Added 2026-10-09, real laptop install (reported 2026-10-08, cause confirmed by the ReyOS-side agent). Saving a password in Reyva fails with `[org.freedesktop.DBus.Error.UnknownObject] ("No such object path '/org/freedesktop/secrets/aliases/default'",)`. `~/.local/share/kwalletd/` is empty and there's no `~/.config/kwalletrc`: no wallet was ever created. The Secret Service (`ksecretd`) runs and exports `/org/freedesktop/secrets/session/…`, but there's no collection and no `default` alias. Not fixed. Likely fix: create the default wallet/collection on first login (Welcome or a first-run step), or have Reyva create the collection through the Secret Service `CreateCollection` call when the alias is missing. Check what a fresh Calamares install sets up (PAM `pam_kwallet5` + an empty wallet) before choosing.
-
 ## Bottom panel stays light after switching Light → Dark
 
 Added 2026-10-08, Dev VM only. Driving `applyLookAndFeel()` Light → Dark → Light → Dark: after each Dark step the bottom panel stayed light (still light 60 s later with a freshly restarted plasmashell), while `kdeglobals` held the dark `ReyOS` scheme and the Plasma theme was `ReyOS` (panel transparency 85%). It was dark before the test. Not root-caused; check on real hardware first (the VM renders in software).
@@ -124,6 +120,10 @@ Status 2026-10-20: seen on the 2026-08-20 ISO only; not seen in the 2026.10.08/1
 Right-click desktop → Configure Desktop and Wallpaper opens Folder View's own settings dialog, which always includes a generic plugin "About" tab appended automatically by Plasma's own config-dialog framework — not specific to ReyOS's config, and no kiosk restriction found to suppress it. Purely cosmetic; disproportionate effort to fix (would mean patching Plasma itself). Deprioritized.
 
 ## Resolved
+
+### Reyva couldn't save passwords on a fresh install (no default wallet) — fixed in reyos-sddm 1.0.3-19 (kwallet-pam)
+
+Cause found on the laptop: no wallet existed and `kwallet-pam` wasn't installed. With it, a password login creates and unlocks `kdewallet`, and the Secret Service `default` alias resolves (Dev VM test, see `fixes.md` 2026-10-20). Reyva 0.1.11 also explains how to create a wallet when none exists (laptop patch 0003).
 
 ### Broadcom Wi-Fi driver wasn't built for the LTS backup kernel — fixed in reyos-boot 1.0.0-3
 

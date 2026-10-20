@@ -2,6 +2,13 @@
 
 Real bugs found and fixed, with root cause. Newest first. See `bugs.md` for what's still open.
 
+## 2026-10-20 — Cursor size reaches GTK/Flatpak apps; password wallet created at login (control-center-gui 1.0.0-135, reyos-sddm 1.0.3-19)
+
+From the laptop's handoff (Wayland, Plasma 6.8).
+
+- **Cursor "32 looks like 24"** in GTK/XWayland/Flatpak apps: `kde-gtk-config` wasn't installed, so `gsettings … cursor-size` stayed 24 / Adwaita, and nothing set `XCURSOR_SIZE` for apps started later. Control Center now depends on `kde-gtk-config`; `setMouseCursorSize` writes with `kwriteconfig6 --notify` (gtkconfig watches the key), sets `gsettings org.gnome.desktop.interface cursor-size` directly and runs `dbus-update-activation-environment --systemd XCURSOR_SIZE=N`. Dev VM (Wayland, new user): after the real `setMouseCursorSize(48)`, gsettings 48, `XCURSOR_SIZE=48` in the user environment, gtk-3.0/4.0 `settings.ini` `gtk-cursor-theme-size=48` (written by gtkconfig).
+- **Reyva can't save passwords** (no wallet): `kwallet-pam` wasn't installed although SDDM's PAM files reference `pam_kwallet5` (`-`, silently skipped). reyos-sddm now depends on it. Dev VM: a new user logging in with a password got `~/.local/share/kwalletd/kdewallet.kwl` created at login, Secret Service `ReadAlias default` → `/org/freedesktop/secrets/collection/kdewallet`, `Locked` false, `secret-tool store`/`lookup` worked with no prompt (Reyva's error was the missing `aliases/default`). Limits: autologin has no password, so the wallet then asks once; a wallet made by hand with a different password than the login password won't auto-unlock (change it in KWalletManager).
+
 ## 2026-10-20 — LTS kernel headers for DKMS Wi-Fi (reyos-boot 1.0.0-3)
 
 The Plasma 6.8 update on the Dev VM printed `ERROR: Missing 6.18.57-2-lts kernel headers for module broadcom-wl`: the ISO installs `broadcom-wl-dkms` + `linux-headers`, but Phase 1a's backup `linux-lts` came without `linux-lts-headers`, so old Broadcom Wi-Fi had no driver on the backup kernel. reyos-boot now depends on `linux-lts-headers` (user's OK; ~306 MB installed). Tested on the Dev VM via a local repo + `reyos-channel upgrade --yes`: headers installed in the same transaction, `dkms install broadcom-wl … -k 6.18.57-2-lts` ran, `dkms status` shows both kernels.

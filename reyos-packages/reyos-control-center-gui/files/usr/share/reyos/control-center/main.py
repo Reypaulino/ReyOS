@@ -3867,8 +3867,10 @@ class Backend(QObject):
             return
 
         def task(emit):
+            # --notify: kde-gtk-config's gtkconfig module watches this key and
+            # passes the size on to GTK/Flatpak apps (gsettings, settings.ini).
             saved = subprocess.run(
-                ["kwriteconfig6", "--file", "kcminputrc", "--group", "Mouse", "--key", "cursorSize", str(size)],
+                ["kwriteconfig6", "--notify", "--file", "kcminputrc", "--group", "Mouse", "--key", "cursorSize", str(size)],
                 capture_output=True, text=True, timeout=5,
             ).returncode == 0
             if not saved:
@@ -3886,6 +3888,16 @@ class Backend(QObject):
                  "org.kde.KGlobalSettings.notifyChange", "int32:5", "int32:0"],
                 capture_output=True, text=True, timeout=5,
             ).returncode == 0
+            # Same as Plasma's cursor settings: GTK apps read gsettings (set it
+            # directly too, in case gtkconfig isn't running yet after the
+            # update that installed it), and apps started later -- XWayland
+            # ones included -- read XCURSOR_SIZE from the launch environment.
+            # Without these, GTK/XWayland/Flatpak apps kept a 24 px Adwaita
+            # pointer whatever the page said (laptop, 2026-10-20).
+            subprocess.run(["gsettings", "set", "org.gnome.desktop.interface", "cursor-size", str(size)],
+                           capture_output=True, timeout=5)
+            subprocess.run(["dbus-update-activation-environment", "--systemd", f"XCURSOR_SIZE={size}"],
+                           capture_output=True, timeout=5)
             if not os.environ.get("WAYLAND_DISPLAY"):
                 # On X11 that notice changes nothing: apps take the size from
                 # the Xcursor.size resource (no XCURSOR_SIZE in the session),

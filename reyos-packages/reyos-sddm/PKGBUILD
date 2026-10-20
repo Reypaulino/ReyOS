@@ -1,7 +1,7 @@
 # Maintainer: Rey Paulino
 pkgname=reyos-sddm
 pkgver=1.0.3
-pkgrel=18
+pkgrel=19
 pkgdesc="ReyOS login screen — SilentSDDM restyled with ReyOS colors, ReyOS wallpaper, Look-tracking accent"
 arch=('any')
 license=('MIT')
@@ -16,7 +16,11 @@ backup=('usr/share/sddm/themes/reyos-silent/configs/reyos.conf')
 # greeter fails to exec at all (dynamic linker can't resolve those libs)
 # and sddm crash-loops with "exited with 127". Confirmed live on the dev
 # VM 2026-08-11.
-depends=('sddm' 'qt5-declarative' 'qt6-declarative' 'plasma-workspace')
+# kwallet-pam: SDDM's PAM files already call pam_kwallet5 (with '-', so it
+# was silently skipped). With it, a password login creates the default
+# wallet "kdewallet" and unlocks it, so Reyva/apps can store passwords
+# (Secret Service alias "default"); without it there was no wallet at all.
+depends=('sddm' 'qt5-declarative' 'qt6-declarative' 'plasma-workspace' 'kwallet-pam')
 # Plasma 6.8 (Arch, 2026-10-16) is Wayland-only: plasma-workspace 6.8
 # conflicts with plasma-x11-session, and a conflict makes `pacman -Su
 # --noconfirm` (Control Center's updates) answer "remove? N" and fail.
