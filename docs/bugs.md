@@ -6,6 +6,10 @@ This file was rewritten from scratch on 2026-08-18 after a full audit of the wor
 
 **2026-10-08 verification pass:** see `BUG_VERIFICATION_REPORT.md` for what was re-tested and how. Entries below carry a "Status 2026-10-08" line where they were checked; resolved entries moved to the "Resolved" section at the end.
 
+## Mouse page: per-device settings are lost at login on X11
+
+Added 2026-10-20 (Dev VM, X11). Pointer speed / left-handed / natural scrolling are saved to `kcminputrc` `[Libinput][vendor][product][name]` and applied live via xinput, but on X11 nothing reads those groups at login (they're KWin-Wayland's format; X11's mouse KCM uses global `[Mouse]` keys). Seen: PS/2 mouse saved `PointerAcceleration=0.550`, live `libinput Accel Speed` 0.000 after a login. Likely fix: reapply the saved groups with xinput at login (like `reyos-reapply-look.sh`), or also write the X11 `[Mouse]` keys. Not fixed yet.
+
 ## Connect: phone not found because the firewall blocks KDE Connect
 
 Added 2026-10-19 (laptop, real install). ufw is active with default deny incoming and nothing opens KDE Connect's ports, so a paired iPhone stayed invisible (`[UFW BLOCK] … DPT=1716` every few seconds in the kernel log). Fixed by hand with `ufw allow kdeconnect`. Not fixed in ReyOS: reyos-connect should allow it (install hook or first start) and its Diagnostics should say "the firewall is blocking your phone". The 3389 rule for desktop sharing (entry below) could be the same "allow ReyOS Connect through the firewall" action.

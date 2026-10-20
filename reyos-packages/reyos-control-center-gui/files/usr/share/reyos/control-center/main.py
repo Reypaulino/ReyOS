@@ -3886,6 +3886,19 @@ class Backend(QObject):
                  "org.kde.KGlobalSettings.notifyChange", "int32:5", "int32:0"],
                 capture_output=True, text=True, timeout=5,
             ).returncode == 0
+            if not os.environ.get("WAYLAND_DISPLAY"):
+                # On X11 that notice changes nothing: apps take the size from
+                # the Xcursor.size resource (no XCURSOR_SIZE in the session),
+                # which only login set. Update it so apps opened from now on
+                # use the new size (checked on the Dev VM: a new Konsole got
+                # 48 px). Windows already open keep their cursor -- Qt's
+                # cursors can't be swapped by name -- until the next login.
+                merged = subprocess.run(
+                    ["xrdb", "-merge"], input=f"Xcursor.size: {size}\n",
+                    capture_output=True, text=True, timeout=5,
+                ).returncode == 0
+                return True, (f"Cursor size set to {size} px for apps you open from now on. Log out and back in to change it everywhere."
+                              if merged else f"Cursor size saved as {size} px; it will apply at next login.")
             return True, (f"Cursor size set to {size} px." if notified else f"Cursor size saved as {size} px; it will apply at next login.")
         self._run_action(task)
 

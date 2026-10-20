@@ -2,6 +2,14 @@
 
 Real bugs found and fixed, with root cause. Newest first. See `bugs.md` for what's still open.
 
+## 2026-10-20 — Mouse page: cursor size did nothing on X11 (control-center-gui 1.0.0-134)
+
+From the laptop's "Mouse page doesn't work" (user: "I think it is the cursor size"). Reproduced on the Dev VM (X11): the page and `kcminputrc` said 48 px, `xrdb -query` said `Xcursor.size: 32` and the live cursor (XFixesGetCursorImage) was 32×32. The fix from earlier (write `cursorSize` + broadcast KGlobalSettings CursorChanged) was verified when the Dev VM ran Wayland; on X11 the notice changes nothing, and `plasma-apply-cursortheme <same theme> --size N` is a no-op ("already set"). No `XCURSOR_SIZE` is set in the session, so X11 apps take the size from the `Xcursor.size` resource, which only login wrote.
+
+Fix: on X11 (no `WAYLAND_DISPLAY`) also `xrdb -merge` `Xcursor.size: N`; message: "Cursor size set to N px for apps you open from now on. Log out and back in to change it everywhere." Windows already open keep their cursor: Qt creates its cursors without names, so `XFixesChangeCursorByName` (tried, 5 cursors replaced) doesn't reach them. `xorg-xrdb` added to depends (already pulled in by plasma-workspace).
+
+Tested on the Dev VM with 134: picked 64 px on the page → `kcminputrc` 64, `Xcursor.size` 64, toast shown, a newly opened Konsole's arrow 64×64 (it was 32). Set back to 48 afterwards.
+
 ## 2026-10-20 — Updates log box fits the window; System Tools updates say what they're doing (control-center-gui 1.0.0-133, reyos-control-center 1.0.0-27)
 
 User report: the Updates page's Log box was cut off at the bottom, and ReyOS System Tools → System updates gave no messages of its own (only pacman's raw output), even when removing old packages.
