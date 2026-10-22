@@ -111,6 +111,19 @@ Kirigami.Page {
         backend.addPcGame()
     }
 
+    // A PC game's own graphics card ("" = Control Center's choice), like
+    // the 3D resolution above. Applies the next time the game starts.
+    property string defaultGpu: "nvidia"
+    readonly property var gpuNames: ({ nvidia: "NVIDIA", builtin: "built-in" })
+    function setGpu(index, path, value) {
+        backend.setGameGpu(path, value)
+        gameModel.setProperty(index, "gpu", value)
+        for (var i = 0; i < allGames.length; i++)
+            if (allGames[i].path === path) allGames[i].gpu = value
+        applicationWindow().notify(value === "" ? "This game follows Control Center's graphics card again."
+                                   : "Graphics card for this game: " + gpuNames[value] + ". It applies the next time it starts.")
+    }
+
     function shrinkGame(path, title) {
         if (adding) return
         startAdding("Shrinking " + title + "...")
@@ -165,6 +178,7 @@ Kirigami.Page {
         systems = backend.emulationSystems()
         controllers = backend.controllers()
         defaultResolution = backend.defaultResolution()
+        defaultGpu = backend.defaultGpu()
         boxart = backend.boxartEnabled()
         if (sig !== gamesSignature) {
             gamesSignature = sig
@@ -370,9 +384,38 @@ Kirigami.Page {
         }
     }
 
+    // Adding a PC game ends with this window, not just a line at the top.
+    Kirigami.PromptDialog {
+        id: pcAddDialog
+        property bool ok: true
+        property string path: ""
+        title: ok ? "Game added" : "Couldn't add the game"
+        standardButtons: Kirigami.Dialog.Ok
+        customFooterActions: [
+            Kirigami.Action {
+                text: "Play now"
+                icon.name: "media-playback-start"
+                visible: pcAddDialog.ok && pcAddDialog.path !== ""
+                onTriggered: {
+                    pcAddDialog.close()
+                    backend.launchGame("pc", pcAddDialog.path)
+                }
+            }
+        ]
+    }
+
     Connections {
         target: backend
         function onGamesChanged() { reload() }
+        function onPcAddFinished(ok, text, path) {
+            adding = false
+            if (text === "") return  // cancelled in a dialog
+            if (ok) { filterChosen = true; gameFilter = "pc" }
+            pcAddDialog.ok = ok
+            pcAddDialog.path = path
+            pcAddDialog.subtitle = text
+            pcAddDialog.open()
+        }
         function onAddProgress(text, percent) {
             addText = text
             addPercent = percent
@@ -684,7 +727,10 @@ Kirigami.Page {
                     Controls.Menu {
                         id: gameMenu
                         // Systems without a 3D resolution (NES, SNES...) don't get the submenu.
-                        Component.onCompleted: if (!model.has3d) removeMenu(resolutionMenu)
+                        Component.onCompleted: {
+                            if (!model.has3d) removeMenu(resolutionMenu)
+                            if (!model.nvidiaAvailable) removeMenu(gpuMenu)
+                        }
                         width: Kirigami.Units.gridUnit * 17
                         Controls.MenuItem {
                             text: "Play"
@@ -719,20 +765,19 @@ Kirigami.Page {
                         }
                         // PC (Windows) games: graphics card and Lutris
                         // instead of console buttons and the window switch.
-                        Controls.MenuItem {
-                            visible: model.nvidiaAvailable
-                            height: visible ? implicitHeight : 0
-                            text: "Use the NVIDIA graphics card"
-                            checkable: true
-                            checked: model.nvidia
-                            onToggled: {
-                                backend.setGameNvidia(model.path, checked)
-                                gameModel.setProperty(index, "nvidia", checked)
-                                for (var i = 0; i < allGames.length; i++)
-                                    if (allGames[i].path === model.path) allGames[i].nvidia = checked
-                                applicationWindow().notify(checked ? model.title + " will use the NVIDIA graphics card."
-                                                                   : model.title + " will use the built-in graphics (cooler, longer battery).")
+                        Controls.Menu {
+                            id: gpuMenu
+                            width: Kirigami.Units.gridUnit * 19
+                            title: "Graphics card" + (model.gpu !== "" ? ": " + gpuNames[model.gpu] : "")
+                            Controls.MenuItem {
+                                text: "Same as Control Center (" + gpuNames[defaultGpu] + ")"
+                                checkable: true
+                                checked: model.gpu === ""
+                                onTriggered: setGpu(index, model.path, "")
                             }
+                            Controls.MenuSeparator {}
+                            Controls.MenuItem { text: "NVIDIA graphics card (faster)"; checkable: true; checked: model.gpu === "nvidia"; onTriggered: setGpu(index, model.path, "nvidia") }
+                            Controls.MenuItem { text: "Built-in graphics (cooler, longer battery)"; checkable: true; checked: model.gpu === "builtin"; onTriggered: setGpu(index, model.path, "builtin") }
                         }
                         Controls.MenuItem {
                             visible: model.systemId === "pc"
@@ -748,6 +793,8 @@ Kirigami.Page {
                             icon.name: "input-gamepad"
                             onTriggered: buttonsDialog.openFor(model.systemId)
                         }
+                        // Not for PC games: Proton's virtual desktop fills the
+                        // screen anyway (tested); a real window needs gamescope.
                         Controls.MenuItem {
                             visible: model.systemId !== "pc"
                             height: visible ? implicitHeight : 0

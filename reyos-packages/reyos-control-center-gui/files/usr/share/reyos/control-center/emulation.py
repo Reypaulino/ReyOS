@@ -127,7 +127,7 @@ def system_installed(system):
 
 
 # ---- Display settings -----------------------------------------------------
-DEFAULT_SETTINGS = {"fullscreen": True, "overlay": True, "picture": "clean", "resolution": 1, "ps2_graphics": True, "windowed_games": [], "expanded": None, "bios_expanded": False, "boxart": True, "game_storage": "", "game_resolution": {}, "pad_types": {}, "player1": "", "button_maps": {}, "ps2_pad_written": {}, "azahar_written": {}, "ps2_vulkan_written": False, "pc_builtin_gpu": []}
+DEFAULT_SETTINGS = {"fullscreen": True, "overlay": True, "picture": "clean", "resolution": 1, "ps2_graphics": True, "windowed_games": [], "expanded": None, "bios_expanded": False, "boxart": True, "game_storage": "", "game_resolution": {}, "pad_types": {}, "player1": "", "button_maps": {}, "ps2_pad_written": {}, "azahar_written": {}, "ps2_vulkan_written": False, "pc_builtin_gpu": [], "game_gpu": "nvidia", "pc_gpu": {}}
 
 # 3D internal resolution per core, keyed by ReyOS's 1x / 2x / 4x choice.
 # Option names and values checked against the cores Arch ships.
@@ -167,6 +167,10 @@ def load_settings():
         settings["windowed_games"] = []
     if not isinstance(settings["game_resolution"], dict):
         settings["game_resolution"] = {}
+    if settings["game_gpu"] not in ("nvidia", "builtin"):
+        settings["game_gpu"] = "nvidia"
+    if not isinstance(settings["pc_gpu"], dict):
+        settings["pc_gpu"] = {}
     if not isinstance(settings["pc_builtin_gpu"], list):
         settings["pc_builtin_gpu"] = []
     for key in ("pad_types", "button_maps", "ps2_pad_written", "azahar_written"):
@@ -245,11 +249,8 @@ NVIDIA_OFFLOAD_ENV = {"__NV_PRIME_RENDER_OFFLOAD": "1", "__VK_LAYER_NV_optimus":
                       "__GLX_VENDOR_LIBRARY_NAME": "nvidia"}
 
 
-def nvidia_offload_ready():
-    """A laptop whose NVIDIA card runs NVIDIA's driver next to built-in
-    Intel/AMD graphics: a game can be started on the NVIDIA card."""
-    if not Path("/sys/module/nvidia").exists():
-        return False
+def nvidia_present():
+    """A laptop with an NVIDIA card next to built-in Intel/AMD graphics."""
     vendors = set()
     for dev in Path("/sys/bus/pci/devices").glob("*"):
         try:
@@ -258,6 +259,18 @@ def nvidia_offload_ready():
         except (OSError, ValueError):
             pass
     return "0x10de" in vendors and bool(vendors & {"0x8086", "0x1002"})
+
+
+def nvidia_offload_ready():
+    """nvidia_present() and the card runs NVIDIA's driver: a game can be
+    started on the NVIDIA card."""
+    return Path("/sys/module/nvidia").exists() and nvidia_present()
+
+
+def games_use_nvidia(settings=None):
+    """Games go to the NVIDIA card: it's usable and the Gaming page's
+    "Graphics card for games" isn't set to the built-in graphics."""
+    return nvidia_offload_ready() and (settings or load_settings())["game_gpu"] != "builtin"
 
 
 def nvidia_flatpak_extensions():
@@ -273,7 +286,7 @@ def nvidia_flatpak_extensions():
 
 def pcsx2_on_nvidia():
     ext = nvidia_flatpak_extensions()
-    return nvidia_offload_ready() and bool(ext) and any(
+    return games_use_nvidia() and bool(ext) and any(
         (d / "runtime" / ext[0]).is_dir() for d in (Path.home() / ".local/share/flatpak", Path("/var/lib/flatpak")))
 
 

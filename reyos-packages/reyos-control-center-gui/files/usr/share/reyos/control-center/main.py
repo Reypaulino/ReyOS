@@ -34,6 +34,7 @@ import emulation  # Qt-free emulation helpers (systems, settings, BIOS, controll
 from controller_setup import ControllerSetupWorker  # noqa: E402
 import game_shrink  # Qt-free: add downloaded games, shrink them to CHD
 import steam_options  # Qt-free: GameMode/MangoHud in Steam games' launch options
+import pc_games  # Qt-free: Windows games through Lutris (ReyOS Games' PC tab)
 import flatpak_updates  # Qt-free: pending Flatpak updates, readable update errors
 import app_updates  # Qt-free: ReyOS + Flatpak updates for the "Updates are ready" dialog
 from emulation import EMU_SYSTEMS, GAMES_DIR, RETROARCH_REYOS_CFG
@@ -512,9 +513,9 @@ REYOS_ADMIN = "/usr/share/reyos/bin/reyos-admin"
 
 
 def _nvidia_offload_ready():
-    """A laptop's NVIDIA card is usable and prime-run is installed: Steam
-    games can be sent to the NVIDIA card."""
-    return bool(shutil.which("prime-run")) and emulation.nvidia_offload_ready()
+    """A laptop's NVIDIA card is usable, chosen for games on the Gaming page,
+    and prime-run is installed: Steam games can be sent to the NVIDIA card."""
+    return bool(shutil.which("prime-run")) and emulation.games_use_nvidia()
 
 
 PKEXEC_DISMISSED = (126, 127)  # dialog cancelled (the KDE agent reports 127 "Not authorized")
@@ -1015,7 +1016,36 @@ class Backend(QObject):
         def installed(pkg):
             return subprocess.run(["pacman", "-Q", pkg], capture_output=True).returncode == 0
         return {"steamInstalled": installed("steam"), "gamemodeInstalled": installed("gamemode"),
-                "nvidiaOffload": _nvidia_offload_ready()}
+                "nvidiaOffload": _nvidia_offload_ready(), "lutrisInstalled": pc_games.ready(),
+                "nvidiaReady": emulation.nvidia_offload_ready(), "nvidiaPresent": emulation.nvidia_present()}
+
+    @Slot()
+    def installLutris(self):
+        if _is_live_session():
+            self.gamingFinished.emit(False, "Installing Lutris is disabled in the live session — install ReyOS first.")
+            return
+
+        def task(emit):
+            # umu-launcher is a multilib package (see installGaming).
+            if "#[multilib]" in Path("/etc/pacman.conf").read_text():
+                emit("Enabling multilib repository...")
+                _run(["sudo", "-n", "/usr/share/reyos/welcome/enable-multilib.sh"], emit)
+            emit("Installing " + ", ".join(pc_games.PACKAGES) + " with any waiting system updates...")
+            if _run(["sudo", "-n", REYOS_ADMIN, "install-apps", *pc_games.PACKAGES], emit) != 0:
+                return False, "Install failed — check your network connection and try again."
+            ok, message = pc_games.apply_lutris_defaults()
+            emit(message)
+            return True, "Lutris installed. Add Windows games in ReyOS Games → Add PC game…"
+        self._lutris_worker = ActionWorker(task)
+        self._lutris_worker.progress.connect(self.gamingProgress.emit)
+        self._lutris_worker.finished_ok.connect(self.gamingFinished.emit)
+        self._lutris_worker.start()
+
+    @Slot()
+    def applyLutrisDefaults(self):
+        self._lutris_worker = ActionWorker(lambda emit: pc_games.apply_lutris_defaults())
+        self._lutris_worker.finished_ok.connect(self.gamingFinished.emit)
+        self._lutris_worker.start()
 
     @Slot()
     def applySteamLaunchOptions(self):

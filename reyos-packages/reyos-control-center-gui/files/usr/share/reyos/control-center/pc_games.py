@@ -15,6 +15,8 @@ import shutil
 import sqlite3
 import subprocess
 import sys
+import urllib.parse
+import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -23,6 +25,8 @@ import emulation  # noqa: E402
 HELPER = Path(__file__).resolve()
 LUTRIS_DB = Path.home() / ".local" / "share" / "lutris" / "pga.db"
 COVERS = emulation.GAMES_DIR / "Covers" / "pc"
+LUTRIS_COVERS = Path.home() / ".local" / "share" / "lutris" / "coverart"
+LUTRIS_SEARCH = "https://lutris.net/api/games?search="
 # lutris: the launcher; umu-launcher: runs Proton outside Steam (Lutris uses
 # it, and ReyOS runs installers with it); python-pefile: Lutris's icon reader.
 PACKAGES = ["lutris", "umu-launcher", "python-pefile"]
@@ -67,25 +71,71 @@ def list_games():
 
 
 def cover(slug):
-    """ReyOS's icon from the game's .exe, else Lutris's own cover/banner."""
-    for path in (COVERS / f"{slug}.png",
-                 Path.home() / ".local/share/lutris/coverart" / f"{slug}.jpg",
+    """Box art (Lutris's coverart, downloaded by fetch_cover or Lutris), else
+    the icon from the game's .exe, else Lutris's small banner."""
+    for path in (LUTRIS_COVERS / f"{slug}.jpg", COVERS / f"{slug}.png",
                  Path.home() / ".local/share/lutris/banners" / f"{slug}.jpg"):
         if path.is_file():
             return str(path)
     return ""
 
 
-def uses_nvidia(game_id, settings=None):
-    """Games start on the NVIDIA card when it's usable, unless switched off for that game."""
+def cover_missing(slug):
+    """No box art yet, and no earlier search that found none."""
+    return not (LUTRIS_COVERS / f"{slug}.jpg").is_file() and not (COVERS / f"{slug}.nocover").exists()
+
+
+def fetch_cover(name, slug):
+    """Box art from Lutris's game database (the covers Lutris itself shows),
+    saved in Lutris's coverart folder so Lutris uses it too. Returns its
+    path, or "" when none was found (remembered, so it isn't searched again)."""
+    out = LUTRIS_COVERS / f"{slug}.jpg"
+    if out.is_file():
+        return str(out)
+    req = urllib.request.Request(LUTRIS_SEARCH + urllib.parse.quote(name), headers={"User-Agent": "ReyOS-Games"})
+    with urllib.request.urlopen(req, timeout=20) as r:
+        results = json.load(r).get("results", [])
+    # Real covers only: some entries point at one generic placeholder image.
+    covers = [g for g in results if "/cover_big/" in (g.get("coverart") or "")]
+    norm = lambda text: re.sub(r"[^a-z0-9]+", "", (text or "").lower())  # noqa: E731
+    pick = next((g for g in covers if norm(g.get("name")) == norm(name)), covers[0] if covers else None)
+    if pick is None:
+        COVERS.mkdir(parents=True, exist_ok=True)
+        (COVERS / f"{slug}.nocover").touch()
+        return ""
+    with urllib.request.urlopen(urllib.request.Request(pick["coverart"], headers={"User-Agent": "ReyOS-Games"}),
+                                timeout=30) as r:
+        data = r.read()
+    LUTRIS_COVERS.mkdir(parents=True, exist_ok=True)
+    part = out.with_suffix(".part")
+    part.write_bytes(data)
+    part.replace(out)
+    return str(out)
+
+
+def game_gpu(game_id, settings=None):
+    """One game's own graphics card: "nvidia", "builtin", or "" for the
+    Gaming page's choice (like PS2 games' own 3D resolution). pc_builtin_gpu
+    is 1.0.0-138's on/off list."""
     settings = settings or emulation.load_settings()
-    return emulation.nvidia_offload_ready() and str(game_id) not in settings["pc_builtin_gpu"]
+    gid = str(game_id)
+    if gid in settings["pc_gpu"]:
+        return settings["pc_gpu"][gid]
+    return "builtin" if gid in settings["pc_builtin_gpu"] else ""
 
 
-def set_uses_nvidia(game_id, on):
-    builtin = set(emulation.load_settings()["pc_builtin_gpu"])
-    (builtin.discard if on else builtin.add)(str(game_id))
-    emulation.save_settings({"pc_builtin_gpu": sorted(builtin)})
+def uses_nvidia(game_id, settings=None):
+    settings = settings or emulation.load_settings()
+    return emulation.nvidia_offload_ready() and (game_gpu(game_id, settings) or settings["game_gpu"]) == "nvidia"
+
+
+def set_game_gpu(game_id, value):
+    settings = emulation.load_settings()
+    gid = str(game_id)
+    chosen = {k: v for k, v in settings["pc_gpu"].items() if k != gid}
+    if value in ("nvidia", "builtin"):
+        chosen[gid] = value
+    emulation.save_settings({"pc_gpu": chosen, "pc_builtin_gpu": [g for g in settings["pc_builtin_gpu"] if g != gid]})
 
 
 def game_name(exe, installer):
@@ -149,9 +199,31 @@ def _helper(*args):
     return out.returncode, out.stdout.strip(), out.stderr.strip()
 
 
+def options(game_id=None):
+    """The Lutris options that follow ReyOS: GameMode, the overlay (Gaming
+    page switch) and, on a laptop, the NVIDIA card."""
+    settings = emulation.load_settings()
+    return {"gamemode": bool(shutil.which("gamemoderun")),
+            "mangohud": bool(settings["overlay"] and shutil.which("mangohud")),
+            "nvidia": uses_nvidia(game_id, settings) if game_id is not None else emulation.games_use_nvidia(settings)}
+
+
+def apply_lutris_defaults():
+    """The same options as Lutris-wide defaults (its system.yml), so games
+    started from Lutris itself, or added there, get them too. (ok, message)"""
+    opts = options()
+    rc, _out, err = _helper("defaults", json.dumps(opts))
+    if rc != 0:
+        return False, "Couldn't change Lutris's settings: " + ((err.splitlines() or ["unknown error"])[-1])
+    names = [n for n, on in (("GameMode", opts["gamemode"]), ("the performance overlay", opts["mangohud"]),
+                             ("the NVIDIA graphics card", opts["nvidia"])) if on]
+    what = ", ".join(names[:-1]) + " and " + names[-1] if len(names) > 1 else (names[0] if names else "nothing extra")
+    return True, f"Lutris games now start with {what}. Restart Lutris if it's open."
+
+
 def add_to_lutris(name, exe, prefix, directory):
     """Returns (ok, Lutris game id or error text)."""
-    rc, out, err = _helper("add", name, str(exe), str(prefix), str(directory))
+    rc, out, err = _helper("add", name, str(exe), str(prefix), str(directory), json.dumps(options()))
     if rc != 0:
         return False, (err.splitlines() or ["Lutris couldn't add the game."])[-1]
     game_id = json.loads(out)["id"]
@@ -166,14 +238,10 @@ def launch(path):
     game = next((g for g in list_games() if str(g["id"]) == game_id), None)
     if game is None:
         return False, "That game isn't in Lutris any more."
-    settings = emulation.load_settings()
-    options = {"gamemode": bool(shutil.which("gamemoderun")),
-               "mangohud": bool(settings["overlay"] and shutil.which("mangohud")),
-               "nvidia": uses_nvidia(game_id, settings)}
     log = emulation.LAUNCH_LOG.with_name("lutris-last.log")
     log.parent.mkdir(parents=True, exist_ok=True)
     with log.open("w") as f:
-        subprocess.Popen([sys.executable, "-I", str(HELPER), "launch", game_id, json.dumps(options)],
+        subprocess.Popen([sys.executable, "-I", str(HELPER), "launch", game_id, json.dumps(options(game_id))],
                          stdin=subprocess.DEVNULL, stdout=f, stderr=subprocess.STDOUT, start_new_session=True)
     return True, f"Starting {game['name']}..."
 
@@ -185,7 +253,30 @@ def _lutris_config_file(configpath):
     return Path(settings.GAME_CONFIG_DIR) / f"{configpath}.yml"
 
 
-def _cmd_add(name, exe, prefix, directory):
+def _apply_system(system, options):
+    """GameMode, MangoHud and the GPU in a Lutris "system" options dict."""
+    from lutris.util.graphics.gpu import GPUS
+    system["gamemode"] = options["gamemode"]
+    system["mangohud"] = options["mangohud"]
+    nvidia = next((card for card, gpu in GPUS.items() if gpu.driver == "nvidia"), None)
+    if options["nvidia"] and nvidia:
+        system["gpu"] = nvidia
+    elif nvidia and system.get("gpu") == nvidia:
+        del system["gpu"]  # Lutris's default: the built-in graphics
+
+
+def _cmd_defaults(options):
+    from lutris import settings
+    from lutris.util.yaml import read_yaml_from_file, write_yaml_to_file
+    os.makedirs(settings.CONFIG_DIR, exist_ok=True)
+    path = os.path.join(settings.CONFIG_DIR, "system.yml")
+    config = (read_yaml_from_file(path) if os.path.exists(path) else {}) or {}
+    config["system"] = config.get("system") or {}
+    _apply_system(config["system"], json.loads(options))
+    write_yaml_to_file(config, path)
+
+
+def _cmd_add(name, exe, prefix, directory, options="{}"):
     from lutris.config import write_game_config
     from lutris.database import games as games_db
     from lutris.database import schema
@@ -200,6 +291,9 @@ def _cmd_add(name, exe, prefix, directory):
     slug = slugify(name)
     config = {"game": {"exe": exe, "prefix": prefix, "arch": "win64", "working_dir": str(Path(exe).parent)},
               "system": {}}
+    # Here as well as at each ReyOS Games start, for starts from Lutris itself.
+    if options != "{}":
+        _apply_system(config["system"], json.loads(options))
     configpath = write_game_config(slug, config)
     game_id = games_db.add_game(name=name, runner="wine", slug=slug, platform="Windows",
                                 directory=directory, installed=1, configpath=configpath)
@@ -218,26 +312,18 @@ def _cmd_icon(exe, out):
 
 def _cmd_launch(game_id, options):
     from lutris.database import games as games_db
-    from lutris.util.graphics.gpu import GPUS
     from lutris.util.yaml import read_yaml_from_file, write_yaml_to_file
     options = json.loads(options)
     game = games_db.get_game_by_field(game_id, "id")
     path = _lutris_config_file(game["configpath"]) if game.get("configpath") else None
     if path and path.is_file():
         config = read_yaml_from_file(str(path)) or {}
-        system = config.setdefault("system", {}) or {}
-        config["system"] = system
-        system["gamemode"] = options["gamemode"]
-        system["mangohud"] = options["mangohud"]
-        nvidia = next((card for card, gpu in GPUS.items() if gpu.driver == "nvidia"), None)
-        if options["nvidia"] and nvidia:
-            system["gpu"] = nvidia
-        elif nvidia and system.get("gpu") == nvidia:
-            del system["gpu"]  # Lutris's default: the built-in graphics
+        config["system"] = config.get("system") or {}
+        _apply_system(config["system"], options)
         write_yaml_to_file(config, str(path))
     os.execvp("lutris", ["lutris", f"lutris:rungameid/{game_id}"])
 
 
 if __name__ == "__main__":
-    commands = {"add": _cmd_add, "icon": _cmd_icon, "launch": _cmd_launch}
+    commands = {"add": _cmd_add, "icon": _cmd_icon, "launch": _cmd_launch, "defaults": _cmd_defaults}
     commands[sys.argv[1]](*sys.argv[2:])

@@ -41,11 +41,14 @@ class CoverWorker(QThread):
             if self.cancelled:
                 return
             try:
-                cover = emulation.fetch_cover(system, rom)
+                if system is pc_games.SYSTEM:  # rom: a Lutris game
+                    cover, key = pc_games.fetch_cover(rom["name"], rom["slug"]), f"lutris:{rom['id']}"
+                else:
+                    cover, key = emulation.fetch_cover(system, rom), str(rom)
             except (OSError, ValueError):
                 continue
             if cover:
-                self.coverReady.emit(str(rom), cover)
+                self.coverReady.emit(key, cover)
 
 
 class AddGamesWorker(QThread):
@@ -118,14 +121,16 @@ class AddPcGameWorker(QThread):
             self.finished_ok.emit(True, "", [])
             return
         guess_installer = bool(re.search(r"(?i)setup|install", Path(exe).name))
+        # kdialog's --default doesn't apply to --yesnocancel: "Yes" is always
+        # the focused button, so the likelier answer goes on it.
+        labels = ["Installer: install the game first", "The game itself (already installed)"]
         rc, _ = self._ask("--yesnocancel", f"Is {Path(exe).name} the game's installer, or the game itself?",
-                          "--yes-label", "Installer: install the game first",
-                          "--no-label", "The game itself (already installed)",
-                          *(["--default", "yes"] if guess_installer else []))
+                          "--yes-label", labels[0 if guess_installer else 1],
+                          "--no-label", labels[1 if guess_installer else 0])
         if rc == 2:
             self.finished_ok.emit(True, "", [])
             return
-        installer = rc == 0
+        installer = (rc == 0) == guess_installer
         rc, name = self._ask("--inputbox", "Name of the game:", pc_games.game_name(exe, installer))
         if rc != 0 or not name.strip():
             self.finished_ok.emit(True, "", [])
@@ -134,12 +139,17 @@ class AddPcGameWorker(QThread):
         prefix = pc_games.slug_dir(name)
         if installer:
             self.progress.emit(f"Running the {name} installer: follow its steps and keep the folder it suggests. "
-                               "The first time, ReyOS also downloads Proton (about 1 GB), which takes a while.", -1)
+                               "If the game itself starts instead, just close it: ReyOS then adds it as it is. "
+                               "The first time, ReyOS also downloads Proton (about 2 GB), which takes a while.", -1)
             log_path = emulation.LAUNCH_LOG.with_name("pc-install.log")
             log_path.parent.mkdir(parents=True, exist_ok=True)
             with log_path.open("w") as log:
                 pc_games.run_installer(exe, prefix, log)
             programs = pc_games.find_programs(prefix)
+            if not programs and not guess_installer:
+                # Nothing was installed: it was the game itself (it ran as
+                # the "installer"), so add that .exe where it is.
+                programs = [Path(exe)]
             if not programs:
                 self.finished_ok.emit(False, f"No game was found after the installer closed -- it may have been "
                                       f"cancelled. Its log: {log_path}", [])
@@ -155,7 +165,7 @@ class AddPcGameWorker(QThread):
                     self.finished_ok.emit(True, "", [])
                     return
                 game_exe = programs[int(pick)]
-            directory = prefix
+            directory = prefix if game_exe != Path(exe) else game_exe.parent
         else:
             game_exe, directory = Path(exe), Path(exe).parent
         self.progress.emit(f"Adding {name} to Lutris...", -1)
@@ -163,8 +173,7 @@ class AddPcGameWorker(QThread):
         if not ok:
             self.finished_ok.emit(False, f"Couldn't add {name} to Lutris: {result}", [])
             return
-        self.finished_ok.emit(True, f"{name} is in your library (PC tab). Press it to play"
-                              + (" -- the first start downloads Proton (about 1 GB)." if not installer else "."), [])
+        self.finished_ok.emit(True, f"{name} is in your library, under Windows games.", [f"lutris:{result}"])
 
 
 class GamesBackend(QObject):
@@ -173,6 +182,7 @@ class GamesBackend(QObject):
     gamesChanged = Signal()
     addProgress = Signal(str, float)
     addFinished = Signal(bool, str, "QVariantList")
+    pcAddFinished = Signal(bool, str, str)
     controllerSetupStep = Signal(int, int, str, str, str, str)
     controllerSetupDone = Signal(bool, str)
 
@@ -234,7 +244,7 @@ class GamesBackend(QObject):
                     "resolutionSettable": system["id"] in emulation.THREE_D_SYSTEMS
                                           and (system["id"] != "ps2" or settings["ps2_graphics"]),
                     "resolution": emulation.game_resolution(path, settings) or 0,
-                    "nvidia": False, "nvidiaAvailable": False,
+                    "gpu": "", "nvidiaAvailable": False,
                 })
         # Windows games: every installed Lutris game.
         nvidia_available = emulation.nvidia_offload_ready()
@@ -245,7 +255,7 @@ class GamesBackend(QObject):
                 "systemId": "pc", "path": f"lutris:{game['id']}", "playable": playable, "windowed": False,
                 "cover": pc_games.cover(game["slug"]), "shrinkable": False, "has3d": False,
                 "resolutionSettable": False, "resolution": 0,
-                "nvidia": pc_games.uses_nvidia(game["id"], settings), "nvidiaAvailable": nvidia_available,
+                "gpu": pc_games.game_gpu(game["id"], settings), "nvidiaAvailable": nvidia_available,
             })
         games.sort(key=lambda g: (g["title"].lower(), g["system"]))
         return games
@@ -268,6 +278,7 @@ class GamesBackend(QObject):
             return
         todo = [(s, p) for s in EMU_SYSTEMS for p in emulation.scan_games(s)
                 if not emulation.local_cover(s, p) and not emulation.cover_cached(s, p)]
+        todo += [(pc_games.SYSTEM, g) for g in pc_games.list_games() if pc_games.cover_missing(g["slug"])]
         if todo:
             self._cover_worker = CoverWorker(todo)
             self._cover_worker.coverReady.connect(self.coverReady.emit)
@@ -322,12 +333,21 @@ class GamesBackend(QObject):
             return
         self._add_worker = AddPcGameWorker()
         self._add_worker.progress.connect(self.addProgress.emit)
-        self._add_worker.finished_ok.connect(self._games_added)
+        self._add_worker.finished_ok.connect(self._pc_game_added)
         self._add_worker.start()
 
-    @Slot(str, bool)
-    def setGameNvidia(self, path, on):
-        pc_games.set_uses_nvidia(path.split(":", 1)[1], on)
+    def _pc_game_added(self, ok, message, added):
+        self.pcAddFinished.emit(ok, message, added[0] if added else "")
+        self.gamesChanged.emit()
+
+    @Slot(str, str)
+    def setGameGpu(self, path, value):
+        """"" = follow the Gaming page's graphics card."""
+        pc_games.set_game_gpu(path.split(":", 1)[1], value)
+
+    @Slot(result=str)
+    def defaultGpu(self):
+        return emulation.load_settings()["game_gpu"]
 
     @Slot()
     def openLutris(self):

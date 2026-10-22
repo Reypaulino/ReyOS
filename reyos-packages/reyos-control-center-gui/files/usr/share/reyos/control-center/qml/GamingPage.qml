@@ -13,6 +13,9 @@ Kirigami.ScrollablePage {
     property bool steamInstalled: false
     property bool gamemodeInstalled: false
     property bool nvidiaOffload: false
+    property bool nvidiaReady: false
+    property bool nvidiaPresent: false
+    property bool lutrisInstalled: false
     property string statusText: ""
     property bool statusOk: true
     property bool showLog: false
@@ -37,6 +40,7 @@ Kirigami.ScrollablePage {
     // to their status line once emulators are installed.
     property bool emuExpanded: false
     property bool steamExpanded: false
+    property bool lutrisExpanded: false
     property bool expandedLoaded: false
     property bool biosExpanded: false
     property var biosMissing: bios.filter(function (b) { return !b.ok }).map(function (b) { return b.name })
@@ -50,6 +54,9 @@ Kirigami.ScrollablePage {
         steamInstalled = status.steamInstalled
         gamemodeInstalled = status.gamemodeInstalled
         nvidiaOffload = status.nvidiaOffload
+        nvidiaReady = status.nvidiaReady
+        nvidiaPresent = status.nvidiaPresent
+        lutrisInstalled = status.lutrisInstalled
         emuSystems = backend.emulationSystems()
         emuSettings = backend.emulationSettings()
         controllers = backend.gameControllers()
@@ -462,6 +469,36 @@ Kirigami.ScrollablePage {
                         toolTipText: "Right Shift + F12 hides it during a game. PlayStation 2 and 3DS show their own numbers instead."
                     }
                 }
+                // Laptops with an NVIDIA card: which one games use.
+                RowLayout {
+                    visible: nvidiaPresent
+                    spacing: Kirigami.Units.largeSpacing
+                    Controls.Label { text: "Graphics card for games" }
+                    Controls.ComboBox {
+                        wheelEnabled: false
+                        enabled: nvidiaReady && !busy
+                        Layout.preferredWidth: Kirigami.Units.gridUnit * 18
+                        model: ["NVIDIA graphics card (faster)", "Built-in graphics (cooler, longer battery)"]
+                        currentIndex: !nvidiaReady || emuSettings.game_gpu === "builtin" ? 1 : 0
+                        onActivated: function (i) {
+                            saveSettings({ game_gpu: i === 1 ? "builtin" : "nvidia" })
+                            refreshStatus()
+                            displayNote = "Saved. PlayStation 2 and Windows games use " + (i === 1 ? "the built-in graphics" : "the NVIDIA card")
+                                          + " from their next start." + (steamInstalled ? " Steam games: press the Steam button below again." : "")
+                            if (lutrisInstalled) { startJob(); backend.applyLutrisDefaults() }
+                        }
+                    }
+                    Kirigami.ContextualHelpButton {
+                        toolTipText: "The desktop always stays on the built-in graphics. This picks the card for PlayStation 2 (PCSX2), Windows games (ReyOS Games, Lutris) and, after pressing its button again, Steam games. One Windows game can still be switched in ReyOS Games (right-click)."
+                    }
+                }
+                Controls.Label {
+                    visible: nvidiaPresent && !nvidiaReady
+                    Layout.fillWidth: true
+                    wrapMode: Text.Wrap
+                    opacity: 0.75
+                    text: "This laptop's NVIDIA card isn't in use yet: install its driver in Control Center → Drivers, then restart."
+                }
                 GridLayout {
                     Layout.fillWidth: true
                     columns: 3
@@ -859,6 +896,62 @@ Kirigami.ScrollablePage {
                             visible: steamInstalled && gamemodeInstalled
                             toolTipText: "Steam starts its own games, so GameMode and the overlay go into each game's launch options. Close Steam, then press the button; press it again after installing new games. The overlay follows the switch under Display."
                                          + (nvidiaOffload ? " On this laptop the games also start on the NVIDIA card (prime-run); for a game added with \"Add a Non-Steam Game\", put prime-run %command% in its launch options yourself." : "")
+                        }
+                    }
+                }
+
+                Kirigami.Separator { Layout.fillWidth: true }
+
+                // Lutris: Windows games (ReyOS Games → Add PC game…)
+                RowLayout {
+                    Layout.fillWidth: true
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 0
+                        Controls.Label { text: "Lutris (Windows games)"; font.bold: true }
+                        Controls.Label {
+                            Layout.fillWidth: true
+                            elide: Text.ElideRight
+                            opacity: 0.7
+                            text: "Lutris: " + (lutrisInstalled ? "installed" : "not installed")
+                        }
+                    }
+                    Controls.Button {
+                        text: lutrisExpanded ? "Hide" : "Show"
+                        icon.name: lutrisExpanded ? "arrow-up" : "arrow-down"
+                        flat: true
+                        onClicked: lutrisExpanded = !lutrisExpanded
+                    }
+                }
+                ColumnLayout {
+                    visible: lutrisExpanded
+                    Layout.fillWidth: true
+                    Layout.leftMargin: Kirigami.Units.largeSpacing
+                    spacing: Kirigami.Units.largeSpacing
+                    Controls.Label {
+                        Layout.fillWidth: true
+                        wrapMode: Text.Wrap
+                        text: "Installs Lutris, which runs Windows games with Proton. Add games in ReyOS Games → Add PC game…: an installer (setup.exe) or the .exe of a game that's already installed."
+                    }
+                    RowLayout {
+                        spacing: Kirigami.Units.largeSpacing
+                        Controls.Button {
+                            text: lutrisInstalled ? "Reinstall / repair" : "Install"
+                            highlighted: !lutrisInstalled
+                            enabled: !busy
+                            onClicked: { startJob(); backend.installLutris() }
+                        }
+                        Controls.Button {
+                            visible: lutrisInstalled
+                            text: nvidiaReady ? "Use GameMode, the overlay and the NVIDIA card in all Lutris games"
+                                              : "Use GameMode and the overlay in all Lutris games"
+                            icon.name: "games-config-options"
+                            enabled: !busy
+                            onClicked: { startJob(); backend.applyLutrisDefaults() }
+                        }
+                        Kirigami.ContextualHelpButton {
+                            visible: lutrisInstalled
+                            toolTipText: "Sets Lutris's own defaults, so games started from Lutris get them too, not only those started from ReyOS Games. The overlay (FPS, CPU, GPU) follows the switch under Display; Right Shift+F12 hides it during a game."
                         }
                     }
                 }
