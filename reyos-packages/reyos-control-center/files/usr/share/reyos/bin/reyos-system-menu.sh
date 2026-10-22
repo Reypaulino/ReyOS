@@ -79,9 +79,11 @@ pkg_full() {
     return 2
   fi
   # Through the update channel: on Stable that also keeps Arch packages on the
-  # tested snapshot, which a plain pacman -Syu doesn't.
+  # tested snapshot, which a plain pacman -Syu doesn't. --yes (this menu item
+  # is the confirmation) runs it as a system service, so closing the terminal
+  # or a desktop restart mid-update can't stop it half-way.
   if command -v reyos-channel >/dev/null; then
-    sudo reyos-channel upgrade
+    sudo reyos-channel upgrade --yes
   else
     sudo pacman -Syu
   fi

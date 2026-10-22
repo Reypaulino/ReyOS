@@ -16,6 +16,9 @@ ARCH_MIRRORLIST=/etc/pacman.d/mirrorlist
 PACMAN_CONF=/etc/pacman.conf
 SYNC_DIR=/var/lib/pacman/sync
 FALLBACK_MIRROR='https://geo.mirror.pkgbuild.com/$repo/os/$arch'
+UPDATE_LOG=/var/log/reyos-update.log
+PACMAN_LOCK=/var/lib/pacman/db.lck
+INHIBIT_WHY="Installing updates. The computer can restart when they're done."
 
 usage() {
     cat <<'EOF'
@@ -27,6 +30,9 @@ Usage: reyos-channel [status]
                                        install packages together with the
                                        channel's updates (never a partial upgrade)
        reyos-channel regenerate        rewrite /etc/pacman.d/reyos-mirrorlist
+With --yes, the update runs as its own system service (output shown here
+and kept in /var/log/reyos-update.log), so closing the terminal or a
+desktop restart during the update can't stop it half-way.
 EOF
 }
 
@@ -45,8 +51,76 @@ need_root() {
     fi
 }
 
+# ---- Updates as their own system service ----------------------------------
+# On 2026-10-20 an update that restarted the desktop session (X11 -> Wayland)
+# killed Control Center and, with it, the pacman it had started: half-way
+# through pacman's hooks, after the old kernels had been removed from /boot
+# and before the new ones were copied, so the laptop had nothing to boot.
+# Updates now run in a system service (REYOS_CHANNEL_UNIT=1 inside it), not
+# in the caller's process tree, with shutdown and sleep held off until done.
+
+protected() { [ -n "${REYOS_CHANNEL_UNIT:-}" ]; }
+
+can_protect() {
+    [ -d /run/systemd/system ] && command -v systemd-run >/dev/null && ! systemd-detect-virt -q --chroot
+}
+
+run_protected() {  # reyos-channel ARGS in its own service; its output is shown here
+    local rc=0 tailer
+    : > "$UPDATE_LOG"
+    tail -n +1 -F "$UPDATE_LOG" 2>/dev/null &
+    tailer=$!
+    systemd-run --quiet --wait --collect --unit="reyos-update-$(date +%s)" --description="ReyOS update" \
+        --property=StandardOutput=append:"$UPDATE_LOG" --property=StandardError=append:"$UPDATE_LOG" \
+        --setenv=REYOS_CHANNEL_UNIT=1 \
+        -- systemd-inhibit --what=shutdown:sleep --mode=block --who="ReyOS update" --why="$INHIBIT_WHY" \
+        /usr/bin/reyos-channel "$@" || rc=$?
+    sleep 1
+    kill "$tailer" 2>/dev/null || true
+    return "$rc"
+}
+
+# A newer stable snapshot while an older, unprotected reyos-channel (or a
+# plain pacman) is updating: that caller would make the big jump right after
+# this transaction, still in the desktop session. Leave the mirror list
+# alone so it stops after this pass, and finish in a service instead.
+snapshot_deferred() {
+    [ "$(channel)" = stable ] && ! protected && can_protect && [ -f "$MIRRORLIST" ] &&
+        ! grep -q "/repos/$(snapshot)/" "$MIRRORLIST"
+}
+
+start_finish() {
+    systemctl is-active --quiet reyos-update-finish.service && return 0
+    echo ":: The update continues from the tested Arch snapshot $(snapshot) as a system service,"
+    echo "   so a desktop restart can't stop it. Please don't turn the computer off until it's"
+    echo "   done (progress: $UPDATE_LOG)."
+    systemd-run --quiet --no-block --collect --unit=reyos-update-finish --description="ReyOS update (finishing)" \
+        --property=StandardOutput=append:"$UPDATE_LOG" --property=StandardError=append:"$UPDATE_LOG" \
+        --setenv=REYOS_CHANNEL_UNIT=1 \
+        -- systemd-inhibit --what=shutdown:sleep --mode=block --who="ReyOS update" --why="$INHIBIT_WHY" \
+        /usr/bin/reyos-channel finish || true
+}
+
+finish() {  # reyos-update-finish.service: wait for the pacman that started it, then update
+    need_root finish
+    local free=0 waited=0
+    while [ "$free" -lt 5 ] && [ "$waited" -lt 3600 ]; do
+        if [ -e "$PACMAN_LOCK" ] || pgrep -x pacman >/dev/null; then free=0; else free=$((free + 1)); fi
+        sleep 1
+        waited=$((waited + 1))
+    done
+    echo ":: Finishing the update from the tested Arch snapshot $(snapshot)..."
+    upgrade 1
+    echo ":: ReyOS update finished."
+}
+
 regenerate() {
     need_root regenerate
+    # From pacman (package scriptlet, hook): maybe later, see snapshot_deferred.
+    if [ "${1:-}" = --deferrable ] && snapshot_deferred; then
+        start_finish
+        return 0
+    fi
     local tmp
     tmp=$(mktemp "$MIRRORLIST.XXXXXX")
     {
@@ -144,6 +218,8 @@ switch_to() {
 upgrade() {
     local yes=$1 before after
     need_root upgrade
+    # A snapshot an older reyos-channel left for later (snapshot_deferred).
+    if protected; then regenerate; fi
     before=$(cat "$MIRRORLIST" 2>/dev/null || true)
     pacman_upgrade "$yes"
     after=$(cat "$MIRRORLIST" 2>/dev/null || true)
@@ -158,6 +234,7 @@ install_pkgs() {
     local yes=$1 before after p
     shift
     need_root install
+    if protected; then regenerate; fi
     [ $# -gt 0 ] || { echo "reyos-channel install: no packages given" >&2; exit 2; }
     for p in "$@"; do
         # NAME or REPO/NAME (reyos-admin asks for reyos-local/... explicitly).
@@ -175,6 +252,18 @@ install_pkgs() {
 yes=0
 if [ "${2:-}" = "--yes" ]; then yes=1; fi
 
+# Unattended updates (--yes: Control Center, Welcome, System Tools) run as a
+# system service. Interactive ones stay in the terminal for pacman's prompts.
+case "${1:-}" in
+    upgrade|install|stable|rolling)
+        if [ "$yes" = 1 ] && ! protected && can_protect; then
+            need_root "$1"
+            rc=0
+            run_protected "$@" || rc=$?
+            exit "$rc"
+        fi ;;
+esac
+
 case "${1:-status}" in
     status)
         if [ "$(channel)" = stable ]; then echo "stable $(snapshot)"; else echo rolling; fi ;;
@@ -184,7 +273,8 @@ case "${1:-status}" in
         shift
         if [ "${1:-}" = "--yes" ]; then shift; else yes=0; fi
         install_pkgs "$yes" "$@" ;;
-    regenerate) regenerate ;;
+    regenerate) regenerate "${2:-}" ;;
+    finish) finish ;;
     migrate-conf) migrate_conf ;;
     restore-conf) restore_conf ;;
     -h|--help|help) usage ;;

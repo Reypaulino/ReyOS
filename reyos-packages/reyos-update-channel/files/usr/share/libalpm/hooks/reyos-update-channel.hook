@@ -8,4 +8,4 @@ Target = etc/pacman.d/mirrorlist
 [Action]
 Description = Updating the ReyOS update channel mirror list...
 When = PostTransaction
-Exec = /usr/bin/reyos-channel regenerate
+Exec = /usr/bin/reyos-channel regenerate --deferrable

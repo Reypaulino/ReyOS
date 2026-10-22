@@ -12,7 +12,9 @@ post_install() {
 
 post_upgrade() {
     /usr/bin/reyos-channel migrate-conf
-    /usr/bin/reyos-channel regenerate
+    # Deferrable: an older reyos-channel running this upgrade would otherwise
+    # jump to the new snapshot right after it, unprotected (see reyos-channel).
+    /usr/bin/reyos-channel regenerate --deferrable
 }
 
 pre_remove() {
