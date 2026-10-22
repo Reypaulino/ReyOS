@@ -512,18 +512,9 @@ REYOS_ADMIN = "/usr/share/reyos/bin/reyos-admin"
 
 
 def _nvidia_offload_ready():
-    """A laptop whose NVIDIA card runs NVIDIA's driver next to built-in
-    graphics, with prime-run installed: games can be sent to the NVIDIA card."""
-    if not (Path("/sys/module/nvidia").exists() and shutil.which("prime-run")):
-        return False
-    vendors = set()
-    for dev in Path("/sys/bus/pci/devices").glob("*"):
-        try:
-            if int((dev / "class").read_text(), 16) >> 16 == 0x03:
-                vendors.add((dev / "vendor").read_text().strip())
-        except (OSError, ValueError):
-            pass
-    return "0x10de" in vendors and bool(vendors & {"0x8086", "0x1002"})
+    """A laptop's NVIDIA card is usable and prime-run is installed: Steam
+    games can be sent to the NVIDIA card."""
+    return bool(shutil.which("prime-run")) and emulation.nvidia_offload_ready()
 
 
 PKEXEC_DISMISSED = (126, 127)  # dialog cancelled (the KDE agent reports 127 "Not authorized")
@@ -2109,9 +2100,22 @@ class Backend(QObject):
                 capture_output=True, text=True,
             )
             ok = result.returncode == 0
+            if ok and status["hybrid"]:
+                # Flatpak apps (PCSX2) need Flatpak's copy of the same driver
+                # version. Normally fetched when an app is installed; apps
+                # installed before the driver don't have it.
+                ver = subprocess.run(["pacman", "-Q", pkgs[1]], capture_output=True, text=True).stdout.split()
+                user_apps = subprocess.run(["flatpak", "list", "--user", "--app", "--columns=application"],
+                                           capture_output=True, text=True).stdout.split()
+                if len(ver) == 2 and user_apps:
+                    v = ver[1].split("-")[0].replace(".", "-")
+                    subprocess.run(["flatpak", "install", "--user", "-y", "--noninteractive", "flathub",
+                                    f"org.freedesktop.Platform.GL.nvidia-{v}//1.4",
+                                    f"org.freedesktop.Platform.GL32.nvidia-{v}//1.4"],
+                                   capture_output=True, text=True)
             if ok:
                 if status["hybrid"]:
-                    return True, "NVIDIA drivers installed. Reboot, then use Gaming → Steam & GameMode to run Steam games on the NVIDIA card."
+                    return True, "NVIDIA drivers installed. Reboot; PS2 games then use the NVIDIA card, and Gaming → Steam & GameMode sends Steam games there."
                 return True, "NVIDIA drivers installed. Reboot for them to take effect."
             return False, (result.stderr.strip() or result.stdout.strip() or "Failed to install NVIDIA drivers.")
         self._run_action(task)

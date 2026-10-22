@@ -127,7 +127,7 @@ def system_installed(system):
 
 
 # ---- Display settings -----------------------------------------------------
-DEFAULT_SETTINGS = {"fullscreen": True, "overlay": True, "picture": "clean", "resolution": 1, "ps2_graphics": True, "windowed_games": [], "expanded": None, "bios_expanded": False, "boxart": True, "game_storage": "", "game_resolution": {}, "pad_types": {}, "player1": "", "button_maps": {}, "ps2_pad_written": {}, "azahar_written": {}}
+DEFAULT_SETTINGS = {"fullscreen": True, "overlay": True, "picture": "clean", "resolution": 1, "ps2_graphics": True, "windowed_games": [], "expanded": None, "bios_expanded": False, "boxart": True, "game_storage": "", "game_resolution": {}, "pad_types": {}, "player1": "", "button_maps": {}, "ps2_pad_written": {}, "azahar_written": {}, "ps2_vulkan_written": False}
 
 # 3D internal resolution per core, keyed by ReyOS's 1x / 2x / 4x choice.
 # Option names and values checked against the cores Arch ships.
@@ -236,6 +236,43 @@ def shader_for(system_id, settings=None):
     if rel and system_id in TWO_D_SYSTEMS and (SHADER_DIR / rel).is_file():
         return SHADER_DIR / rel
     return None
+
+
+# What prime-run sets: start a program on a laptop's NVIDIA card.
+NVIDIA_OFFLOAD_ENV = {"__NV_PRIME_RENDER_OFFLOAD": "1", "__VK_LAYER_NV_optimus": "NVIDIA_only",
+                      "__GLX_VENDOR_LIBRARY_NAME": "nvidia"}
+
+
+def nvidia_offload_ready():
+    """A laptop whose NVIDIA card runs NVIDIA's driver next to built-in
+    Intel/AMD graphics: a game can be started on the NVIDIA card."""
+    if not Path("/sys/module/nvidia").exists():
+        return False
+    vendors = set()
+    for dev in Path("/sys/bus/pci/devices").glob("*"):
+        try:
+            if int((dev / "class").read_text(), 16) >> 16 == 0x03:
+                vendors.add((dev / "vendor").read_text().strip())
+        except (OSError, ValueError):
+            pass
+    return "0x10de" in vendors and bool(vendors & {"0x8086", "0x1002"})
+
+
+def nvidia_flatpak_extensions():
+    """Flatpak's copies of the loaded NVIDIA driver (64- and 32-bit), e.g.
+    org.freedesktop.Platform.GL.nvidia-580-178-04; [] without the driver.
+    A Flatpak app can only use the NVIDIA card when these match the host's."""
+    try:
+        version = Path("/sys/module/nvidia/version").read_text().strip().replace(".", "-")
+    except OSError:
+        return []
+    return [f"org.freedesktop.Platform.{gl}.nvidia-{version}" for gl in ("GL", "GL32")]
+
+
+def pcsx2_on_nvidia():
+    ext = nvidia_flatpak_extensions()
+    return nvidia_offload_ready() and bool(ext) and any(
+        (d / "runtime" / ext[0]).is_dir() for d in (Path.home() / ".local/share/flatpak", Path("/var/lib/flatpak")))
 
 
 def gpu_is_weak():
@@ -396,6 +433,7 @@ def prepare_flatpak(system, resolution=None):
         _ini_set(lines, "EmuCore/GS", key, overlay)
     if settings["ps2_graphics"]:
         _apply_pcsx2_graphics(lines, settings, resolution)
+    _apply_pcsx2_gpu(lines, settings)
     _map_pcsx2_controller(lines)
     if lines != before:
         PCSX2_INI.parent.mkdir(parents=True, exist_ok=True)
@@ -459,6 +497,32 @@ def _apply_pcsx2_graphics(lines, settings, resolution=None):
     _ini_set(lines, "EmuCore/GS", "upscale_multiplier", str(resolution or settings["resolution"]))
     _ini_set(lines, "EmuCore/GS", "IntegerScaling", "true" if picture in ("sharp", "lcd") else "false")
     _ini_set(lines, "UI", "StartFullscreen", "true" if settings["fullscreen"] else "false")
+
+
+def _apply_pcsx2_gpu(lines, settings):
+    """On a laptop with a usable NVIDIA card PCSX2 runs on Vulkan, where the
+    offload variables (launch_command) put it on the NVIDIA card; Automatic
+    picks OpenGL, which stays on the built-in graphics. Only Automatic or
+    OpenGL is changed, and it goes back to Automatic when the card isn't
+    usable any more. An adapter picked in PCSX2 that isn't the NVIDIA card
+    is cleared: with the offload on, Vulkan lists the NVIDIA card first and
+    PCSX2's default adapter is the first one (checked inside the Flatpak)."""
+    renderer = _ini_get(lines, "EmuCore/GS", "Renderer")
+    if pcsx2_on_nvidia():
+        if renderer in (None, "", "-1", "12"):  # Automatic, OpenGL
+            _ini_set(lines, "EmuCore/GS", "Renderer", "14")  # Vulkan
+            save_settings({"ps2_vulkan_written": True})
+        adapter = _ini_get(lines, "EmuCore/GS", "Adapter") or ""
+        if adapter and "nvidia" not in adapter.lower():
+            _ini_set(lines, "EmuCore/GS", "Adapter", "")
+    elif settings["ps2_vulkan_written"] and renderer == "14":
+        _ini_set(lines, "EmuCore/GS", "Renderer", "-1")
+        save_settings({"ps2_vulkan_written": False})
+
+
+def pcsx2_run_args():
+    """`flatpak run` options that start PCSX2 on the NVIDIA card when it's usable."""
+    return [f"--env={k}={v}" for k, v in NVIDIA_OFFLOAD_ENV.items()] if pcsx2_on_nvidia() else []
 
 
 # Pad 1 bound to the first controller the way PCSX2's own "Automatic
@@ -687,7 +751,7 @@ def launch_command(system, rom):
     gamemode = ["gamemoderun"] if shutil.which("gamemoderun") else []
     fullscreen = game_fullscreen(rom, settings)
     if system["id"] == "ps2":
-        return gamemode + ["flatpak", "run", system["flatpak"], "-batch",
+        return gamemode + ["flatpak", "run", *pcsx2_run_args(), system["flatpak"], "-batch",
                            "-fullscreen" if fullscreen else "-nofullscreen", "--", _ps2_disc(rom)]
     if system["id"] == "3ds":
         return gamemode + ["flatpak", "run", system["flatpak"], "-f" if fullscreen else "-w", rom]

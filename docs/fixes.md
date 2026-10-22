@@ -2,6 +2,16 @@
 
 Real bugs found and fixed, with root cause. Newest first. See `bugs.md` for what's still open.
 
+## 2026-10-22 — PS2 games on a laptop's NVIDIA card (control-center-gui 1.0.0-137)
+
+On the user's laptop (HD 630 + GeForce 940MX), PCSX2 ran PS2 games on the Intel graphics even with NVIDIA's driver loaded: its ini had `Renderer = 12` (OpenGL; Automatic picks it) and `Adapter = Intel(R) HD Graphics 630 …`, and ReyOS only ever wrote PCSX2's resolution. Checked inside the PCSX2 Flatpak on the Ubuntu side of the same laptop (580 driver, `GL.nvidia-580-178-04` extension): Vulkan lists the Intel chip first without offload variables and the 940MX first with `__NV_PRIME_RENDER_OFFLOAD=1 __VK_LAYER_NV_optimus=NVIDIA_only` (Intel still listed).
+
+- `emulation.py`: `nvidia_offload_ready()` (moved from main.py), `nvidia_flatpak_extensions()`, `pcsx2_on_nvidia()` (offload ready and Flatpak's matching NVIDIA extension installed). When true, `prepare_flatpak` sets PCSX2 to Vulkan (only from Automatic/OpenGL; a renderer the user picked otherwise stays) and clears a non-NVIDIA `Adapter`; `launch_command` and the `reyos-pcsx2` menu launcher add the offload variables as `flatpak run --env=…`. When the card is gone again, a Vulkan setting ReyOS wrote goes back to Automatic (`ps2_vulkan_written`).
+- Drivers page install on a laptop also installs Flatpak's copy of the same driver version (`org.freedesktop.Platform.GL{,32}.nvidia-<ver>//1.4`, user installation) when user Flatpaks exist, since apps installed before the driver don't have it.
+- Not changed: resolution (the Gaming page choice / per-game 3x as before), RetroArch cores (GameCube/Wii etc. stay on the built-in graphics until the offload path for RetroArch's GL driver on Wayland is tested on the laptop).
+
+Tested: settings logic against a scratch PCSX2.ini (OpenGL+Intel → Vulkan + empty adapter; unchanged on a second run; back to Automatic without the card; a Software renderer left alone); `pcsx2_on_nvidia()`/run args true on the Ubuntu side of the real laptop; Control Center 137 on the Dev VM (Gaming page loads, no NVIDIA → PS2 launch command unchanged). A smoke test there caught a broken docstring in the first build before publishing. **Not yet run as a ReyOS PS2 game on the laptop.**
+
 ## 2026-10-22 — NVIDIA 580 driver for older cards; games on a laptop's NVIDIA card (control-center-gui 1.0.0-136, reyos-base 1.1.0-10, nvidia-580xx-* 580.178.04)
 
 User's laptop (i7-7820HQ, HD 630 + GeForce 940MX, GM108M `10de:134d`) had no usable NVIDIA driver on ReyOS: Arch's current `nvidia-utils` (615) dropped Maxwell/Pascal, and nouveau can't reclock them, so the Drivers page showed nothing. Ubuntu on the same laptop runs NVIDIA 580.
