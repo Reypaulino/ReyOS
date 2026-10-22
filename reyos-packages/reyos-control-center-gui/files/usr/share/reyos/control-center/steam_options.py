@@ -1,4 +1,5 @@
-"""Add GameMode (and the MangoHud overlay) to every installed Steam game's
+"""Add GameMode (and the MangoHud overlay, and on a laptop with an NVIDIA
+card next to the built-in graphics, prime-run) to every installed Steam game's
 launch options. Qt-free so it can be tested on its own.
 
 Steam starts its games itself, so the only per-game hook is the launch
@@ -9,7 +10,7 @@ import re
 import subprocess
 from pathlib import Path
 
-WRAPPERS = ("gamemoderun", "mangohud")
+WRAPPERS = ("prime-run", "gamemoderun", "mangohud")
 # Steam lists these as installed apps, but they're runtimes, not games.
 _NOT_GAMES = re.compile(r"proton|steam linux runtime|steamworks common|steamvr", re.I)
 _TOKEN = re.compile(r'"((?:[^"\\]|\\.)*)"|([{}])|//[^\n]*|\s+')
@@ -183,7 +184,8 @@ def apply(wanted):
                 tmp.replace(config)
     if total == 0:
         return False, "No installed Steam games found -- install a game, then press this again."
-    what = " and ".join({"gamemoderun": "GameMode", "mangohud": "the performance overlay"}[w] for w in wanted) or "nothing extra"
+    names = {"prime-run": "the NVIDIA graphics card", "gamemoderun": "GameMode", "mangohud": "the performance overlay"}
+    what = " and ".join(names[w] for w in wanted) or "nothing extra"
     if changed == 0:
         return True, f"All {total} Steam game(s) already use {what}."
     return True, f"Steam games now start with {what} ({changed} of {total} updated). Start Steam again."

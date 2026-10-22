@@ -12,6 +12,7 @@ Kirigami.ScrollablePage {
     property bool busy: false
     property bool steamInstalled: false
     property bool gamemodeInstalled: false
+    property bool nvidiaOffload: false
     property string statusText: ""
     property bool statusOk: true
     property bool showLog: false
@@ -48,6 +49,7 @@ Kirigami.ScrollablePage {
         var status = backend.gamingStatus()
         steamInstalled = status.steamInstalled
         gamemodeInstalled = status.gamemodeInstalled
+        nvidiaOffload = status.nvidiaOffload
         emuSystems = backend.emulationSystems()
         emuSettings = backend.emulationSettings()
         controllers = backend.gameControllers()
@@ -848,7 +850,7 @@ Kirigami.ScrollablePage {
                         }
                         Controls.Button {
                             visible: steamInstalled && gamemodeInstalled
-                            text: "Use GameMode in all Steam games"
+                            text: nvidiaOffload ? "Use GameMode and the NVIDIA card in all Steam games" : "Use GameMode in all Steam games"
                             icon.name: "games-config-options"
                             enabled: !busy
                             onClicked: { startJob(); backend.applySteamLaunchOptions() }
@@ -856,6 +858,7 @@ Kirigami.ScrollablePage {
                         Kirigami.ContextualHelpButton {
                             visible: steamInstalled && gamemodeInstalled
                             toolTipText: "Steam starts its own games, so GameMode and the overlay go into each game's launch options. Close Steam, then press the button; press it again after installing new games. The overlay follows the switch under Display."
+                                         + (nvidiaOffload ? " On this laptop the games also start on the NVIDIA card (prime-run); for a game added with \"Add a Non-Steam Game\", put prime-run %command% in its launch options yourself." : "")
                         }
                     }
                 }

@@ -11,8 +11,10 @@ contains "ati").
   reyos-gpu-detect --lib32-vulkan   the 32-bit Vulkan driver Steam needs (may be empty)
 
 NVIDIA: the open kernel module (nvidia-open) needs the GPU System Processor,
-which exists on Turing and newer (PCI device IDs from 0x1e00). Maxwell, Pascal,
-Volta and older cannot use it and are best served by nouveau (mesa).
+which exists on Turing and newer (PCI device IDs from 0x1e00). Maxwell, Pascal
+and Volta (from 0x1340) can run NVIDIA's 580 legacy driver, which ReyOS ships
+in its own repository (nvidia-580xx-*); the Control Center Drivers page offers
+it. Kepler and older stay on nouveau (mesa).
 """
 import json
 import os
@@ -22,6 +24,7 @@ from pathlib import Path
 SYSFS = Path(os.environ.get("REYOS_GPU_SYSFS", "/sys/bus/pci/devices"))
 VENDORS = {0x8086: "intel", 0x1002: "amd", 0x10DE: "nvidia"}
 NVIDIA_OPEN_MIN_DEVICE = 0x1E00
+NVIDIA_LEGACY_MIN_DEVICE = 0x1340  # first Maxwell (GM108)
 
 
 def _hex(path):
@@ -49,6 +52,7 @@ def detect():
         }
         if vendor == "nvidia":
             gpu["nvidiaOpenSupported"] = device_id >= NVIDIA_OPEN_MIN_DEVICE
+            gpu["nvidiaLegacySupported"] = NVIDIA_LEGACY_MIN_DEVICE <= device_id < NVIDIA_OPEN_MIN_DEVICE
         gpus.append(gpu)
     return gpus
 

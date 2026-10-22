@@ -1,11 +1,11 @@
 # Maintainer: Rey Paulino
 pkgname=reyos-control-center-gui
 pkgver=1.0.0
-pkgrel=135
+pkgrel=136
 pkgdesc="ReyOS Control Center — Kirigami/QML GUI for updates, performance, network, disk and permissions"
 arch=('any')
 license=('MIT')
-depends=('reyos-base' 'reyos-control-center' 'reyos-looks' 'pyside6' 'kirigami' 'flatpak' 'kdialog' 'polkit' 'pciutils' 'ufw' 'bluez-utils' 'pipewire-pulse'
+depends=('reyos-base>=1.1.0-10' 'reyos-control-center' 'reyos-looks' 'pyside6' 'kirigami' 'flatpak' 'kdialog' 'polkit' 'pciutils' 'ufw' 'bluez-utils' 'pipewire-pulse'
          'xorg-xinput' 'xorg-xrdb' 'kde-gtk-config' 'xorg-setxkbmap' 'xbindkeys' 'timeshift' 'wireguard-tools' 'usbguard' 'arch-audit'
          'cups' 'sane' 'sane-airscan' 'xdg-utils' 'python-setproctitle' 'librsvg')
 source=()

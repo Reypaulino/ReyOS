@@ -5,6 +5,10 @@ post_install() {
     # (does nothing on ext4 or when Timeshift is already configured).
     /usr/share/reyos/bin/reyos-snapshots setup || true
     systemctl enable reyos-snapshots-sync.service >/dev/null 2>&1 || true
+    # Files too big for GitHub Pages (NVIDIA's 580 driver) are in a GitHub
+    # release; pacman tries the next Server when the first one doesn't have a file.
+    grep -q 'releases/download/reyos-drivers' /etc/pacman.conf ||
+        sed -i '/^\[reyos-local\]/,/^\[/s|^Server = https://reypaulino\.github\.io/ReyOS/\?$|&\nServer = https://github.com/Reypaulino/ReyOS/releases/download/reyos-drivers|' /etc/pacman.conf
 }
 
 post_upgrade() {

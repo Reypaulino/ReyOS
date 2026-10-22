@@ -1,7 +1,7 @@
 # Maintainer: Rey Paulino
 pkgname=reyos-base
 pkgver=1.1.0
-pkgrel=9
+pkgrel=10
 pkgdesc="ReyOS core identity: os-release, hostname, lsb-release branding"
 arch=('any')
 license=('MIT')

@@ -9,6 +9,8 @@ Kirigami.ScrollablePage {
     property bool busy: false
     property var gpuModel: []
     property bool needsNvidiaDriver: false
+    property bool nvidiaLegacy: false
+    property bool hybrid: false
 
     actions: [
         Kirigami.Action {
@@ -29,6 +31,8 @@ Kirigami.ScrollablePage {
             busy = false
             gpuModel = info.gpus
             needsNvidiaDriver = info.needsNvidiaDriver
+            nvidiaLegacy = info.nvidiaLegacy
+            hybrid = info.hybrid
         }
         function onActionFinished(ok, message) {
             busy = false
@@ -50,7 +54,12 @@ Kirigami.ScrollablePage {
         Controls.Label {
             width: 360
             wrapMode: Text.Wrap
-            text: "Installs nvidia-dkms and nvidia-utils via pacman. This replaces the open-source nouveau driver with NVIDIA's proprietary one, rebuilt automatically on every kernel update. A reboot is needed afterward for it to take effect."
+            text: (nvidiaLegacy
+                   ? "Installs NVIDIA's 580 driver, the last one that supports this card, from the ReyOS repository."
+                   : "Installs NVIDIA's driver (nvidia-open-dkms and nvidia-utils).")
+                  + " It replaces the open-source nouveau driver and is rebuilt automatically on every kernel update."
+                  + (hybrid ? " The desktop stays on the built-in graphics; games can use the NVIDIA card (Gaming → Steam & GameMode)." : "")
+                  + " A reboot is needed afterward for it to take effect."
         }
     }
 

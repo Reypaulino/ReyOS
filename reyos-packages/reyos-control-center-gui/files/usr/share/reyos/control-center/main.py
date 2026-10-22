@@ -509,6 +509,23 @@ _PKG_CHANGED_RE = re.compile(r"^(?:\(\s*\d+/\d+\)\s*)?(?:upgrading|installing|re
 
 REYOS_CHANNEL = "/usr/bin/reyos-channel"
 REYOS_ADMIN = "/usr/share/reyos/bin/reyos-admin"
+
+
+def _nvidia_offload_ready():
+    """A laptop whose NVIDIA card runs NVIDIA's driver next to built-in
+    graphics, with prime-run installed: games can be sent to the NVIDIA card."""
+    if not (Path("/sys/module/nvidia").exists() and shutil.which("prime-run")):
+        return False
+    vendors = set()
+    for dev in Path("/sys/bus/pci/devices").glob("*"):
+        try:
+            if int((dev / "class").read_text(), 16) >> 16 == 0x03:
+                vendors.add((dev / "vendor").read_text().strip())
+        except (OSError, ValueError):
+            pass
+    return "0x10de" in vendors and bool(vendors & {"0x8086", "0x1002"})
+
+
 PKEXEC_DISMISSED = (126, 127)  # dialog cancelled (the KDE agent reports 127 "Not authorized")
 
 
@@ -1006,13 +1023,15 @@ class Backend(QObject):
     def gamingStatus(self):
         def installed(pkg):
             return subprocess.run(["pacman", "-Q", pkg], capture_output=True).returncode == 0
-        return {"steamInstalled": installed("steam"), "gamemodeInstalled": installed("gamemode")}
+        return {"steamInstalled": installed("steam"), "gamemodeInstalled": installed("gamemode"),
+                "nvidiaOffload": _nvidia_offload_ready()}
 
     @Slot()
     def applySteamLaunchOptions(self):
         def task(emit):
             wanted = [w for w in steam_options.WRAPPERS
-                      if shutil.which(w) and (w != "mangohud" or emulation.load_settings()["overlay"])]
+                      if shutil.which(w) and (w != "mangohud" or emulation.load_settings()["overlay"])
+                      and (w != "prime-run" or _nvidia_offload_ready())]
             if "gamemoderun" not in wanted:
                 return False, "GameMode isn't installed yet — press Install above first."
             return steam_options.apply(wanted)
@@ -1045,6 +1064,13 @@ class Backend(QObject):
                                 capture_output=True, text=True).stdout.strip()
             if vk:
                 pkgs.insert(0, vk)
+            # 32-bit games (most Proton ones) need NVIDIA's 32-bit driver to
+            # run on the NVIDIA card; it has to match the installed driver.
+            for nv, lib32 in (("nvidia-580xx-utils", "lib32-nvidia-580xx-utils"),
+                              ("nvidia-utils", "lib32-nvidia-utils")):
+                if subprocess.run(["pacman", "-Q", nv], capture_output=True).returncode == 0:
+                    pkgs.insert(0, lib32)
+                    break
             # Together with any waiting system updates, in one transaction
             # (a `pacman -Sy` + `pacman -S steam` was a partial upgrade).
             emit("Installing " + ", ".join(pkgs) + " with any waiting system updates...")
@@ -2016,11 +2042,14 @@ class Backend(QObject):
                     ids = re.search(r"\[([0-9a-f]{4}):([0-9a-f]{4})\]", desc)
                     vendor_id, device_id = (ids.group(1), ids.group(2)) if ids else ("", "")
                     model = re.sub(r"\s*\[[0-9a-f]{4}:[0-9a-f]{4}\]", "", desc)
+                    nv_id = int(device_id, 16) if ids and vendor_id == "10de" else 0
                     current = {
                         "model": model,
                         "vendor": vendors.get(vendor_id, "other"),
                         "driver": "",
-                        "nvidiaOpenSupported": bool(ids) and vendor_id == "10de" and int(device_id, 16) >= 0x1E00,
+                        "nvidiaOpenSupported": nv_id >= 0x1E00,
+                        # Maxwell, Pascal, Volta: NVIDIA's 580 legacy driver.
+                        "nvidiaLegacySupported": 0x1340 <= nv_id < 0x1E00,
                     }
             elif current is not None:
                 stripped = line.strip()
@@ -2030,13 +2059,14 @@ class Backend(QObject):
             gpus.append(current)
 
         # Offer NVIDIA's driver only to a card that can run it and that is
-        # still on nouveau (or nothing). Maxwell/Pascal/older cards are best
-        # served by nouveau, so they get no button at all.
-        needs_nvidia = any(
-            g["vendor"] == "nvidia" and g["nvidiaOpenSupported"] and g["driver"] in ("nouveau", "")
-            for g in gpus
-        )
-        return {"gpus": gpus, "needsNvidiaDriver": needs_nvidia}
+        # still on nouveau (or nothing). Maxwell/Pascal/Volta get the 580
+        # legacy driver from ReyOS's repository (nouveau can't clock them
+        # up); Kepler and older get no button at all.
+        nv = [g for g in gpus if g["vendor"] == "nvidia" and g["driver"] in ("nouveau", "")]
+        needs_nvidia = any(g["nvidiaOpenSupported"] or g["nvidiaLegacySupported"] for g in nv)
+        legacy = needs_nvidia and not any(g["nvidiaOpenSupported"] for g in nv)
+        hybrid = any(g["vendor"] in ("intel", "amd") for g in gpus)
+        return {"gpus": gpus, "needsNvidiaDriver": needs_nvidia, "nvidiaLegacy": legacy, "hybrid": hybrid}
 
     @Slot()
     def refreshDriverStatus(self):
@@ -2052,11 +2082,24 @@ class Backend(QObject):
             # more maintenance-free than the plain `nvidia` package
             # (which is tied to one specific kernel package/version), and
             # ReyOS runs the standard `linux` kernel this ships against.
-            if not any(g["nvidiaOpenSupported"] for g in self._compute_driver_status()["gpus"]):
-                return False, "This NVIDIA card is not supported by the current proprietary driver. Keep the open-source nouveau driver."
+            status = self._compute_driver_status()
+            if not status["needsNvidiaDriver"]:
+                return False, "This NVIDIA card is not supported by NVIDIA's driver. Keep the open-source nouveau driver."
             # With any waiting system updates, in one transaction: the DKMS
             # module must build against the kernel that will actually boot.
-            pkgs = ["nvidia-open-dkms", "nvidia-utils"]
+            if status["nvidiaLegacy"]:
+                pkgs = ["nvidia-580xx-dkms", "nvidia-580xx-utils"]
+                lib32 = "lib32-nvidia-580xx-utils"
+            else:
+                pkgs = ["nvidia-open-dkms", "nvidia-utils"]
+                lib32 = "lib32-nvidia-utils"
+            # Steam's 32-bit games need the matching 32-bit driver.
+            if "\n[multilib]" in Path("/etc/pacman.conf").read_text():
+                pkgs.append(lib32)
+            # Laptops keep the desktop on the built-in graphics; prime-run
+            # starts a game on the NVIDIA card (Gaming page, Steam games).
+            if status["hybrid"]:
+                pkgs.append("nvidia-prime")
             # DKMS builds the module for every kernel that has its headers;
             # without these the LTS backup kernel would boot without it.
             if any(Path("/usr/lib/modules").glob("*-lts/vmlinuz")):
@@ -2067,6 +2110,8 @@ class Backend(QObject):
             )
             ok = result.returncode == 0
             if ok:
+                if status["hybrid"]:
+                    return True, "NVIDIA drivers installed. Reboot, then use Gaming → Steam & GameMode to run Steam games on the NVIDIA card."
                 return True, "NVIDIA drivers installed. Reboot for them to take effect."
             return False, (result.stderr.strip() or result.stdout.strip() or "Failed to install NVIDIA drivers.")
         self._run_action(task)
