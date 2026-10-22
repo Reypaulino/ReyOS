@@ -3,6 +3,7 @@
 started from the app menu without opening Control Center. Setup (installing
 emulators, controllers, BIOS) stays on Control Center's Gaming page."""
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -20,6 +21,7 @@ APP_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(APP_DIR))
 import emulation  # noqa: E402
 import game_shrink  # noqa: E402
+import pc_games  # noqa: E402
 from controller_setup import ControllerSetupWorker  # noqa: E402
 from emulation import EMU_SYSTEMS  # noqa: E402
 
@@ -89,6 +91,82 @@ class AddGamesWorker(QThread):
         self.finished_ok.emit(ok_all, " ".join(messages), originals)
 
 
+class AddPcGameWorker(QThread):
+    """Adds a Windows game: installs Lutris if needed, asks for the .exe,
+    runs it first if it's an installer, then adds the game to Lutris."""
+    progress = Signal(str, float)
+    finished_ok = Signal(bool, str, "QVariantList")
+
+    def _ask(self, *args):
+        out = subprocess.run(["kdialog", "--title", "Add PC Game", *args], capture_output=True, text=True)
+        return out.returncode, out.stdout.strip()
+
+    def run(self):
+        if not pc_games.ready():
+            self.progress.emit("Installing Lutris, which runs Windows games (about 300 MB)...", -1)
+            if "#[multilib]" in Path("/etc/pacman.conf").read_text():
+                subprocess.run(["sudo", "-n", "/usr/share/reyos/welcome/enable-multilib.sh"],
+                               stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(["sudo", "-n", "/usr/share/reyos/bin/reyos-admin", "install-apps", *pc_games.PACKAGES],
+                           stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            if not pc_games.ready():
+                self.finished_ok.emit(False, "Couldn't install Lutris -- check your network connection and try again.", [])
+                return
+        self.progress.emit("Choose the game's .exe...", -1)
+        rc, exe = self._ask("--getopenfilename", str(Path.home() / "Downloads"), "*.exe *.EXE|Windows programs (*.exe)")
+        if rc != 0 or not exe:
+            self.finished_ok.emit(True, "", [])
+            return
+        guess_installer = bool(re.search(r"(?i)setup|install", Path(exe).name))
+        rc, _ = self._ask("--yesnocancel", f"Is {Path(exe).name} the game's installer, or the game itself?",
+                          "--yes-label", "Installer: install the game first",
+                          "--no-label", "The game itself (already installed)",
+                          *(["--default", "yes"] if guess_installer else []))
+        if rc == 2:
+            self.finished_ok.emit(True, "", [])
+            return
+        installer = rc == 0
+        rc, name = self._ask("--inputbox", "Name of the game:", pc_games.game_name(exe, installer))
+        if rc != 0 or not name.strip():
+            self.finished_ok.emit(True, "", [])
+            return
+        name = name.strip()
+        prefix = pc_games.slug_dir(name)
+        if installer:
+            self.progress.emit(f"Running the {name} installer: follow its steps and keep the folder it suggests. "
+                               "The first time, ReyOS also downloads Proton (about 1 GB), which takes a while.", -1)
+            log_path = emulation.LAUNCH_LOG.with_name("pc-install.log")
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            with log_path.open("w") as log:
+                pc_games.run_installer(exe, prefix, log)
+            programs = pc_games.find_programs(prefix)
+            if not programs:
+                self.finished_ok.emit(False, f"No game was found after the installer closed -- it may have been "
+                                      f"cancelled. Its log: {log_path}", [])
+                return
+            game_exe = programs[0]
+            if len(programs) > 1:
+                drive = prefix / "drive_c"
+                items = []
+                for i, p in enumerate(programs[:15]):
+                    items += [str(i), f"{p.relative_to(drive)}  ({p.stat().st_size // 1048576} MB)", "on" if i == 0 else "off"]
+                rc, pick = self._ask("--radiolist", f"Which program starts {name}?", *items)
+                if rc != 0:
+                    self.finished_ok.emit(True, "", [])
+                    return
+                game_exe = programs[int(pick)]
+            directory = prefix
+        else:
+            game_exe, directory = Path(exe), Path(exe).parent
+        self.progress.emit(f"Adding {name} to Lutris...", -1)
+        ok, result = pc_games.add_to_lutris(name, game_exe, prefix, directory)
+        if not ok:
+            self.finished_ok.emit(False, f"Couldn't add {name} to Lutris: {result}", [])
+            return
+        self.finished_ok.emit(True, f"{name} is in your library (PC tab). Press it to play"
+                              + (" -- the first start downloads Proton (about 1 GB)." if not installer else "."), [])
+
+
 class GamesBackend(QObject):
     coverReady = Signal(str, str)
     message = Signal(bool, str)
@@ -130,9 +208,10 @@ class GamesBackend(QObject):
 
     @Slot(result="QVariantList")
     def emulationSystems(self):
-        return [{"id": s["id"], "name": s["name"], "short": s["short"],
-                 "installed": emulation.system_installed(s),
-                 "games": sum(1 for _ in emulation.scan_games(s))} for s in EMU_SYSTEMS]
+        systems = [{"id": s["id"], "name": s["name"], "short": s["short"],
+                    "installed": emulation.system_installed(s),
+                    "games": sum(1 for _ in emulation.scan_games(s))} for s in EMU_SYSTEMS]
+        return systems + [dict(pc_games.SYSTEM, installed=pc_games.ready(), games=len(pc_games.list_games()))]
 
     @Slot(result="QVariantList")
     def emulationGames(self):
@@ -155,7 +234,19 @@ class GamesBackend(QObject):
                     "resolutionSettable": system["id"] in emulation.THREE_D_SYSTEMS
                                           and (system["id"] != "ps2" or settings["ps2_graphics"]),
                     "resolution": emulation.game_resolution(path, settings) or 0,
+                    "nvidia": False, "nvidiaAvailable": False,
                 })
+        # Windows games: every installed Lutris game.
+        nvidia_available = emulation.nvidia_offload_ready()
+        playable = pc_games.ready()
+        for game in pc_games.list_games():
+            games.append({
+                "title": game["name"], "system": pc_games.SYSTEM["name"], "short": pc_games.SYSTEM["short"],
+                "systemId": "pc", "path": f"lutris:{game['id']}", "playable": playable, "windowed": False,
+                "cover": pc_games.cover(game["slug"]), "shrinkable": False, "has3d": False,
+                "resolutionSettable": False, "resolution": 0,
+                "nvidia": pc_games.uses_nvidia(game["id"], settings), "nvidiaAvailable": nvidia_available,
+            })
         games.sort(key=lambda g: (g["title"].lower(), g["system"]))
         return games
 
@@ -220,13 +311,36 @@ class GamesBackend(QObject):
 
     @Slot(str, str)
     def launchGame(self, system_id, path):
-        self.message.emit(*emulation.launch_game(system_id, path))
+        if system_id == "pc":
+            self.message.emit(*pc_games.launch(path))
+        else:
+            self.message.emit(*emulation.launch_game(system_id, path))
+
+    @Slot()
+    def addPcGame(self):
+        if self._add_worker is not None and self._add_worker.isRunning():
+            return
+        self._add_worker = AddPcGameWorker()
+        self._add_worker.progress.connect(self.addProgress.emit)
+        self._add_worker.finished_ok.connect(self._games_added)
+        self._add_worker.start()
+
+    @Slot(str, bool)
+    def setGameNvidia(self, path, on):
+        pc_games.set_uses_nvidia(path.split(":", 1)[1], on)
+
+    @Slot()
+    def openLutris(self):
+        subprocess.Popen(["lutris"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, start_new_session=True)
 
     @Slot(str)
     def openGamesFolder(self, system_id):
         emulation.prepare_folders()
         storage = emulation.load_settings()["game_storage"]
-        if storage and Path(storage).is_dir():
+        if system_id == "pc":
+            folder = pc_games.games_dir()
+        elif storage and Path(storage).is_dir():
             folder = emulation.storage_system_dir(storage, system_id) if system_id else Path(storage)
         else:
             folder = emulation.GAMES_DIR / "ROMs" / system_id if system_id else emulation.GAMES_DIR / "ROMs"

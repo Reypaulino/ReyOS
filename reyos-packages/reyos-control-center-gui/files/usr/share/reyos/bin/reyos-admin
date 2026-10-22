@@ -131,6 +131,8 @@ APP_PACKAGES = {
     # NVIDIA's 580 legacy driver (Maxwell/Pascal/Volta), from ReyOS's own repo,
     # and prime-run for running games on a laptop's NVIDIA card.
     "nvidia-580xx-dkms", "nvidia-580xx-utils", "lib32-nvidia-580xx-utils", "nvidia-prime",
+    # PC (Windows) games in ReyOS Games: Proton outside Steam, and Lutris's icon reader.
+    "umu-launcher", "python-pefile",
     "lib32-vulkan-intel", "lib32-vulkan-radeon", "lib32-vulkan-nouveau",
     # The NVIDIA driver is built per kernel; the LTS backup kernel (reyos-boot) needs its headers.
     "linux-lts-headers",

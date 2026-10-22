@@ -127,7 +127,7 @@ def system_installed(system):
 
 
 # ---- Display settings -----------------------------------------------------
-DEFAULT_SETTINGS = {"fullscreen": True, "overlay": True, "picture": "clean", "resolution": 1, "ps2_graphics": True, "windowed_games": [], "expanded": None, "bios_expanded": False, "boxart": True, "game_storage": "", "game_resolution": {}, "pad_types": {}, "player1": "", "button_maps": {}, "ps2_pad_written": {}, "azahar_written": {}, "ps2_vulkan_written": False}
+DEFAULT_SETTINGS = {"fullscreen": True, "overlay": True, "picture": "clean", "resolution": 1, "ps2_graphics": True, "windowed_games": [], "expanded": None, "bios_expanded": False, "boxart": True, "game_storage": "", "game_resolution": {}, "pad_types": {}, "player1": "", "button_maps": {}, "ps2_pad_written": {}, "azahar_written": {}, "ps2_vulkan_written": False, "pc_builtin_gpu": []}
 
 # 3D internal resolution per core, keyed by ReyOS's 1x / 2x / 4x choice.
 # Option names and values checked against the cores Arch ships.
@@ -167,6 +167,8 @@ def load_settings():
         settings["windowed_games"] = []
     if not isinstance(settings["game_resolution"], dict):
         settings["game_resolution"] = {}
+    if not isinstance(settings["pc_builtin_gpu"], list):
+        settings["pc_builtin_gpu"] = []
     for key in ("pad_types", "button_maps", "ps2_pad_written", "azahar_written"):
         if not isinstance(settings[key], dict):
             settings[key] = {}

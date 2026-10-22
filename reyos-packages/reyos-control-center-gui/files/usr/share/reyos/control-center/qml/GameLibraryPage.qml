@@ -33,8 +33,8 @@ Kirigami.Page {
         }
         // One window at a time: the button window would cover the setup.
         reopenButtons = buttonsDialog.visible
-        // The system you're looking at: the button window's, else the open tab's.
-        var system = reopenButtons ? buttonsDialog.layout : (gameFilter !== "" ? backend.buttonLayout(gameFilter) : null)
+        // The system you're looking at: the button window's, else the chosen console's.
+        var system = reopenButtons ? buttonsDialog.layout : (consoleFilter !== "" ? backend.buttonLayout(consoleFilter) : null)
         buttonsDialog.close()
         setupDialog.start(p, system)
     }
@@ -49,17 +49,34 @@ Kirigami.Page {
         }
     }
 
-    // One tab per system that has games (sorted by emulator), "All" last.
-    // The "(needs a fast PC)" hint stays on the Gaming page, not the tabs.
-    property var gameSystems: {
+    // Tabs: All, Windows games, Emulators; on Emulators a dropdown picks one
+    // console. gameFilter: "" (all), "pc", "emu" (every console) or a
+    // console's id. The "(needs a fast PC)" hint stays on the Gaming page.
+    property var consoleSystems: {
         var list = []
         for (var i = 0; i < systems.length; i++)
-            if (systems[i].games > 0)
-                list.push({ id: systems[i].id, label: systems[i].name.replace(/ \(needs a fast PC\)/, "") + "  " + systems[i].games })
-        if (list.length > 1) list.push({ id: "", label: "All  " + allGames.length })
+            if (systems[i].id !== "pc" && systems[i].games > 0)
+                list.push({ id: systems[i].id, games: systems[i].games,
+                            label: systems[i].name.replace(/ \(needs a fast PC\)/, "") + "  " + systems[i].games })
         return list
     }
+    readonly property int consoleTotal: consoleSystems.reduce(function (n, s) { return n + s.games }, 0)
+    readonly property int pcTotal: allGames.length - consoleTotal
+    property var gameTabs: {
+        var tabs = [{ id: "", label: "All  " + allGames.length }]
+        if (pcTotal > 0) tabs.push({ id: "pc", label: "Windows games  " + pcTotal })
+        if (consoleTotal > 0) tabs.push({ id: "emu", label: "Emulators  " + consoleTotal })
+        return tabs
+    }
+    readonly property string tabFilter: gameFilter === "" || gameFilter === "pc" ? gameFilter : "emu"
+    // The one console shown, if any ("" on All / Windows games / every console).
+    readonly property string consoleFilter: tabFilter === "emu" && gameFilter !== "emu" ? gameFilter : ""
     property bool filterChosen: false
+
+    function filterValid(f) {
+        return f === "" || (f === "pc" && pcTotal > 0) || (f === "emu" && consoleTotal > 0)
+               || consoleSystems.some(function (s) { return s.id === f })
+    }
 
     function startAdding(text) {
         adding = true
@@ -89,6 +106,12 @@ Kirigami.Page {
                                    : "3D resolution for this game: " + resolutionNames[value] + ". Close the game and start it again to see it.")
     }
 
+    function addPcGame() {
+        if (adding) return
+        startAdding("Getting ready to add a PC game...")
+        backend.addPcGame()
+    }
+
     function shrinkGame(path, title) {
         if (adding) return
         startAdding("Shrinking " + title + "...")
@@ -104,6 +127,13 @@ Kirigami.Page {
             onTriggered: addGames()
         },
         Kirigami.Action {
+            text: "Add PC game…"
+            icon.name: "applications-games"
+            enabled: !adding
+            tooltip: "Add a Windows game: its installer (setup.exe) or the .exe of a game that's already installed. It runs through Lutris and Proton, with GameMode, the overlay and (on a laptop) the NVIDIA card set up for you."
+            onTriggered: addPcGame()
+        },
+        Kirigami.Action {
             text: "Controller…"
             icon.name: "input-gamepad"
             tooltip: "Set up your controller for games: press each button it shows."
@@ -117,7 +147,7 @@ Kirigami.Page {
         Kirigami.Action {
             text: "Open games folder"
             icon.name: "folder-open"
-            onTriggered: backend.openGamesFolder(gameFilter)
+            onTriggered: backend.openGamesFolder(gameFilter === "emu" ? "" : gameFilter)
         },
         Kirigami.Action {
             text: "Refresh"
@@ -140,8 +170,8 @@ Kirigami.Page {
         if (sig !== gamesSignature) {
             gamesSignature = sig
             allGames = games
-            // "All" unless a tab was picked (and still exists).
-            if (!filterChosen || !gameSystems.some(function (s) { return s.id === gameFilter }))
+            // "All" unless a tab was picked (and still has games).
+            if (!filterChosen || !filterValid(gameFilter))
                 gameFilter = ""
             applyFilter()
             syncTab()
@@ -156,16 +186,22 @@ Kirigami.Page {
             var g = allGames[i]
             // A search looks through every system, not just the open tab.
             if ((q !== "" ? g.title.toLowerCase().indexOf(q) >= 0
-                          : (gameFilter === "" || g.systemId === gameFilter)))
+                          : (gameFilter === "" || g.systemId === gameFilter
+                             || (gameFilter === "emu" && g.systemId !== "pc"))))
                 gameModel.append(g)
         }
     }
 
     // Set, not bound: clicking a tab breaks a currentIndex binding, after
     // which the highlighted tab and the listed games could disagree.
+    // From gameFilter itself: inside onGameFilterChanged the tabFilter and
+    // consoleFilter bindings can still hold the old value (seen in testing:
+    // the old tab stayed highlighted, the dropdown kept "All consoles").
     function syncTab() {
-        var i = gameSystems.findIndex(function (s) { return s.id === gameFilter })
-        systemTabs.currentIndex = i >= 0 ? i : gameSystems.length - 1
+        var tab = gameFilter === "" || gameFilter === "pc" ? gameFilter : "emu"
+        systemTabs.currentIndex = Math.max(0, gameTabs.findIndex(function (t) { return t.id === tab }))
+        var console = tab === "emu" && gameFilter !== "emu" ? gameFilter : ""
+        consolePicker.currentIndex = Math.max(0, consoleSystems.findIndex(function (s) { return s.id === console }) + 1)
     }
 
     onGameFilterChanged: { applyFilter(); syncTab() }
@@ -438,18 +474,32 @@ Kirigami.Page {
             }
         }
 
-        // Your games sorted by emulator: one tab per system.
+        // All, Windows games, Emulators.
         Controls.TabBar {
             id: systemTabs
-            visible: gameSystems.length > 1 && gameSearch === ""
+            visible: gameTabs.length > 2 && gameSearch === ""
             Layout.fillWidth: true
             Repeater {
-                model: gameSystems
+                model: gameTabs
                 Controls.TabButton {
                     text: modelData.label
                     width: implicitWidth
                     onClicked: { filterChosen = true; gameFilter = modelData.id }
                 }
+            }
+        }
+
+        // Emulators: every console, or one picked here.
+        RowLayout {
+            visible: gameSearch === "" && consoleSystems.length > 1 && (tabFilter === "emu" || gameTabs.length <= 2)
+            spacing: Kirigami.Units.largeSpacing
+            Controls.Label { text: "Console:" }
+            Controls.ComboBox {
+                id: consolePicker
+                Layout.preferredWidth: Kirigami.Units.gridUnit * 16
+                model: [{ id: "emu", label: "All consoles  " + consoleTotal }].concat(consoleSystems)
+                textRole: "label"
+                onActivated: function (i) { filterChosen = true; gameFilter = model[i].id }
             }
         }
 
@@ -460,7 +510,7 @@ Kirigami.Page {
             icon.name: "input-gaming"
             text: "No games yet"
             explanation: systems.some(function (s) { return s.installed })
-                         ? "Press Add games to add PlayStation 2, PSP or PlayStation games, or put games in the folder for their system under ~/Games/ROMs (for example ~/Games/ROMs/n64/), then press Refresh."
+                         ? "Press Add games to add PlayStation 2, PSP or PlayStation games, or put games in the folder for their system under ~/Games/ROMs (for example ~/Games/ROMs/n64/), then press Refresh. Windows games: Add PC game."
                          : "First pick the systems you want to play in Control Center > Gaming, then put your games under ~/Games/ROMs."
             helpfulAction: Kirigami.Action {
                 text: systems.some(function (s) { return s.installed }) ? "Open games folder" : "Set up emulators"
@@ -592,7 +642,7 @@ Kirigami.Page {
                         }
                         Controls.Label {
                             Layout.fillWidth: true
-                            visible: !model.playable || gameFilter === "" || gameSearch !== ""
+                            visible: !model.playable || (consoleFilter === "" && gameFilter !== "pc") || gameSearch !== ""
                             text: model.playable ? model.system.replace(/ \(needs a fast PC\)/, "") : "Emulator not installed"
                             opacity: 0.7
                             elide: Text.ElideRight
@@ -647,12 +697,40 @@ Kirigami.Page {
                             Controls.MenuItem { text: "3×"; checkable: true; checked: model.resolution === 3; onTriggered: setResolution(index, model.path, 3) }
                             Controls.MenuItem { text: "4× (sharpest)"; checkable: true; checked: model.resolution === 4; onTriggered: setResolution(index, model.path, 4) }
                         }
+                        // PC (Windows) games: graphics card and Lutris
+                        // instead of console buttons and the window switch.
                         Controls.MenuItem {
+                            visible: model.nvidiaAvailable
+                            height: visible ? implicitHeight : 0
+                            text: "Use the NVIDIA graphics card"
+                            checkable: true
+                            checked: model.nvidia
+                            onToggled: {
+                                backend.setGameNvidia(model.path, checked)
+                                gameModel.setProperty(index, "nvidia", checked)
+                                for (var i = 0; i < allGames.length; i++)
+                                    if (allGames[i].path === model.path) allGames[i].nvidia = checked
+                                applicationWindow().notify(checked ? model.title + " will use the NVIDIA graphics card."
+                                                                   : model.title + " will use the built-in graphics (cooler, longer battery).")
+                            }
+                        }
+                        Controls.MenuItem {
+                            visible: model.systemId === "pc"
+                            height: visible ? implicitHeight : 0
+                            text: "Open in Lutris (more settings)"
+                            icon.name: "configure"
+                            onTriggered: backend.openLutris()
+                        }
+                        Controls.MenuItem {
+                            visible: model.systemId !== "pc"
+                            height: visible ? implicitHeight : 0
                             text: "Controller buttons…"
                             icon.name: "input-gamepad"
                             onTriggered: buttonsDialog.openFor(model.systemId)
                         }
                         Controls.MenuItem {
+                            visible: model.systemId !== "pc"
+                            height: visible ? implicitHeight : 0
                             text: "Always play this game in a window"
                             checkable: true
                             checked: model.windowed
