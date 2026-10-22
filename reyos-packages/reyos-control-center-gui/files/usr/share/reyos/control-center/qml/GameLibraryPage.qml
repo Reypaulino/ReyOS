@@ -62,19 +62,18 @@ Kirigami.Page {
     }
     readonly property int consoleTotal: consoleSystems.reduce(function (n, s) { return n + s.games }, 0)
     readonly property int pcTotal: allGames.length - consoleTotal
-    property var gameTabs: {
-        var tabs = [{ id: "", label: "All  " + allGames.length }]
-        if (pcTotal > 0) tabs.push({ id: "pc", label: "Windows games  " + pcTotal })
-        if (consoleTotal > 0) tabs.push({ id: "emu", label: "Emulators  " + consoleTotal })
-        return tabs
-    }
+    // Always all three, so Windows games can be found before the first one
+    // is added (an empty tab explains how).
+    property var gameTabs: [{ id: "", label: "All  " + allGames.length },
+                            { id: "pc", label: "Windows games  " + pcTotal },
+                            { id: "emu", label: "Emulators  " + consoleTotal }]
     readonly property string tabFilter: gameFilter === "" || gameFilter === "pc" ? gameFilter : "emu"
     // The one console shown, if any ("" on All / Windows games / every console).
     readonly property string consoleFilter: tabFilter === "emu" && gameFilter !== "emu" ? gameFilter : ""
     property bool filterChosen: false
 
     function filterValid(f) {
-        return f === "" || (f === "pc" && pcTotal > 0) || (f === "emu" && consoleTotal > 0)
+        return f === "" || f === "pc" || f === "emu"
                || consoleSystems.some(function (s) { return s.id === f })
     }
 
@@ -477,7 +476,7 @@ Kirigami.Page {
         // All, Windows games, Emulators.
         Controls.TabBar {
             id: systemTabs
-            visible: gameTabs.length > 2 && gameSearch === ""
+            visible: allGames.length > 0 && gameSearch === ""
             Layout.fillWidth: true
             Repeater {
                 model: gameTabs
@@ -491,7 +490,7 @@ Kirigami.Page {
 
         // Emulators: every console, or one picked here.
         RowLayout {
-            visible: gameSearch === "" && consoleSystems.length > 1 && (tabFilter === "emu" || gameTabs.length <= 2)
+            visible: gameSearch === "" && consoleSystems.length > 1 && tabFilter === "emu"
             spacing: Kirigami.Units.largeSpacing
             Controls.Label { text: "Console:" }
             Controls.ComboBox {
@@ -519,8 +518,29 @@ Kirigami.Page {
             }
         }
 
+        // In an Item that takes the free space: the message alone doesn't
+        // grow, and the layout then spread the rows above it apart.
+        Item {
+            visible: allGames.length > 0 && gameModel.count === 0 && gameSearch === "" && gameFilter === "pc"
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            Kirigami.PlaceholderMessage {
+                anchors.centerIn: parent
+                width: parent.width - Kirigami.Units.gridUnit * 4
+                icon.name: "applications-games"
+                text: "No Windows games yet"
+                explanation: "Add a game's installer (setup.exe) or the .exe of a game that's already installed. ReyOS sets up Lutris and Proton for you, with GameMode, the overlay and the right graphics card."
+                helpfulAction: Kirigami.Action {
+                    text: "Add PC game…"
+                    icon.name: "list-add"
+                    enabled: !adding
+                    onTriggered: addPcGame()
+                }
+            }
+        }
+
         Controls.Label {
-            visible: allGames.length > 0 && gameModel.count === 0
+            visible: allGames.length > 0 && gameModel.count === 0 && !(gameSearch === "" && gameFilter === "pc")
             Layout.fillWidth: true
             opacity: 0.7
             text: gameSearch !== "" ? "No games match \"" + gameSearch + "\"." : "No games here."

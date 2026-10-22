@@ -2,6 +2,10 @@
 
 Real bugs found and fixed, with root cause. Newest first. See `bugs.md` for what's still open.
 
+## 2026-10-22 — Windows games tab always shown (control-center-gui 1.0.0-139)
+
+User couldn't find Windows games in ReyOS Games on the Dev VM: in 138 a tab only appeared once it had games, and with only console games there were no tabs at all. Now All / Windows games / Emulators are always shown (when the library has any games); an empty Windows games tab says what to add and has an **Add PC game…** button. The message sits in an `Item` that takes the free space: a bare `PlaceholderMessage` with `Layout.fillHeight` doesn't grow, and the ColumnLayout spread the search row and tabs apart (seen in the first screenshot). Tested on the Dev VM with only console games: three tabs (Windows games 0), empty-state screen, Emulators tab + console dropdown unchanged.
+
 ## 2026-10-22 — Windows games in ReyOS Games through Lutris; tabs All / Windows games / Emulators (control-center-gui 1.0.0-138)
 
 User: installing a game in Lutris is hard if you don't know what to do; ReyOS Games should take the installer, set the graphics up and have Lutris start the game. Then: tabs All, Windows games, Emulators, with a dropdown for the console.
