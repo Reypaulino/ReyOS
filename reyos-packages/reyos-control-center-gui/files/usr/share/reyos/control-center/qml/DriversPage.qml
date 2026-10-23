@@ -11,6 +11,7 @@ Kirigami.ScrollablePage {
     property bool needsNvidiaDriver: false
     property bool nvidiaLegacy: false
     property bool hybrid: false
+    property bool restartNeeded: false
 
     actions: [
         Kirigami.Action {
@@ -33,6 +34,7 @@ Kirigami.ScrollablePage {
             needsNvidiaDriver = info.needsNvidiaDriver
             nvidiaLegacy = info.nvidiaLegacy
             hybrid = info.hybrid
+            restartNeeded = info.nvidiaRestartNeeded
         }
         function onActionFinished(ok, message) {
             busy = false
@@ -68,6 +70,32 @@ Kirigami.ScrollablePage {
         y: Kirigami.Units.gridUnit
         width: parent.width - Kirigami.Units.gridUnit * 2
         spacing: Kirigami.Units.gridUnit
+
+        // Installed, but the card still runs nouveau until a restart.
+        Kirigami.AbstractCard {
+            Layout.fillWidth: true
+            padding: Kirigami.Units.gridUnit
+            visible: restartNeeded
+            contentItem: ColumnLayout {
+                spacing: Kirigami.Units.largeSpacing
+                RowLayout {
+                    Layout.fillWidth: true
+                    Kirigami.Icon { source: "system-reboot"; Layout.preferredWidth: Kirigami.Units.iconSizes.medium; Layout.preferredHeight: Kirigami.Units.iconSizes.medium }
+                    Kirigami.Heading { text: "NVIDIA driver installed: restart to use it"; level: 3 }
+                }
+                Controls.Label {
+                    Layout.fillWidth: true
+                    wrapMode: Text.Wrap
+                    text: "The driver is ready; the card switches to it at the next start."
+                }
+                Controls.Button {
+                    text: "Restart now"
+                    icon.name: "system-reboot"
+                    highlighted: true
+                    onClicked: backend.restartNow()
+                }
+            }
+        }
 
         Kirigami.AbstractCard {
             Layout.fillWidth: true

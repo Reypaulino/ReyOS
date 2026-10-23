@@ -787,8 +787,6 @@ Kirigami.Page {
                             onTriggered: backend.openLutris()
                         }
                         Controls.MenuItem {
-                            visible: model.systemId !== "pc"
-                            height: visible ? implicitHeight : 0
                             text: "Controller buttons…"
                             icon.name: "input-gamepad"
                             onTriggered: buttonsDialog.openFor(model.systemId)

@@ -684,6 +684,42 @@ def _write_azahar_controls():
         save_settings({"azahar_written": want})
 
 
+# ---- Windows games: SDL controller mapping from the ReyOS controller setup -
+# SDL's names for the RetroPad keys (SDL's "a" is the bottom face button).
+SDL_BUTTONS = {"b": "a", "a": "b", "y": "x", "x": "y", "l": "leftshoulder", "r": "rightshoulder",
+               "l2": "lefttrigger", "r2": "righttrigger", "select": "back", "start": "start",
+               "l3": "leftstick", "r3": "rightstick", "menu_toggle": "guide",
+               "up": "dpup", "down": "dpdown", "left": "dpleft", "right": "dpright"}
+SDL_STICKS = {"leftx": "l_x_plus_axis", "lefty": "l_y_plus_axis", "rightx": "r_x_plus_axis", "righty": "r_y_plus_axis"}
+_SDL_HAT = {"up": 1, "right": 2, "down": 4, "left": 8}
+
+
+def sdl_mapping(pad, m):
+    """An SDL_GAMECONTROLLERCONFIG line for this pad from its ReyOS profile
+    (the setup's button/axis numbers are the ones SDL uses on Linux, as for
+    Azahar), with layout m ({console key: pad key}) applied: the game's
+    button k comes from the pad's button m[k]. None without a profile."""
+    binds = _profile_binds(pad["name"])
+    if not binds:
+        return None
+    sticks = {binds[k][1:] for k in SDL_STICKS.values() if k in binds}
+    parts = [sdl_guid(pad), pad["name"].replace(",", " "), "platform:Linux"]
+    for key, target in SDL_BUTTONS.items():
+        source = m.get(key, key)
+        if f"{source}_btn" in binds:
+            value = binds[f"{source}_btn"]
+            hat = re.fullmatch(r"h(\d)(up|down|left|right)", value)
+            parts.append(f"{target}:h{hat.group(1)}.{_SDL_HAT[hat.group(2)]}" if hat else f"{target}:b{value}")
+        elif f"{source}_axis" in binds and binds[f"{source}_axis"][1:] not in sticks:
+            # (A stick axis here is a setup slip, e.g. the stick moved while clicking it.)
+            parts.append(f"{target}:a{binds[f'{source}_axis'][1:]}")
+    for target, key in SDL_STICKS.items():
+        if key in binds:
+            value = binds[key]
+            parts.append(f"{target}:a{value[1:]}{'~' if value[0] == '-' else ''}")
+    return ",".join(parts) + ","
+
+
 # PS2 pad buttons by RetroPad key (how SYSTEM_CONTROLS names them).
 PS2_PAD_KEYS = {"b": "Cross", "a": "Circle", "y": "Square", "x": "Triangle", "l": "L1", "r": "R1",
                 "l2": "L2", "r2": "R2", "select": "Select", "start": "Start", "l3": "L3", "r3": "R3"}
@@ -1265,7 +1301,14 @@ SYSTEM_CONTROLS = {
         ("l2", "ZL"), ("r2", "ZR"), ("lstick", "Circle Pad"), ("rstick", "C-Stick"),
         ("select", "Select"), ("start", "Start")],
      "note": "Azahar (the 3DS emulator) gets these buttons from your controller setup when a game starts. Touch the bottom screen with the mouse."},
+    "pc": {"pad": "Xbox controller (Windows games see every controller as one)", "map": [
+        ("b", "A"), ("a", "B"), ("y", "X"), ("x", "Y"), ("dpad", "D-pad"),
+        ("l", "LB"), ("r", "RB"), ("l2", "LT"), ("r2", "RT"), ("l3", "Left stick click"), ("r3", "Right stick click"),
+        ("lstick", "Left stick"), ("rstick", "Right stick"), ("select", "View / Back"), ("start", "Menu / Start")],
+     "note": "For every Windows game, from its next start. A changed layout makes Proton read the controller through SDL, as an Xbox controller: games with their own PlayStation support then show Xbox buttons."},
 }
+# Windows games in the button layouts (they aren't an EMU_SYSTEMS entry).
+PC_SYSTEM = {"id": "pc", "name": "PC (Windows)"}
 
 # The player's own button names, per brand.
 PAD_BUTTON_NAMES = {
@@ -1387,13 +1430,13 @@ def system_controls(brand):
     names = {**_COMMON_NAMES, **PAD_BUTTON_NAMES.get(brand, PAD_BUTTON_NAMES["generic"])}
     settings = load_settings()
     out = []
-    for system in EMU_SYSTEMS:
+    for system in EMU_SYSTEMS + [PC_SYSTEM]:
         spec = SYSTEM_CONTROLS.get(system["id"])
         if not spec:
             continue
         m = button_map(system["id"], settings)
         rows = [{"key": key, "console": label, "yours": names[m.get(key, key)],
-                 "pad": m.get(key, key), "movable": key in m and ("core" in system or system["id"] in ("ps2", "3ds"))}
+                 "pad": m.get(key, key), "movable": key in m and ("core" in system or system["id"] in ("ps2", "3ds", "pc"))}
                 for key, label in spec["map"]]
         out.append({"id": system["id"], "name": system["name"], "pad": spec["pad"],
                     "note": spec.get("note", ""), "rows": rows,

@@ -201,11 +201,33 @@ def _helper(*args):
 
 def options(game_id=None):
     """The Lutris options that follow ReyOS: GameMode, the overlay (Gaming
-    page switch) and, on a laptop, the NVIDIA card."""
+    page switch), on a laptop the NVIDIA card, and at a game's start the
+    PC button layout."""
     settings = emulation.load_settings()
-    return {"gamemode": bool(shutil.which("gamemoderun")),
+    opts = {"gamemode": bool(shutil.which("gamemoderun")),
             "mangohud": bool(settings["overlay"] and shutil.which("mangohud")),
             "nvidia": uses_nvidia(game_id, settings) if game_id is not None else emulation.games_use_nvidia(settings)}
+    if game_id is not None:
+        opts["pad_env"] = controller_env(settings)
+    return opts
+
+
+# Lutris "env" entries ReyOS owns: set while the PC button layout is changed.
+PAD_ENV_KEYS = ("PROTON_PREFER_SDL", "SDL_GAMECONTROLLERCONFIG")
+
+
+def controller_env(settings=None):
+    """Proton environment for the PC button layout (Gaming page / library
+    right-click > Controller buttons): SDL input with the player 1 pad's
+    buttons moved. {} with the usual layout, or no set-up pad connected
+    (then Proton reads the pad as it always does)."""
+    m = emulation.button_map("pc", settings)
+    if all(k == v for k, v in m.items()):
+        return {}
+    pads = emulation.list_controllers()
+    pad = emulation.player1_pad(pads) or next((p for p in pads if p["configured"]), None)
+    mapping = emulation.sdl_mapping(pad, m) if pad else None
+    return {"PROTON_PREFER_SDL": "1", "SDL_GAMECONTROLLERCONFIG": mapping} if mapping else {}
 
 
 def apply_lutris_defaults():
@@ -263,6 +285,41 @@ def _apply_system(system, options):
         system["gpu"] = nvidia
     elif nvidia and system.get("gpu") == nvidia:
         del system["gpu"]  # Lutris's default: the built-in graphics
+    if "pad_env" in options:
+        env = {k: v for k, v in (system.get("env") or {}).items() if k not in PAD_ENV_KEYS}
+        env.update(options["pad_env"])
+        if env:
+            system["env"] = env
+        else:
+            system.pop("env", None)
+
+
+# DLLs that mod loaders (Ultimate ASI Loader: widescreen fixes, input mods…)
+# and ReShade put next to a game's .exe. Windows loads them from there; Wine
+# uses its own unless told "native, then builtin".
+MOD_DLLS = ("dinput8", "dinput", "dsound", "version", "winmm", "d3d8", "d3d9", "d3d10", "d3d11",
+            "ddraw", "dxgi", "xinput1_3", "xinput1_4", "winhttp", "wininet")
+
+
+def _mod_overrides(config):
+    """Native-then-builtin for each MOD_DLLS file next to the game's .exe;
+    an override already set (by hand, or in Lutris) is left alone."""
+    exe = (config.get("game") or {}).get("exe")
+    if not exe:
+        return
+    folder = Path(exe).parent
+    try:
+        present = {f.stem.lower() for f in folder.iterdir() if f.suffix.lower() == ".dll"}
+    except OSError:
+        return
+    found = [d for d in MOD_DLLS if d in present]
+    if found:
+        wine = config.setdefault("wine", {}) or {}
+        config["wine"] = wine
+        overrides = wine.setdefault("overrides", {}) or {}
+        wine["overrides"] = overrides
+        for dll in found:
+            overrides.setdefault(dll, "n,b")
 
 
 def _cmd_defaults(options):
@@ -294,6 +351,7 @@ def _cmd_add(name, exe, prefix, directory, options="{}"):
     # Here as well as at each ReyOS Games start, for starts from Lutris itself.
     if options != "{}":
         _apply_system(config["system"], json.loads(options))
+    _mod_overrides(config)
     configpath = write_game_config(slug, config)
     game_id = games_db.add_game(name=name, runner="wine", slug=slug, platform="Windows",
                                 directory=directory, installed=1, configpath=configpath)
@@ -320,6 +378,7 @@ def _cmd_launch(game_id, options):
         config = read_yaml_from_file(str(path)) or {}
         config["system"] = config.get("system") or {}
         _apply_system(config["system"], options)
+        _mod_overrides(config)  # again: a mod may have been added since
         write_yaml_to_file(config, str(path))
     os.execvp("lutris", ["lutris", f"lutris:rungameid/{game_id}"])
 

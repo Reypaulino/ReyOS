@@ -703,20 +703,49 @@ class PkgWorker(_Worker):
                 label = "Stable" if target == "stable" else "Rolling"
                 self.finished_ok.emit(rc == 0, f"Switched to the {label} channel." if rc == 0 else f"Switching to the {label} channel failed.")
             elif self.action == "clean":
+                # Says what happened, like System Tools' "Remove old packages":
+                # a cache holding only the installed versions frees nothing,
+                # and a bare "Cache cleaned." read as the button doing nothing.
+                before = _pkg_cache_mb()
                 orphans = subprocess.run(
                     ["pacman", "-Qtdq"], capture_output=True, text=True
                 ).stdout.split()
+                removed_ok = True
                 if orphans:
                     emit("Removing: " + " ".join(orphans))
                     _wait_for_pacman_lock(emit)
-                    _run(["sudo", "-n", REYOS_ADMIN, "remove-orphans"], emit)
+                    removed_ok = _run(["sudo", "-n", REYOS_ADMIN, "remove-orphans"], emit) == 0
                 else:
                     emit("No orphaned packages.")
                 _wait_for_pacman_lock(emit)
-                _run(["sudo", "-n", REYOS_ADMIN, "clean-cache"], emit)
-                self.finished_ok.emit(True, "Cache cleaned.")
+                clean_ok = _run(["sudo", "-n", REYOS_ADMIN, "clean-cache"], emit) == 0
+                after = _pkg_cache_mb()
+                done = []
+                if orphans and removed_ok:
+                    done.append(f"removed {len(orphans)} unused package(s)")
+                if before - after > 0:
+                    done.append(f"freed {before - after} MB of old downloads")
+                if not (removed_ok and clean_ok):
+                    what = "removing unused packages" if not removed_ok else "deleting old downloads"
+                    self.finished_ok.emit(False, f"Clean-up failed while {what} — see the log.")
+                elif done:
+                    self.finished_ok.emit(True, ("Done: " + " and ".join(done) + ".").replace("Done: r", "Done: R").replace("Done: f", "Done: F"))
+                else:
+                    self.finished_ok.emit(True, f"Nothing to remove: no unused packages, and the {after} MB of "
+                                                "downloads are the versions installed now (kept for repairs).")
         except Exception as e:
             self.finished_ok.emit(False, str(e))
+
+
+def _pkg_cache_mb():
+    """Size of pacman's download cache in MB (readable without root)."""
+    total = 0
+    for f in Path("/var/cache/pacman/pkg").glob("*.pkg.tar*"):
+        try:
+            total += f.stat().st_size
+        except OSError:
+            pass
+    return total // 1048576
 
 
 def _die_with_parent():
@@ -2085,9 +2114,15 @@ class Backend(QObject):
         # up); Kepler and older get no button at all.
         nv = [g for g in gpus if g["vendor"] == "nvidia" and g["driver"] in ("nouveau", "")]
         needs_nvidia = any(g["nvidiaOpenSupported"] or g["nvidiaLegacySupported"] for g in nv)
+        # Installed but not loaded yet: says "restart", not "not installed".
+        installed = nv and any(subprocess.run(["pacman", "-Q", p], capture_output=True).returncode == 0
+                               for p in ("nvidia-580xx-dkms", "nvidia-open-dkms", "nvidia-dkms"))
+        if installed:
+            needs_nvidia = False
         legacy = needs_nvidia and not any(g["nvidiaOpenSupported"] for g in nv)
         hybrid = any(g["vendor"] in ("intel", "amd") for g in gpus)
-        return {"gpus": gpus, "needsNvidiaDriver": needs_nvidia, "nvidiaLegacy": legacy, "hybrid": hybrid}
+        return {"gpus": gpus, "needsNvidiaDriver": needs_nvidia, "nvidiaLegacy": legacy, "hybrid": hybrid,
+                "nvidiaRestartNeeded": bool(installed)}
 
     @Slot()
     def refreshDriverStatus(self):

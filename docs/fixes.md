@@ -2,6 +2,16 @@
 
 Real bugs found and fixed, with root cause. Newest first. See `bugs.md` for what's still open.
 
+## 2026-10-23 — Controller layout for Windows games, clean-up report, driver "restart" notice, mod DLL overrides (control-center-gui 1.0.0-141)
+
+From the laptop's handoff of 2026-10-22 evening (Control Center 140 on real hardware).
+
+- **Controller buttons for Windows games** (laptop patch 0005, applied as is): a "pc" entry in `SYSTEM_CONTROLS` (Xbox layout) shows up in Gaming → Button layout and ReyOS Games' right-click Controller buttons… for PC games. Only when that layout is changed and a set-up pad is connected, `pc_games.controller_env()` puts `PROTON_PREFER_SDL=1` and an `SDL_GAMECONTROLLERCONFIG` line built from the pad's ReyOS profile (`emulation.sdl_mapping`) into the game's Lutris `system.env` at each start; otherwise nothing changes. Checked on the Dev VM with a DS4-style profile: default and A↔Y-swapped mappings come out right, a stick axis recorded as R3 is skipped. **Not yet checked in a real game** (does winebus with `PROTON_PREFER_SDL` honour the env mapping).
+- **Controller setup recorded a stick axis for "Click the stick in"** (laptop: DS4 `input_r3_axis = "-3"`): pressing a stick moves it, and the step took the first input. The l3/r3 steps now wait for a button.
+- **"Remove unused packages and old downloads" looked like it did nothing** (laptop patch 0006, applied): it ran, but the cache held only installed versions and it always said "Cache cleaned.". It now measures the cache before/after, checks both steps' return codes, and says what it removed/freed, or "Nothing to remove … kept for repairs", or which step failed. Dev VM: "Done: Removed 1 unused package(s) and freed 50 MB of old downloads."
+- **Drivers page said "NVIDIA driver not installed" after installing, until a restart** (laptop idea): with `nvidia-580xx-dkms`/`nvidia-open-dkms`/`nvidia-dkms` installed and the card still on nouveau, a "NVIDIA driver installed: restart to use it" card with Restart now (Plasma's logout-and-reboot). Checked with the laptop's `lspci` output on the Dev VM (which has the 580 packages).
+- **Mods next to a game's .exe** (laptop note: the NFS MW widescreen fix's `dinput8.dll` needed `dinput8=n,b` by hand): when a game is added and at each ReyOS Games start, each Ultimate-ASI-Loader/ReShade DLL found next to the .exe (dinput8, dsound, version, winmm, d3d8–11, ddraw, dxgi, xinput1_3/1_4, winhttp, wininet, …) gets a native-then-builtin override in the game's Lutris `wine.overrides`; existing overrides are kept. Dev VM: `dinput8` and `D3D9.dll` got `n,b`, the game's own `bink2w64.dll` didn't.
+
 ## 2026-10-22 — Add PC game fixes, Lutris card, graphics card for games, PC box art (control-center-gui 1.0.0-140)
 
 From the laptop's handoff (Control Center 139 on real hardware) and the user's follow-ups.

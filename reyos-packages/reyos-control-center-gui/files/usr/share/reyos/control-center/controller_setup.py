@@ -33,6 +33,10 @@ class ControllerSetupWorker(QThread):
                 title, hint = emulation.step_text(key, title, hint, brand)
                 self.step.emit(i, len(steps), key, brand, title, hint)
                 bind = reader.wait_bind(lambda: self.skip or self.cancelled)
+                # Clicking a stick in moves it a little too: those steps take
+                # a button only (a DS4's R3 was saved as the stick's axis).
+                while bind and bind[0] == "axis" and key in ("l3", "r3") and not (self.skip or self.cancelled):
+                    bind = reader.wait_bind(lambda: self.skip or self.cancelled)
                 if self.cancelled:
                     self.done.emit(False, "Controller setup cancelled — nothing was changed.")
                     return
