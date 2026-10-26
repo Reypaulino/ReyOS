@@ -1,6 +1,7 @@
 #!/usr/bin/python3 -I
 # Root helper for ReyOS's desktop apps (sudoers.d/90-reyos or pkexec); it validates every argument itself.
 import os
+import pwd
 import re
 import subprocess
 import sys
@@ -10,7 +11,7 @@ from pathlib import Path
 # Admin actions that always need the user's password (run via pkexec): anything that
 # lowers the system's protection or removes software.
 def needs_password(action, args):
-    return (action in ("service", "remove-package")
+    return (action in ("service", "remove-package", "autologin")
             or (action in ("firewall", "usbguard") and args[:1] == ["disable"])
             or (action == "time" and args[:1] == ["set"]))
 
@@ -403,6 +404,54 @@ def service(args):
     return run("systemctl", args[0], unit)
 
 
+# --- automatic login (password required) ------------------------------------------
+# Last in sddm.conf.d's order, so it wins over System Settings' kde_settings.conf.
+AUTOLOGIN_CONF = "/etc/sddm.conf.d/zz-reyos-autologin.conf"
+
+
+def autologin(args):
+    need(len(args) == 1 and args[0] in ("on", "off"), "usage: autologin on|off")
+    if args[0] == "on":
+        # Only ever the account that asked, never one named on the command line.
+        try:
+            entry = pwd.getpwuid(caller_uid())
+        except KeyError:
+            raise Refused("unknown user")
+        need(1000 <= entry.pw_uid < 60000, "only a normal user account can log in automatically")
+        text = f"[Autologin]\nUser={entry.pw_name}\nSession=plasma\n"
+    else:
+        # An empty User= rather than no file: it also turns off one set in System Settings.
+        text = "[Autologin]\nUser=\n"
+    tmp = f"{AUTOLOGIN_CONF}.reyos-new"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o644)
+    with os.fdopen(fd, "w") as out:
+        out.write(text)
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, AUTOLOGIN_CONF)
+    # SDDM reads /etc/sddm.conf after sddm.conf.d, so a User= the installer put there
+    # would beat ours: drop that one line, keep the rest of the file.
+    try:
+        with open("/etc/sddm.conf") as f:
+            lines = f.readlines()
+    except FileNotFoundError:
+        return 0
+    kept, section = [], ""
+    for line in lines:
+        s = line.strip()
+        if s.startswith("[") and s.endswith("]"):
+            section = s
+        if not (section == "[Autologin]" and re.match(r"User\s*=", s)):
+            kept.append(line)
+    if kept != lines:
+        tmp = "/etc/sddm.conf.reyos-new"
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o644)
+        with os.fdopen(fd, "w") as out:
+            out.writelines(kept)
+        os.chmod(tmp, 0o644)
+        os.replace(tmp, "/etc/sddm.conf")
+    return 0
+
+
 ACTIONS = {
     "governor": governor,
     "swappiness": swappiness,
@@ -422,6 +471,7 @@ ACTIONS = {
     "printer": printer,
     "service": service,
     "apply-look": apply_look,
+    "autologin": autologin,
 }
 
 

@@ -28,10 +28,17 @@ Kirigami.ScrollablePage {
             statusLabel.text = ok ? "" : message  // success is shown by Main.qml's toast
             statusLabel.color = Kirigami.Theme.negativeTextColor
             if (ok) { busy = true; backend.listUsers() }
+            backend.refreshAutologin()  // also puts the switch back after a cancelled password
+        }
+        function onAutologinReady(info) {
+            autologinSwitch.checked = info.enabled
+            autologinOther.text = info.otherUser
+                ? "Right now the computer logs in as " + info.otherUser + " automatically."
+                : ""
         }
     }
 
-    Component.onCompleted: { busy = true; backend.listUsers() }
+    Component.onCompleted: { busy = true; backend.listUsers(); backend.refreshAutologin() }
 
     ListModel { id: userModel }
 
@@ -262,6 +269,34 @@ Kirigami.ScrollablePage {
             text: "Add user…"
             enabled: !busy
             onClicked: addUserDialog.open()
+        }
+
+        Kirigami.AbstractCard {
+            Layout.fillWidth: true
+            padding: Kirigami.Units.gridUnit
+            contentItem: ColumnLayout {
+                spacing: Kirigami.Units.smallSpacing
+                Kirigami.Heading { text: "Login behavior"; level: 3 }
+                Controls.Switch {
+                    id: autologinSwitch
+                    text: "Automatically log in"
+                    enabled: !busy
+                    onToggled: { busy = true; backend.setAutologin(checked) }
+                }
+                Controls.Label {
+                    Layout.fillWidth: true
+                    wrapMode: Text.Wrap
+                    opacity: 0.7
+                    text: "Starts your desktop without the login screen, so apps like RustDesk are ready "
+                        + "right after the computer turns on. Anyone who turns on this computer gets into your account."
+                }
+                Controls.Label {
+                    id: autologinOther
+                    Layout.fillWidth: true
+                    visible: text.length > 0
+                    wrapMode: Text.Wrap
+                }
+            }
         }
 
         ReyOSProgressBar {

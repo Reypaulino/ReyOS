@@ -15,6 +15,7 @@ import shutil
 import sqlite3
 import subprocess
 import sys
+import time
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -24,6 +25,7 @@ import emulation  # noqa: E402
 
 HELPER = Path(__file__).resolve()
 LUTRIS_DB = Path.home() / ".local" / "share" / "lutris" / "pga.db"
+UNINSTALL_LOG = Path.home() / ".cache" / "reyos" / "pc-uninstall.log"
 COVERS = emulation.GAMES_DIR / "Covers" / "pc"
 LUTRIS_COVERS = Path.home() / ".local" / "share" / "lutris" / "coverart"
 LUTRIS_SEARCH = "https://lutris.net/api/games?search="
@@ -275,7 +277,8 @@ def disable_gamepad_list(exe):
     except OSError as e:
         return False, f"Couldn't turn off the game's controller list: {e.strerror}."
     return True, (f"Any controller works in this game now ({found.name} was renamed to {found.name}.original). "
-                  "Set its buttons in the game's own Options → Controls.")
+                  "Set its buttons in the game's own Options → Controls. If the controller stops "
+                  "once your saved profile loads, make a new profile in the game.")
 
 
 # ---- Proton downloads ------------------------------------------------------
@@ -512,7 +515,19 @@ def uninstall(game_id, remove_prefix, remove_files, keep_saves):
                 return False, f"Nothing was removed: your saves couldn't be copied ({e.strerror})."
     rc, _out, err = _helper("remove", str(game_id))
     if rc != 0:
-        return False, "Couldn't remove the game from Lutris: " + ((err.splitlines() or ["unknown error"])[-1])
+        time.sleep(1)  # Lutris may have had its database open for a moment
+        rc, _out, err = _helper("remove", str(game_id))
+    if rc != 0:
+        try:
+            UNINSTALL_LOG.parent.mkdir(parents=True, exist_ok=True)
+            with UNINSTALL_LOG.open("a") as log:
+                log.write(f"--- {time.strftime('%Y-%m-%d %H:%M:%S')} remove {game_id} ({info['name']}): rc {rc}\n{err}\n")
+        except OSError:
+            pass
+        if kept:  # nothing else was removed, so a retry shouldn't leave a second copy
+            shutil.rmtree(kept, ignore_errors=True)
+        return False, ("Couldn't remove the game from Lutris, nothing was deleted: "
+                       + ((err.splitlines() or ["unknown error"])[-1]) + " (details in ~/.cache/reyos/pc-uninstall.log)")
     freed = 0
     for wanted, path, size in ((remove_prefix, info["prefix"], info["prefixSize"]),
                                (remove_files, info["gameDir"], info["gameDirSize"])):

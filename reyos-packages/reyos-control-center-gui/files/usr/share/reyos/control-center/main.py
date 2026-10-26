@@ -849,6 +849,7 @@ class Backend(QObject):
     usbGuardStatusReady = Signal("QVariantMap")
     securityUpdatesReady = Signal("QVariantList")
     usersListed = Signal("QVariantList")
+    autologinReady = Signal("QVariantMap")
     packagesFound = Signal("QVariantList")
     packageInfoReady = Signal(str, str)
     flatpaksListed = Signal("QVariantList")
@@ -3117,6 +3118,43 @@ class Backend(QObject):
             if result.returncode in (126, 127):
                 return False, "Authentication cancelled."
             return False, (result.stderr.strip() or "Failed to change admin status.")
+        self._run_action(task)
+
+    # Automatic login: SDDM reads sddm.conf.d/*.conf in name order, then
+    # sddm.conf, and the last [Autologin] User= wins. Reading needs no
+    # privilege; changing it goes through `reyos-admin autologin` (password).
+
+    @staticmethod
+    def _compute_autologin():
+        user = ""
+        for path in [*sorted(glob.glob("/etc/sddm.conf.d/*.conf")), "/etc/sddm.conf"]:
+            conf = configparser.ConfigParser(interpolation=None, strict=False)
+            try:
+                conf.read(path)
+            except (OSError, configparser.Error):
+                continue
+            if conf.has_option("Autologin", "User"):
+                user = conf.get("Autologin", "User").strip()
+        self_name = pwd.getpwuid(os.getuid()).pw_name
+        return {"enabled": user == self_name, "otherUser": user if user and user != self_name else ""}
+
+    @Slot()
+    def refreshAutologin(self):
+        self._autologin_worker = InfoWorker(self._compute_autologin)
+        self._autologin_worker.ready.connect(self.autologinReady.emit)
+        self._autologin_worker.start()
+
+    @Slot(bool)
+    def setAutologin(self, enable):
+        def task(emit):
+            result = subprocess.run(["pkexec", REYOS_ADMIN, "autologin", "on" if enable else "off"],
+                                    capture_output=True, text=True)
+            if result.returncode == 0:
+                return True, ("This computer now logs you in automatically at startup." if enable
+                              else "Automatic login is off: the login screen asks for your password.")
+            if result.returncode in PKEXEC_DISMISSED:
+                return False, "Authentication cancelled."
+            return False, (result.stderr.strip().removeprefix("reyos-admin: ") or "Failed to change automatic login.")
         self._run_action(task)
 
     # --- Startup apps (autostart) -------------------------------------------

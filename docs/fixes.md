@@ -2,6 +2,16 @@
 
 Real bugs found and fixed, with root cause. Newest first. See `bugs.md` for what's still open.
 
+## 2026-10-26 — Users: "Automatically log in" switch; Uninstall's failed Lutris removal (control-center-gui 1.0.0-145)
+
+From the laptop handoff (2026-10-26, patch 0008 + T3/T4 results).
+
+- **Automatically log in (Users page, "Login behavior" card).** Rey wants the laptop reachable over RustDesk after a restart; RustDesk only runs after login and can't use a Wayland login screen. New `reyos-admin autologin on|off` (always pkexec): `on` writes `/etc/sddm.conf.d/zz-reyos-autologin.conf` with the pkexec caller as `User=` (never from argv; UID 1000–59999 only), `off` writes an empty `User=` so it also overrides System Settings' `kde_settings.conf`. SDDM reads `/etc/sddm.conf` last, so a `User=` the installer wrote there would beat the switch: both actions now drop that one line from its `[Autologin]` section (added on Ubuntu, not in the laptop patch). The page reads the state without privilege (last `User=` wins) and notes when another account logs in automatically.
+- **Uninstall left saves copied but nothing removed** (laptop T4, first try, cause not captured: maybe Lutris's database was busy, the SD card was unmounted at the time). The Lutris removal is now retried once after a second; if it still fails, the error goes to `~/.cache/reyos/pc-uninstall.log`, the message says nothing was deleted and points there, and the saves copy just made is removed so a retry doesn't leave `<slug>-2`.
+- **"Let any controller work"** message adds: if the controller stops once the saved profile loads, make a new profile in the game (T3: Prince of Persia: The Two Thrones' old `Profile.DAT` kept the DualShock 4 dead after the rename).
+
+Tested on the Dev VM: `reyos-admin autologin` on/off as root with `PKEXEC_UID`, refused for root, bad args and plain sudo; a real reboot with it on logged straight into Plasma (seat0, no password); the Users page from the taskbar: switch shows the real state, click → KDE password prompt → off, toast, file `User=`; a cancelled prompt puts the switch back. `sddm.conf` line removal against a fake file. Uninstall failure path with a failing helper (two calls, log written, saves copy removed, prefix kept). Not tested: a real Lutris removal failure on the laptop.
+
 ## 2026-10-26 — ReyOS Games: Uninstall for PC games, old controller lists, Proton notice and cleanup (control-center-gui 1.0.0-144)
 
 From the laptop handoff (2026-10-26).
