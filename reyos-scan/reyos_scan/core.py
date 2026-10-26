@@ -41,12 +41,19 @@ CACHE = DATA / "cache.json"
 PROGRAM_EXTS = {".exe", ".dll", ".msi", ".bat", ".cmd", ".ps1", ".vbs", ".scr", ".com", ".reg", ".sys",
                 ".zip", ".7z", ".rar", ".cab"}
 # Bounds for archives and huge files (ClamAV's own options). Anything over
-# them is reported as "not checked", never as clean.
-LIMITS = ["--max-filesize=500M", "--max-scansize=1000M", "--max-recursion=16", "--max-files=20000",
+# them is reported as "not checked", never as clean. max-filesize must not
+# be lower than max-scansize: ClamAV 1.5 skips a file *inside an archive*
+# that's over max-filesize without any alert, so the archive came back OK
+# unchecked (tests/test_real.py, test_member_over_file_limit_is_flagged).
+LIMITS = ["--max-filesize=500M", "--max-scansize=500M", "--max-recursion=16", "--max-files=20000",
           "--alert-exceeds-max=yes"]
 LIMIT_SIGNATURE = "Heuristics.Limits.Exceeded"
 _FOUND_RE = re.compile(r"^(.*): (.+) FOUND$")
 _ERROR_RE = re.compile(r"^(.*): (.+) ERROR$")
+# Any other "path: message" line is a file that wasn't checked ("Access
+# denied" comes without ERROR), except these.
+_RESULT_RE = re.compile(r"^(/.*): (.+)$")
+_NOT_PROBLEMS = {"OK", "Empty file", "Symbolic link", "Excluded"}
 
 
 def installed():
@@ -185,8 +192,9 @@ class Scan:
         except OSError as e:
             return self._finish(report, "not_verified", f"The scanner couldn't start: {e}", save)
         try:
-            for line in self.proc.stdout:
-                self._line(report, line.rstrip("\n"))
+            with self.proc.stdout:
+                for line in self.proc.stdout:
+                    self._line(report, line.rstrip("\n"))
             rc = self.proc.wait()
         finally:
             if listfile is not None:
@@ -222,9 +230,13 @@ class Scan:
                 digest, size = "", 0
             report["findings"].append({"path": path, "signature": signature, "sha256": digest, "size": size})
         elif (m := _ERROR_RE.match(line)):
-            report["errors"].append(f"{m.group(1)}: {m.group(2)}")
+            # Follows every detection, limits included: not a read error.
+            if m.group(2) != "Virus(es) detected":
+                report["errors"].append(f"{m.group(1)}: {m.group(2)}")
         elif line.startswith(("WARNING:", "ERROR:", "LibClamAV Error")):
             report["errors"].append(line)
+        elif (m := _RESULT_RE.match(line)) and m.group(2) not in _NOT_PROBLEMS:
+            report["errors"].append(f"{m.group(1)}: {m.group(2)}")
 
     def _finish(self, report, status, summary, save):
         report.update(status=status, summary=summary, finished=time.time())
