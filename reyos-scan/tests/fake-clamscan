@@ -1,0 +1,10 @@
+#!/bin/sh
+# Stand-in for clamscan in tests: prints $FAKE_CLAM_OUT, exits $FAKE_CLAM_RC.
+if [ "$1" = "--version" ]; then
+    if [ -n "$FAKE_CLAM_NODEFS" ]; then echo "ClamAV 1.5.4"; else echo "ClamAV 1.5.4/27800/Sun Oct 26 08:00:00 2026"; fi
+    exit 0
+fi
+[ -n "$FAKE_CLAM_ARGS" ] && printf '%s\n' "$@" > "$FAKE_CLAM_ARGS"
+[ -n "$FAKE_CLAM_OUT" ] && cat "$FAKE_CLAM_OUT"
+[ -n "$FAKE_CLAM_SLEEP" ] && exec sleep "$FAKE_CLAM_SLEEP"
+exit "${FAKE_CLAM_RC:-0}"
