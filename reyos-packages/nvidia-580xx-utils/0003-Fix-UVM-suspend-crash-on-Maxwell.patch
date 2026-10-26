@@ -1,0 +1,39 @@
+ReyOS: nvidia-uvm flushed bottom_half_q/kill_channel_q on every GPU when
+suspending, but they are only created on GPUs with replayable faults
+(Pascal+). On Maxwell (e.g. GeForce 940MX) the queue is zeroed, so
+uvm_suspend() hit a NULL pointer in _raw_q_schedule() and the system hung
+on every suspend (ThinkPad T470p, 2026-10-26).
+
+diff -ru a/nvidia-uvm/uvm_global.c b/nvidia-uvm/uvm_global.c
+--- a/nvidia-uvm/uvm_global.c	2026-10-26 09:49:54.666688839 -0500
++++ b/nvidia-uvm/uvm_global.c	2026-10-26 09:49:54.710036128 -0500
+@@ -329,7 +329,11 @@
+ 
+         uvm_parent_gpu_set_isr_suspended(gpu->parent, true);
+ 
+-        nv_kthread_q_flush(&gpu->parent->isr.bottom_half_q);
++        // bottom_half_q only exists on GPUs with replayable faults (Pascal
++        // and newer, see uvm_parent_gpu_init_isr()): flushing it on Maxwell
++        // dereferenced an uninitialized queue and crashed every suspend.
++        if (gpu->parent->replayable_faults_supported)
++            nv_kthread_q_flush(&gpu->parent->isr.bottom_half_q);
+ 
+         if (gpu->parent->isr.non_replayable_faults.handling)
+             nv_kthread_q_flush(&gpu->parent->isr.kill_channel_q);
+diff -ru a/nvidia-uvm/uvm_gpu_isr.c b/nvidia-uvm/uvm_gpu_isr.c
+--- a/nvidia-uvm/uvm_gpu_isr.c	2026-10-26 09:49:54.666746666 -0500
++++ b/nvidia-uvm/uvm_gpu_isr.c	2026-10-26 09:49:54.710376257 -0500
+@@ -456,8 +456,11 @@
+ 
+ void uvm_parent_gpu_flush_bottom_halves(uvm_parent_gpu_t *parent_gpu)
+ {
+-    nv_kthread_q_flush(&parent_gpu->isr.bottom_half_q);
+-    nv_kthread_q_flush(&parent_gpu->isr.kill_channel_q);
++    // Both queues are only created with replayable faults (Pascal and newer).
++    if (parent_gpu->replayable_faults_supported)
++        nv_kthread_q_flush(&parent_gpu->isr.bottom_half_q);
++    if (parent_gpu->isr.non_replayable_faults.handling)
++        nv_kthread_q_flush(&parent_gpu->isr.kill_channel_q);
+ }
+ 
+ void uvm_parent_gpu_disable_isr(uvm_parent_gpu_t *parent_gpu)

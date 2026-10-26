@@ -6,6 +6,10 @@ This file was rewritten from scratch on 2026-08-18 after a full audit of the wor
 
 **2026-10-08 verification pass:** see `BUG_VERIFICATION_REPORT.md` for what was re-tested and how. Entries below carry a "Status 2026-10-08" line where they were checked; resolved entries moved to the "Resolved" section at the end.
 
+## Login screen: Xorg crashed at boot with an HDMI screen; no login attempt reached SDDM (2026-10-26, laptop)
+
+Laptop, Oct 26 09:01: the greeter's Xorg segfaulted in `RRTellChanged` (RandR) 10 s into boot and took `sddm-greeter-qt6` with it; SDDM restarted both and the greeter came up on eDP-1 and HDMI-1. For the next 30 minutes the journal shows no authentication attempt at all (not even a failed password), so typing didn't reach the password field, probably because keyboard focus was on the other screen. First boot with the HDMI screen attached. Not reproduced, not fixed. Cores: `/var/lib/systemd/coredump/core.Xorg.0.*` and `core.sddm-greeter-qt.*` on the laptop.
+
 ## ReyOS Scan v1: known gaps (2026-10-25)
 
 Not bugs in what shipped, but limits to keep in mind (control-center-gui 1.0.0-143, GitHub #17):

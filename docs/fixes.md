@@ -2,6 +2,14 @@
 
 Real bugs found and fixed, with root cause. Newest first. See `bugs.md` for what's still open.
 
+## 2026-10-26 — Suspend hung the system on Maxwell NVIDIA cards (nvidia-580xx-utils/-dkms 580.178.04-5)
+
+Laptop log, 2026-10-26: the first suspend since the 580 driver went in (Oct 22) hung the T470p (GeForce 940MX, GM108). `nvidia-suspend.service` → `nvidia-sleep.sh` → kernel `BUG: NULL pointer dereference` in `_raw_q_schedule` ← `nv_kthread_q_flush` ← `uvm_suspend` [nvidia_uvm]; the suspend then failed with EIO (`nv_pmops_suspend returns -5`), `nvidia-resume` stayed queued and blocked Ctrl+Alt+Del, and the laptop had to be powered off.
+
+Root cause, in NVIDIA's own code: `uvm_suspend()` (nvidia-uvm/uvm_global.c) flushes each retained GPU's `isr.bottom_half_q`, but `uvm_parent_gpu_init_isr()` only creates that queue when `replayable_faults_supported` (Pascal and newer). On Maxwell it's all zeros, so every suspend crashes, laptop or desktop, whatever the suspend settings. New `0003-Fix-UVM-suspend-crash-on-Maxwell.patch` flushes it only when it exists (same for `uvm_parent_gpu_flush_bottom_halves()`, which also flushed both queues unconditionally).
+
+Built pkgrel 5 on the Dev VM; DKMS compiled the patched module for 7.2.11-arch1-1 (the laptop's kernel) and 6.18.57-2-lts. Published (release `reyos-drivers` + reyos-local db). **Not yet tested on real hardware**: the Dev VM has no NVIDIA GPU. Laptop test: update, restart, close the lid / Sleep, wake.
+
 ## 2026-10-25 — ReyOS Scan v1: malware scan with ClamAV (control-center-gui 1.0.0-143)
 
 GitHub issue #17 (owner's handoff) + the laptop's "ReyOS Scan" proposal. New `security_scan.py` (Qt-free).
