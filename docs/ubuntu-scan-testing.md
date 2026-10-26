@@ -50,7 +50,13 @@ The limits now mean 500 MB unpacked per file or archive. A highly compressible a
 
 ## Real quick scan
 
-PENDING: running now; results to be added.
+`reyos-scan scan --quick` (the CLI from the source tree, with a temporary data folder) over the owner's real `~/Downloads` (6.4 GB) and `~/Desktop` (6.0 GB), 2026-10-26:
+
+- Result: **not verified**. 41,404 files checked, no threats; 7 files "not checked" (MaxFileSize): PS2/PSP disc images (.iso/.chd), a 7z ROM archive and two big Need for Speed data files. Exit code 2.
+- Time: **36 min 46 s** wall, 2027 s user CPU (clamscan is single-threaded: one core at 99%). Peak RSS 1.2 GB.
+- `reyos-scan status` afterwards showed the definitions, "updates automatically (clamav-freshclam service)" and the last scan.
+
+What this shows: when Downloads/Desktop hold game folders and disc images, a "quick" scan isn't quick, and big ROMs and ISOs always keep it from reading "no known threats". To decide with the owner: say up front how much is about to be scanned, and maybe leave disc images (.iso/.chd/.cso) out of Quick scan or show them apart from real problems.
 
 ## PENDING (not run yet)
 
