@@ -2,6 +2,16 @@
 
 Real bugs found and fixed, with root cause. Newest first. See `bugs.md` for what's still open.
 
+## 2026-10-26 — ReyOS Games: Uninstall for PC games, old controller lists, Proton notice and cleanup (control-center-gui 1.0.0-144)
+
+From the laptop handoff (2026-10-26).
+
+- **Uninstall… (right-click, Windows games).** Confirm window with sizes measured in the background: always removes the Lutris entry (Lutris's own `games_db.delete_game` + the game's yml, in the separate helper process), box art and ReyOS per-game settings; "Delete its Windows folder" (ticked; says "the installed game and its Windows folder" when the game was installed into its prefix); "Also delete the game files" (unticked, offered only for the game's own folder: up from `bin`/`Binaries/Win64`, never `$HOME` or above, a mount point, a library-named folder or anything holding a prefix); "Keep my saves" (ticked) copies the prefix's `users/*/Documents`, `Saved Games`, `AppData/*` (minus Wine's own Temp/Microsoft...) and save/profile folders in the game folder to `~/Games/Saves/PC/<slug>/` (not `~/Games/Saves/<slug>` as asked: that folder already holds RetroArch's per-core saves). A prefix another Lutris game shares is kept. Refused while the game runs (a process whose command line or `WINEPREFIX` names it).
+- **Old Ubisoft controller lists.** Gamepads.DAT next to the .exe (Prince of Persia 2003–2005 engine: 21 PC pads of the time, no PlayStation/Xbox): Add PC game asks to turn it off; right-click "Let any controller work" for games already added. The file is renamed to `.original`. Whether this fixes the DualShock 4 in The Two Thrones is Rey's pending test.
+- **Proton downloads.** With `PROTONPATH=GE-Proton`, umu downloads each new GE-Proton release into `~/.local/share/Steam/compatibilitytools.d` before the game starts, says so only in its log, and never deletes the old one (umu 1.4.4, `_get_latest`). ReyOS Games now reads `lutris-last.log` for a few minutes after a start and shows "Downloading a newer Proton (…) before <game> starts", the installer's progress line does the same from `pc-install.log`; and at startup and after a download it deletes GE-Proton builds other than the newest that no Lutris config, Steam `config.vdf` or running process names.
+
+Tested on the Dev VM: backend script against real Lutris 0.5.22 (uninstall with/without game files, saves from prefix and game folder, installed-in-prefix game, `$HOME` never offered, Gamepads.DAT rename, old-Proton removal keeping GE-Proton11-11, umu log parsing); then 144 installed and driven in ReyOS Games (right-click menu, Let any controller work, Uninstall window, both checkbox combinations, files on disk afterwards). Not tested: a real GE-Proton download at launch (the message), the Add PC game Gamepads.DAT question (kdialog).
+
 ## 2026-10-26 — Suspend hung the system on Maxwell NVIDIA cards (nvidia-580xx-utils/-dkms 580.178.04-5)
 
 Laptop log, 2026-10-26: the first suspend since the 580 driver went in (Oct 22) hung the T470p (GeForce 940MX, GM108). `nvidia-suspend.service` → `nvidia-sleep.sh` → kernel `BUG: NULL pointer dereference` in `_raw_q_schedule` ← `nv_kthread_q_flush` ← `uvm_suspend` [nvidia_uvm]; the suspend then failed with EIO (`nv_pmops_suspend returns -5`), `nvidia-resume` stayed queued and blocked Ctrl+Alt+Del, and the laptop had to be powered off.

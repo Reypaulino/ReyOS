@@ -190,13 +190,17 @@ class AddPcGameWorker(QThread):
         name = name.strip()
         prefix = pc_games.slug_dir(name)
         if installer:
-            self.progress.emit(f"Running the {name} installer: follow its steps and keep the folder it suggests. "
-                               "If the game itself starts instead, just close it: ReyOS then adds it as it is. "
-                               "The first time, ReyOS also downloads Proton (about 2 GB), which takes a while.", -1)
+            installing = (f"Running the {name} installer: follow its steps and keep the folder it suggests. "
+                          "If the game itself starts instead, just close it: ReyOS then adds it as it is.")
+            self.progress.emit(installing, -1)
             log_path = emulation.LAUNCH_LOG.with_name("pc-install.log")
             log_path.parent.mkdir(parents=True, exist_ok=True)
+            def watch():
+                build = pc_games.proton_download(log_path)
+                self.progress.emit(f"Downloading Proton ({build}), which runs Windows games: about 500 MB, once. "
+                                   "The installer opens after it." if build else installing, -1)
             with log_path.open("w") as log:
-                pc_games.run_installer(exe, prefix, log)
+                pc_games.run_installer(exe, prefix, log, watch)
             programs = pc_games.find_programs(prefix)
             if not programs and not guess_installer:
                 # Nothing was installed: it was the game itself (it ran as
@@ -220,12 +224,31 @@ class AddPcGameWorker(QThread):
             directory = prefix if game_exe != Path(exe) else game_exe.parent
         else:
             game_exe, directory = Path(exe), Path(exe).parent
+        if pc_games.gamepad_list(game_exe) is not None:
+            rc, _ = self._ask("--yesno", f"{name} only accepts the controllers on its own list (Gamepads.DAT, "
+                              "from before PlayStation and Xbox pads worked on PCs), so your controller may "
+                              "do nothing in it.\n\nTurn the list off so any controller works? The file is "
+                              "renamed, not deleted.", "--yes-label", "Turn it off", "--no-label", "Leave it")
+            if rc == 0:
+                pc_games.disable_gamepad_list(game_exe)
         self.progress.emit(f"Adding {name} to Lutris...", -1)
         ok, result = pc_games.add_to_lutris(name, game_exe, prefix, directory)
         if not ok:
             self.finished_ok.emit(False, f"Couldn't add {name} to Lutris: {result}", [])
             return
         self.finished_ok.emit(True, f"{name} is in your library, under Windows games.", [f"lutris:{result}"])
+
+
+class TaskWorker(QThread):
+    """Runs one slow function (sizes, deletes) off the window's thread."""
+    done = Signal("QVariant")
+
+    def __init__(self, fn):
+        super().__init__()
+        self.fn = fn
+
+    def run(self):
+        self.done.emit(self.fn())
 
 
 class GameScanWorker(QThread):
@@ -247,6 +270,8 @@ class GamesBackend(QObject):
     addFinished = Signal(bool, str, "QVariantList")
     pcAddFinished = Signal(bool, str, str)
     gameScanFinished = Signal("QVariantMap")
+    uninstallInfoReady = Signal("QVariantMap")
+    uninstallFinished = Signal(bool, str)
     controllerSetupStep = Signal(int, int, str, str, str, str)
     controllerSetupDone = Signal(bool, str)
 
@@ -262,6 +287,39 @@ class GamesBackend(QObject):
         self._debounce.timeout.connect(self._folders_changed)
         self._watcher.directoryChanged.connect(lambda _path: self._debounce.start())
         self._watch_folders()
+        # After a PC game starts: umu may download a new Proton first, which
+        # only shows in its log. Checked for a few minutes.
+        self._proton_timer = QTimer(self, interval=2000)
+        self._proton_timer.timeout.connect(self._check_proton)
+        self._tasks = []
+        self._run_task(pc_games.remove_old_protons, self._old_protons_removed)
+
+    def _run_task(self, fn, then):
+        worker = TaskWorker(fn)
+        worker.done.connect(then)
+        # Kept until finished (a collected QThread that's still running aborts).
+        self._tasks = [t for t in self._tasks if t.isRunning()] + [worker]
+        worker.start()
+
+    def _old_protons_removed(self, result):
+        names, freed = result
+        if names:
+            self.message.emit(True, f"Removed {len(names)} older Proton version{'s' if len(names) > 1 else ''} "
+                                    f"no game uses any more ({', '.join(names)}), freeing {pc_games.human_size(freed)}.")
+
+    def _check_proton(self):
+        self._proton_ticks += 1
+        build = pc_games.proton_download(emulation.LAUNCH_LOG.with_name("lutris-last.log"))
+        if build and build != self._proton_build:
+            self.message.emit(True, f"Downloading a newer Proton ({build}, about 500 MB) before {self._proton_game} "
+                                    "starts. This happens only when a new Proton comes out.")
+        elif self._proton_build and not build:
+            self.message.emit(True, f"Proton {self._proton_build} is ready: {self._proton_game} is starting.")
+            self._run_task(pc_games.remove_old_protons, self._old_protons_removed)
+        self._proton_build = build
+        # Up to 3 minutes for the download to start; then until it ends.
+        if not build and self._proton_ticks > 90:
+            self._proton_timer.stop()
 
     def _watch_folders(self):
         emulation.prepare_folders()
@@ -308,7 +366,7 @@ class GamesBackend(QObject):
                     "resolutionSettable": system["id"] in emulation.THREE_D_SYSTEMS
                                           and (system["id"] != "ps2" or settings["ps2_graphics"]),
                     "resolution": emulation.game_resolution(path, settings) or 0,
-                    "gpu": "", "nvidiaAvailable": False,
+                    "gpu": "", "nvidiaAvailable": False, "gamepadList": False,
                 })
         # Windows games: every installed Lutris game.
         nvidia_available = emulation.nvidia_offload_ready()
@@ -320,6 +378,7 @@ class GamesBackend(QObject):
                 "cover": pc_games.cover(game["slug"]), "shrinkable": False, "has3d": False,
                 "resolutionSettable": False, "resolution": 0,
                 "gpu": pc_games.game_gpu(game["id"], settings), "nvidiaAvailable": nvidia_available,
+                "gamepadList": pc_games.gamepad_list(pc_games.game_exe(game["id"])) is not None,
             })
         games.sort(key=lambda g: (g["title"].lower(), g["system"]))
         return games
@@ -370,6 +429,9 @@ class GamesBackend(QObject):
         if scan is not None and scan.isRunning():
             scan.scan.cancel()
             scan.wait(3000)
+        # An uninstall or Proton cleanup is deleting files: let it finish.
+        for task in self._tasks:
+            task.wait()
         # Shrinking a game takes minutes; closing the window ends it. The
         # .part file is ignored and replaced on the next try.
         if self._add_worker is not None and self._add_worker.isRunning():
@@ -392,7 +454,12 @@ class GamesBackend(QObject):
     @Slot(str, str)
     def launchGame(self, system_id, path):
         if system_id == "pc":
-            self.message.emit(*pc_games.launch(path))
+            ok, text = pc_games.launch(path)
+            self.message.emit(ok, text)
+            if ok:
+                self._proton_game = text.removeprefix("Starting ").removesuffix("...")
+                self._proton_build, self._proton_ticks = "", 0
+                self._proton_timer.start()
         else:
             self.message.emit(*emulation.launch_game(system_id, path))
 
@@ -434,6 +501,29 @@ class GamesBackend(QObject):
         self._scan_worker = GameScanWorker([str(Path(exe).parent)])
         self._scan_worker.done.connect(self.gameScanFinished.emit)
         self._scan_worker.start()
+
+    @Slot(str, result="QVariantMap")
+    def turnOffGamepadList(self, path):
+        """Right-click > Let any controller work (old Ubisoft games)."""
+        ok, message = pc_games.disable_gamepad_list(pc_games.game_exe(path.split(":", 1)[1]))
+        return {"ok": ok, "message": message}
+
+    @Slot(str)
+    def uninstallInfo(self, path):
+        """Right-click > Uninstall…: what would go, with sizes (big folders
+        take a moment to measure)."""
+        game_id = path.split(":", 1)[1]
+        self._run_task(lambda: pc_games.uninstall_info(game_id), self.uninstallInfoReady.emit)
+
+    @Slot(str, bool, bool, bool)
+    def uninstallGame(self, path, remove_prefix, remove_files, keep_saves):
+        game_id = path.split(":", 1)[1]
+        self._run_task(lambda: pc_games.uninstall(game_id, remove_prefix, remove_files, keep_saves),
+                       self._uninstalled)
+
+    def _uninstalled(self, result):
+        self.uninstallFinished.emit(*result)
+        self.gamesChanged.emit()
 
     @Slot(str, str, result="QVariantMap")
     def quarantineFile(self, path, signature):

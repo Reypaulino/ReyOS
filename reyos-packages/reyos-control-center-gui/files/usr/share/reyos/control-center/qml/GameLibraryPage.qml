@@ -443,9 +443,124 @@ Kirigami.Page {
         ]
     }
 
+    // Right-click > Uninstall… (Windows games): what goes, with sizes,
+    // measured in the background first.
+    function sizeText(n) {
+        return n >= 1073741824 ? (n / 1073741824).toFixed(1) + " GB" : Math.max(1, Math.round(n / 1048576)) + " MB"
+    }
+    Kirigami.Dialog {
+        id: uninstallDialog
+        property var info: ({})
+        property bool measuring: true
+        property bool working: false
+        property string title_: ""
+        function openFor(path, title) {
+            info = {}
+            title_ = title
+            measuring = true
+            working = false
+            prefixBox.checked = true
+            filesBox.checked = false
+            savesBox.checked = true
+            open()
+            backend.uninstallInfo(path)
+        }
+        readonly property bool savesAtRisk: (info.saves || []).length > 0 && (prefixBox.checked || filesBox.checked)
+        title: "Uninstall " + title_ + "?"
+        preferredWidth: Kirigami.Units.gridUnit * 30
+        padding: Kirigami.Units.largeSpacing * 2
+        standardButtons: Kirigami.Dialog.Cancel
+        customFooterActions: [
+            Kirigami.Action {
+                text: uninstallDialog.working ? "Uninstalling…" : "Uninstall"
+                icon.name: "edit-delete"
+                enabled: !uninstallDialog.measuring && !uninstallDialog.working && uninstallDialog.info.ok === true
+                         && !uninstallDialog.info.running
+                onTriggered: {
+                    uninstallDialog.working = true
+                    backend.uninstallGame("lutris:" + uninstallDialog.info.id, prefixBox.checked && prefixBox.visible,
+                                          filesBox.checked && filesBox.visible, savesBox.checked)
+                }
+            }
+        ]
+
+        ColumnLayout {
+            spacing: Kirigami.Units.largeSpacing
+
+            Controls.Label {
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
+                visible: uninstallDialog.measuring
+                text: "Checking how much space it takes…"
+                opacity: 0.75
+            }
+            Controls.Label {
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
+                visible: !uninstallDialog.measuring
+                text: uninstallDialog.info.ok === false ? uninstallDialog.info.message
+                      : uninstallDialog.info.running ? uninstallDialog.title_ + " is running. Close it first, then uninstall it."
+                      : "Always removed: the game from your library and from Lutris, its box art and its ReyOS settings."
+                color: uninstallDialog.info.running || uninstallDialog.info.ok === false ? Kirigami.Theme.negativeTextColor : Kirigami.Theme.textColor
+            }
+            Controls.CheckBox {
+                id: prefixBox
+                Layout.fillWidth: true
+                visible: !uninstallDialog.measuring && !!uninstallDialog.info.prefix
+                text: (uninstallDialog.info.installedInPrefix ? "Delete the installed game and its Windows folder ("
+                                                              : "Delete its Windows folder (Wine prefix, ")
+                      + sizeText(uninstallDialog.info.prefixSize || 0) + ")"
+                Controls.ToolTip.visible: hovered
+                Controls.ToolTip.text: uninstallDialog.info.prefix || ""
+            }
+            Controls.Label {
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
+                visible: !uninstallDialog.measuring && !!uninstallDialog.info.prefixShared
+                text: "Its Windows folder is shared with another game, so it stays."
+                opacity: 0.75
+            }
+            Controls.CheckBox {
+                id: filesBox
+                Layout.fillWidth: true
+                visible: !uninstallDialog.measuring && !!uninstallDialog.info.gameDir
+                text: "Also delete the game files (" + sizeText(uninstallDialog.info.gameDirSize || 0) + ")"
+            }
+            Controls.Label {
+                Layout.fillWidth: true
+                Layout.leftMargin: Kirigami.Units.gridUnit * 2
+                visible: filesBox.visible
+                wrapMode: Text.WrapAnywhere
+                text: (uninstallDialog.info.gameDir || "").replace(/^\/home\/[^\/]+/, "~")
+                opacity: 0.7
+            }
+            Controls.CheckBox {
+                id: savesBox
+                Layout.fillWidth: true
+                visible: !uninstallDialog.measuring && uninstallDialog.savesAtRisk
+                text: "Keep my saves (copied to " + (uninstallDialog.info.savesDir || "").replace(/^\/home\/[^\/]+/, "~") + ")"
+            }
+            Controls.Label {
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
+                visible: savesBox.visible && !savesBox.checked
+                text: "Saves kept in the game's Windows folder or game folder are deleted with it."
+                color: Kirigami.Theme.neutralTextColor
+            }
+        }
+    }
+
     Connections {
         target: backend
         function onGamesChanged() { reload() }
+        function onUninstallInfoReady(info) {
+            uninstallDialog.info = info
+            uninstallDialog.measuring = false
+        }
+        function onUninstallFinished(ok, text) {
+            uninstallDialog.close()
+            applicationWindow().notify(text, ok)
+        }
         function onGameScanFinished(report) {
             gameScanning = false
             scanDialog.report = report
@@ -842,10 +957,29 @@ Kirigami.Page {
                             icon.name: "configure"
                             onTriggered: backend.openLutris()
                         }
+                        // Old Ubisoft games only take the pads on their own list.
+                        Controls.MenuItem {
+                            visible: model.gamepadList === true
+                            height: visible ? implicitHeight : 0
+                            text: "Let any controller work"
+                            icon.name: "input-gamepad"
+                            onTriggered: {
+                                var r = backend.turnOffGamepadList(model.path)
+                                applicationWindow().notify(r.message, r.ok)
+                                if (r.ok) gameModel.setProperty(index, "gamepadList", false)
+                            }
+                        }
                         Controls.MenuItem {
                             text: "Controller buttons…"
                             icon.name: "input-gamepad"
                             onTriggered: buttonsDialog.openFor(model.systemId)
+                        }
+                        Controls.MenuItem {
+                            visible: model.systemId === "pc"
+                            height: visible ? implicitHeight : 0
+                            text: "Uninstall…"
+                            icon.name: "edit-delete"
+                            onTriggered: uninstallDialog.openFor(model.path, model.title)
                         }
                         // Not for PC games: Proton's virtual desktop fills the
                         // screen anyway (tested); a real window needs gamescope.

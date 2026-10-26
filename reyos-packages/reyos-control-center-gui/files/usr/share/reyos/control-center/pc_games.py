@@ -219,11 +219,19 @@ def proton_env(prefix):
     return dict(os.environ, WINEPREFIX=str(prefix), GAMEID="umu-default", PROTONPATH="GE-Proton")
 
 
-def run_installer(setup, prefix, log):
-    """Runs a Windows installer in the game's own prefix and waits for it."""
+def run_installer(setup, prefix, log, watch=None):
+    """Runs a Windows installer in the game's own prefix and waits for it,
+    calling watch() every two seconds meanwhile."""
     prefix.mkdir(parents=True, exist_ok=True)
-    return subprocess.run(["umu-run", str(setup)], cwd=str(Path(setup).parent), env=proton_env(prefix),
-                          stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT).returncode
+    proc = subprocess.Popen(["umu-run", str(setup)], cwd=str(Path(setup).parent), env=proton_env(prefix),
+                            stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT)
+    while True:
+        try:
+            return proc.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            if watch:
+                log.flush()
+                watch()
 
 
 def find_programs(prefix):
@@ -241,6 +249,300 @@ def find_programs(prefix):
         if path.suffix.lower() == ".exe" and path.is_file() and not NOT_GAME.search(path.name):
             found.append(path)
     return sorted(found, key=lambda p: p.stat().st_size, reverse=True)
+
+
+# ---- Old Ubisoft controller lists -----------------------------------------
+# Ubisoft games of 2003–2008 (Prince of Persia: Sands of Time, Warrior Within,
+# The Two Thrones) only accept the pads in their own Gamepads.DAT: 21 PC pads
+# of the time, no PlayStation or Xbox pad. Without the file they take any pad.
+
+def gamepad_list(exe):
+    """The game's Gamepads.DAT next to its .exe, or None."""
+    try:
+        folder = Path(exe).parent
+        return next((f for f in folder.iterdir() if f.name.lower() == "gamepads.dat" and f.is_file()), None)
+    except OSError:
+        return None
+
+
+def disable_gamepad_list(exe):
+    """Renamed, not deleted (rename it back to undo). Returns (ok, message)."""
+    found = gamepad_list(exe)
+    if found is None:
+        return True, "This game has no controller list to turn off."
+    try:
+        found.rename(found.with_name(found.name + ".original"))
+    except OSError as e:
+        return False, f"Couldn't turn off the game's controller list: {e.strerror}."
+    return True, (f"Any controller works in this game now ({found.name} was renamed to {found.name}.original). "
+                  "Set its buttons in the game's own Options → Controls.")
+
+
+# ---- Proton downloads ------------------------------------------------------
+STEAM_COMPAT = Path.home() / ".local" / "share" / "Steam" / "compatibilitytools.d"
+GE_PROTON = re.compile(r"^GE-Proton(\d+)-(\d+)")
+
+
+def proton_download(log_path):
+    """The Proton build umu is downloading for this launch/install ("" if
+    none). umu fetches a new GE-Proton the first time and after each GE-Proton
+    release, before the game starts, and only logs it."""
+    try:
+        text = Path(log_path).read_text(errors="replace")
+    except OSError:
+        return ""
+    found = re.findall(r"Downloading (GE-Proton[\w.-]+?)\.tar\.gz", text)
+    if not found:
+        return ""
+    # Done once umu says which Proton it uses.
+    return "" if "Using " in text.rsplit(f"Downloading {found[-1]}.tar.gz", 1)[1] else found[-1]
+
+
+def _dir_size(path):
+    total = 0
+    for root, _dirs, files in os.walk(path, followlinks=False):
+        for name in files:
+            try:
+                total += os.lstat(os.path.join(root, name)).st_size
+            except OSError:
+                pass
+    return total
+
+
+def _in_use(path):
+    """A running program uses this path (its command line or WINEPREFIX)."""
+    needle = re.compile(re.escape(str(path).encode()) + rb"(/|\0|$)")
+    for proc in Path("/proc").iterdir():
+        if not proc.name.isdigit():
+            continue
+        for what in ("cmdline", "environ"):
+            try:
+                if needle.search((proc / what).read_bytes()):
+                    return True
+            except OSError:
+                pass
+    return False
+
+
+def old_protons():
+    """GE-Proton builds umu left behind: every GE-Proton folder but the
+    newest, unless Lutris, Steam or a running program still names it (a
+    version picked by hand in Lutris or Steam stays)."""
+    try:
+        builds = [p for p in STEAM_COMPAT.iterdir() if p.is_dir() and GE_PROTON.match(p.name)]
+    except OSError:
+        return []
+    if len(builds) < 2:
+        return []
+    builds.sort(key=lambda p: tuple(int(n) for n in GE_PROTON.match(p.name).groups()))
+    named = ""
+    lutris = Path.home() / ".local" / "share" / "lutris"
+    for f in [*(lutris / "games").glob("*.yml"), lutris / "system.yml", lutris / "runners" / "wine.yml",
+              *(Path.home() / ".config" / "lutris").rglob("*.yml"),
+              Path.home() / ".local" / "share" / "Steam" / "config" / "config.vdf"]:
+        try:
+            named += f.read_text(errors="replace")
+        except OSError:
+            pass
+    return [p for p in builds[:-1] if p.name not in named and not _in_use(p)]
+
+
+def remove_old_protons():
+    """Deletes old_protons(). Returns (names, bytes freed)."""
+    names, freed = [], 0
+    for path in old_protons():
+        size = _dir_size(path)
+        shutil.rmtree(path, ignore_errors=True)
+        if not path.exists():
+            names.append(path.name)
+            freed += size
+    return names, freed
+
+
+# ---- Uninstall -------------------------------------------------------------
+# Beside RetroArch's own save folders (one per core) in ~/Games/Saves.
+SAVES = emulation.GAMES_DIR / "Saves" / "PC"
+# Folders named like this are a library or a binaries folder, never one
+# game's own folder.
+GENERIC_DIRS = {"games", "game", "pc", "pc games", "windows games", "downloads", "desktop", "documents",
+                "roms", "steamlibrary", "steamapps", "common", "program files", "program files (x86)",
+                "drive_c", "lutris", "media", "mnt", "run", "home"}
+BIN_DIRS = {"bin", "bin32", "bin64", "binaries", "win32", "win64", "x64", "x86", "system", "retail", "exe"}
+# Inside the prefix: where Windows games keep saves (Proton's user is steamuser).
+SAVE_DIRS = ("Documents", "My Documents", "Saved Games", "AppData/Roaming", "AppData/Local", "AppData/LocalLow")
+# Wine's own folders there, not the game's.
+WINE_USER_DIRS = {"temp", "microsoft", "openxr", "wine", "mesa_shader_cache", "dxvk", "vkd3d"}
+SAVE_NAME = re.compile(r"save|profile", re.I)
+
+
+def _game_config(game_id):
+    """(pga.db row as a dict, the game's Lutris yml as a dict)."""
+    import yaml  # python-yaml comes with Lutris
+    con = sqlite3.connect(f"file:{LUTRIS_DB}?mode=ro", uri=True, timeout=2)
+    con.row_factory = sqlite3.Row
+    row = con.execute("SELECT * FROM games WHERE id = ?", (int(game_id),)).fetchone()
+    others = [r[0] for r in con.execute("SELECT configpath FROM games WHERE id != ? AND configpath != ''", (int(game_id),))]
+    con.close()
+    if row is None:
+        return None, {}, []
+    row = dict(row)
+    config = {}
+    path = Path.home() / ".local/share/lutris/games" / f"{row.get('configpath')}.yml"
+    if row.get("configpath") and path.is_file():
+        config = yaml.safe_load(path.read_text()) or {}
+    return row, config, others
+
+
+def _game_folder(exe, prefix):
+    """The game's own folder for "Also delete the game files", or None: the
+    .exe's folder (up from bin/Win64...), never a library folder, $HOME or
+    above it, a drive's top folder, or anything holding a Wine prefix."""
+    if not exe:
+        return None
+    folder = Path(exe).parent
+    while folder.name.lower() in BIN_DIRS and folder.parent != folder:
+        folder = folder.parent
+    home = Path.home()
+    try:
+        folder = folder.resolve()
+    except OSError:
+        return None
+    if (not folder.is_dir() or folder.name.lower() in GENERIC_DIRS or folder in (home, *home.parents)
+            or folder.is_mount() or len(folder.parts) < 4 or (prefix and Path(prefix).resolve().is_relative_to(folder))
+            or (folder / "drive_c").exists() or folder == games_dir().resolve()):
+        return None
+    return folder
+
+
+def _prefix_saves(prefix):
+    """Folders in the prefix's user profile that the game wrote."""
+    users = Path(prefix) / "drive_c" / "users"
+    found = []
+    for user in (users.iterdir() if users.is_dir() else []):
+        if user.name in ("Public",) or user.is_symlink():
+            continue
+        for rel in SAVE_DIRS:
+            base = user / rel
+            if not base.is_dir() or base.is_symlink():
+                continue
+            for entry in base.iterdir():
+                if entry.is_symlink() or entry.name.lower() in WINE_USER_DIRS or entry.name.startswith("."):
+                    continue
+                if entry.is_file() or any(f.is_file() for f in entry.rglob("*")):
+                    found.append(entry)
+    return found
+
+
+def uninstall_info(game_id):
+    """What Uninstall… would remove, with sizes, for its confirm window."""
+    row, config, others = _game_config(game_id)
+    if row is None:
+        return {"ok": False, "message": "That game isn't in Lutris any more."}
+    game = config.get("game") or {}
+    exe, prefix = str(game.get("exe") or ""), str(game.get("prefix") or "")
+    prefix_path = Path(prefix) if prefix else None
+    # Only a real Wine prefix, not $HOME or a folder another game shares.
+    shared = []
+    if prefix_path:
+        import yaml
+        for configpath in others:
+            try:
+                other = yaml.safe_load((Path.home() / ".local/share/lutris/games" / f"{configpath}.yml").read_text()) or {}
+            except (OSError, yaml.YAMLError):
+                continue
+            if str((other.get("game") or {}).get("prefix") or "") == prefix:
+                shared.append(configpath)
+    prefix_ok = bool(prefix_path and (prefix_path / "drive_c").is_dir() and not shared
+                     and prefix_path.resolve() not in (Path.home(), *Path.home().parents))
+    inside = bool(prefix_ok and exe and Path(exe).resolve().is_relative_to(prefix_path.resolve()))
+    folder = None if inside else _game_folder(exe, prefix)
+    saves = [str(p) for p in _prefix_saves(prefix_path)] if prefix_ok else []
+    if folder:
+        saves += [str(p) for p in folder.iterdir() if p.is_dir() and SAVE_NAME.search(p.name)]
+    return {
+        "ok": True, "id": int(game_id), "name": row.get("name") or row.get("slug"), "slug": row.get("slug"),
+        "running": bool((prefix_ok and _in_use(prefix_path)) or (exe and _in_use(exe))),
+        "prefix": prefix if prefix_ok else "", "prefixSize": _dir_size(prefix_path) if prefix_ok else 0,
+        "prefixShared": bool(shared), "installedInPrefix": inside,
+        "gameDir": str(folder) if folder else "", "gameDirSize": _dir_size(folder) if folder else 0,
+        "saves": saves, "savesDir": str(SAVES / (row.get("slug") or "game")),
+    }
+
+
+def _keep_saves(info, paths):
+    """Copies save folders to ~/Games/Saves/<slug>/, beside earlier copies."""
+    target = Path(info["savesDir"])
+    if target.exists():
+        n = 2
+        while target.with_name(f"{target.name}-{n}").exists():
+            n += 1
+        target = target.with_name(f"{target.name}-{n}")
+    for path in map(Path, paths):
+        # Keep where it came from: Documents/<Game>, AppData/Roaming/<Game>, <folder>/POP3Profiles.
+        parts = path.parts
+        rel = Path(*parts[parts.index("users") + 2:]) if "users" in parts and "drive_c" in parts else Path("Game folder", path.name)
+        dest = target / rel
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        if path.is_dir():
+            shutil.copytree(path, dest, symlinks=True, dirs_exist_ok=True)
+        else:
+            shutil.copy2(path, dest)
+    return target
+
+
+def uninstall(game_id, remove_prefix, remove_files, keep_saves):
+    """Removes the game from Lutris and ReyOS (always), its Wine prefix and
+    its own folder (if asked), saves copied first. Returns (ok, message)."""
+    info = uninstall_info(game_id)
+    if not info["ok"]:
+        return False, info["message"]
+    if info["running"]:
+        return False, f"{info['name']} is running. Close it first."
+    remove_prefix = remove_prefix and bool(info["prefix"])
+    remove_files = remove_files and bool(info["gameDir"])
+    kept = None
+    if keep_saves and info["saves"] and (remove_prefix or remove_files):
+        doomed = [s for s in info["saves"]
+                  if (remove_prefix and Path(s).is_relative_to(info["prefix"]))
+                  or (remove_files and Path(s).is_relative_to(info["gameDir"]))]
+        if doomed:
+            try:
+                kept = _keep_saves(info, doomed)
+            except OSError as e:
+                return False, f"Nothing was removed: your saves couldn't be copied ({e.strerror})."
+    rc, _out, err = _helper("remove", str(game_id))
+    if rc != 0:
+        return False, "Couldn't remove the game from Lutris: " + ((err.splitlines() or ["unknown error"])[-1])
+    freed = 0
+    for wanted, path, size in ((remove_prefix, info["prefix"], info["prefixSize"]),
+                               (remove_files, info["gameDir"], info["gameDirSize"])):
+        if wanted:
+            shutil.rmtree(path, ignore_errors=True)
+            freed += size - (_dir_size(path) if Path(path).exists() else 0)
+    slug = info["slug"]
+    if not any(g["slug"] == slug for g in list_games()):
+        for art in (LUTRIS_COVERS / f"{slug}.jpg", COVERS / f"{slug}.png", COVERS / f"{slug}.nocover",
+                    Path.home() / ".local/share/lutris/banners" / f"{slug}.jpg",
+                    Path.home() / ".local/share/icons/hicolor/128x128/apps" / f"lutris_{slug}.png"):
+            art.unlink(missing_ok=True)
+    settings = emulation.load_settings()
+    gid = str(game_id)
+    emulation.save_settings({"pc_gpu": {k: v for k, v in settings["pc_gpu"].items() if k != gid},
+                             "pc_builtin_gpu": [g for g in settings["pc_builtin_gpu"] if g != gid]})
+    home = lambda p: str(p).replace(str(Path.home()), "~", 1)
+    message = f"{info['name']} uninstalled" + (f" (freed {human_size(freed)})." if freed else ".")
+    if kept:
+        message += f" Your saves are in {home(kept)}."
+    if info["gameDir"] and not remove_files:
+        message += f" The game's files are still in {home(info['gameDir'])}."
+    return True, message
+
+
+def human_size(n):
+    for unit in ("bytes", "KB", "MB", "GB"):
+        if n < 1024 or unit == "GB":
+            return f"{n:.0f} {unit}" if unit in ("bytes", "KB") else f"{n:.1f} {unit}"
+        n /= 1024
 
 
 def _helper(*args):
@@ -417,6 +719,18 @@ def _cmd_icon(exe, out):
         print(f"no icon: {e}", file=sys.stderr)
 
 
+def _cmd_remove(game_id):
+    """The game's Lutris entry and config file (Lutris's own "Remove")."""
+    from lutris.database import games as games_db
+    game = games_db.get_game_by_field(game_id, "id")
+    if not game:
+        return
+    path = _lutris_config_file(game["configpath"]) if game.get("configpath") else None
+    if path and path.is_file():
+        path.unlink()
+    games_db.delete_game(game_id)
+
+
 def _cmd_launch(game_id, options):
     from lutris.database import games as games_db
     from lutris.util.yaml import read_yaml_from_file, write_yaml_to_file
@@ -433,5 +747,6 @@ def _cmd_launch(game_id, options):
 
 
 if __name__ == "__main__":
-    commands = {"add": _cmd_add, "icon": _cmd_icon, "launch": _cmd_launch, "defaults": _cmd_defaults}
+    commands = {"add": _cmd_add, "icon": _cmd_icon, "launch": _cmd_launch, "defaults": _cmd_defaults,
+                "remove": _cmd_remove}
     commands[sys.argv[1]](*sys.argv[2:])
