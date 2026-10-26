@@ -6,6 +6,23 @@ This file was rewritten from scratch on 2026-08-18 after a full audit of the wor
 
 **2026-10-08 verification pass:** see `BUG_VERIFICATION_REPORT.md` for what was re-tested and how. Entries below carry a "Status 2026-10-08" line where they were checked; resolved entries moved to the "Resolved" section at the end.
 
+## ReyOS Scan v1: known gaps (2026-10-25)
+
+Not bugs in what shipped, but limits to keep in mind (control-center-gui 1.0.0-143, GitHub #17):
+- GUI (Security card, Quarantine window, ReyOS Games scan dialog) not yet clicked through; backend tested on the Dev VM only.
+- No weekly scheduled scan, no Dolphin "Scan with ReyOS Scan", no system-file check (`pacman -Qkk`), no scan-result cache by hash: every Add PC game re-scans.
+- System files and other users' files can't be quarantined (runs as the user; no polkit helper yet).
+- Add PC game's pre-run check covers programs/scripts/archives only, not game data files; archives are scanned within ClamAV's own limits (no extra zip-bomb guard).
+- Each scan spends ~12 s loading the definitions (no clamd, by design).
+
+## Low free space isn't warned about (2026-10-23, laptop)
+
+The laptop's ReyOS root reached 12 MB free before anyone noticed; Control Center has no low-disk warning (e.g. under 2 GB) and "Remove old packages" only does `-Sc`. Not fixed.
+
+## Stable check doesn't build the NVIDIA 580 DKMS module (2026-10-25)
+
+The weekly snapshot check installs reyos-* only; whether `nvidia-580xx-dkms` still builds against a new snapshot's kernel isn't tested, so a promotion could ship a kernel that leaves the laptop's NVIDIA card without a driver. Not fixed.
+
 ## Desktop sharing logins fail on current Arch (FreeRDP 3.32 + krdp 6.7.5)
 
 Added 2026-10-19 (laptop). Every login from Windows App/an RDP client is refused: krdp log `ntlm_fetch_ntlm_v2_hash: Could not find user in SAM database` → `SEC_E_NO_CREDENTIALS`. FreeRDP 3.32 regression (FreeRDP #13567/#13688, KDE bug 526928), fixed in krdp MR !248, not yet in Arch. Laptop workaround: freerdp 3.31.0-1 from the Arch archive + `IgnorePkg = freerdp` (since lost to a reinstall). Not fixed in ReyOS: consider holding freerdp in the stable channel until krdp ships the fix, or a Connect note. Also: with `SystemUserEnabled=true` the password asked for is the ReyOS login password, not the one set in Connect's dialog — Connect's text should say so.
