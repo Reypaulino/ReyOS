@@ -2,6 +2,15 @@
 
 Real bugs found and fixed, with root cause. Newest first. See `bugs.md` for what's still open.
 
+## 2026-10-25 — Windows game hung: Wine prefixes on the game drive; official game names (control-center-gui 1.0.0-142)
+
+From the laptop's handoff (2026-10-25).
+
+- **A game's launcher looped forever** (Prince of Persia: The Two Thrones, on the laptop's 64 GB SD card): `pc_games.games_dir()` put Wine prefixes in the "Added games are kept in" folder, i.e. on the card next to the game files. Proton maps the game's drive to a drive letter, every prefix on that drive has `dosdevices` links back to it, and a launcher that walks its own drive followed them endlessly (`d:\games\pc\…\dosdevices\d:\games\pc\…`, seen with `WINEDEBUG=+relay` on the laptop). Prefixes now always go to `~/Games/PC` (250–300 MB each); an already-installed game's files stay where they are. (Games that come with an installer install inside their prefix, so they're on the system disk now.) The laptop's two prefixes were moved by hand there.
+- **No box art for a game named after a download folder** (laptop patch 0007, applied): "Prince Of Persia The Two Thrones Ankergames" found nothing on lutris.net and was marked no-cover for good. `game_name()` strips download-site/repack tags and pre-fills the official name from Lutris's database; `lutris_match()` (shared with `fetch_cover`) drops up to three trailing words but then only accepts an exact name.
+
+Tested on the Dev VM: names for Prince of Persia (Ankergames folder), NFS MW Black Edition, an Assassin's Creed II FitGirl setup, a Hollow Knight installer, and an unknown name (unchanged); with an external "Added games are kept in" folder set, Add PC game put the prefix in `~/Games/PC` and kept the exe on the external folder.
+
 ## 2026-10-25 — Stable check failed because of the NVIDIA 580 packages (tools/stable-snapshot/smoke-test.sh)
 
 Issue #16: the weekly check of Arch snapshot 2026/10/24 failed with `failed retrieving file 'nvidia-580xx-dkms-…' from reypaulino.github.io : 404`. Since 2026-10-22 reyos-local also lists `nvidia-580xx-utils/-dkms` and `lib32-nvidia-580xx-utils`, whose files are in the `reyos-drivers` GitHub release (too big for Pages), and the smoke test installs `pacman -Slq reyos-local` — everything in the repo — with only the Pages `Server`. Not a problem with the snapshot. The smoke test now installs `reyos-*` only (what its header always said; a container can't test a kernel driver, and the 580 packages conflict with Arch's `nvidia-utils`) and lists the release as a second `Server` like real installs. Not covered by the check: whether `nvidia-580xx-dkms` still builds against a new snapshot's kernel.

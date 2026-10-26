@@ -27,6 +27,9 @@ LUTRIS_DB = Path.home() / ".local" / "share" / "lutris" / "pga.db"
 COVERS = emulation.GAMES_DIR / "Covers" / "pc"
 LUTRIS_COVERS = Path.home() / ".local" / "share" / "lutris" / "coverart"
 LUTRIS_SEARCH = "https://lutris.net/api/games?search="
+# Download sites and repackers that put their name on the game's folder.
+RELEASE_TAGS = (r"(?i)\b(ankergames|fitgirl|dodi|elamigos|kaoskrew|steamrip|igg ?games|gog|repack|"
+                r"codex|plaza|skidrow|tenoke|empress|razor1911|portable)\b")
 # lutris: the launcher; umu-launcher: runs Proton outside Steam (Lutris uses
 # it, and ReyOS runs installers with it); python-pefile: Lutris's icon reader.
 PACKAGES = ["lutris", "umu-launcher", "python-pefile"]
@@ -48,11 +51,13 @@ def ready():
 
 
 def games_dir():
-    """Where new PC games go: the Gaming page's "Added games are kept in"
-    folder (an external SSD works), else ~/Games/PC."""
-    storage = emulation.load_settings()["game_storage"]
-    if storage and Path(storage).is_dir():
-        return emulation.storage_system_dir(storage, "pc")
+    """Where the games' Wine prefixes go: always ~/Games/PC on the system
+    disk, never the "Added games are kept in" folder. A game kept on an
+    external drive gets that drive as a Windows drive letter, and every
+    prefix on the same drive has links (dosdevices) pointing back at it, so
+    a launcher that searches its own drive looped forever (Prince of
+    Persia: The Two Thrones on the laptop's SD card, 2026-10-25). Prefixes
+    are small; an already-installed game's own files stay where they are."""
     return emulation.GAMES_DIR / "PC"
 
 
@@ -85,6 +90,34 @@ def cover_missing(slug):
     return not (LUTRIS_COVERS / f"{slug}.jpg").is_file() and not (COVERS / f"{slug}.nocover").exists()
 
 
+def _norm(text):
+    return re.sub(r"[^a-z0-9]+", "", (text or "").lower())
+
+
+def _real_cover(game):
+    # Some entries point at one generic placeholder image.
+    return "/cover_big/" in (game.get("coverart") or "")
+
+
+def lutris_match(name):
+    """The game's entry in Lutris's database (official name, box art), or
+    None. When the full name finds nothing, up to three words are dropped
+    from the end (a download-site tag, "Deluxe Edition"), but then only an
+    exact name counts, so "Prince of Persia" alone never picks the 1989 game."""
+    words = name.split()
+    for n in range(len(words), max(len(words) - 4, 0), -1):
+        query = " ".join(words[:n])
+        req = urllib.request.Request(LUTRIS_SEARCH + urllib.parse.quote(query), headers={"User-Agent": "ReyOS-Games"})
+        with urllib.request.urlopen(req, timeout=20) as r:
+            results = json.load(r).get("results", [])
+        exact = [g for g in results if _norm(g.get("name")) == _norm(query)]
+        if exact:
+            return next((g for g in exact if _real_cover(g)), exact[0])
+        if n == len(words) and results:
+            return next((g for g in results if _real_cover(g)), results[0])
+    return None
+
+
 def fetch_cover(name, slug):
     """Box art from Lutris's game database (the covers Lutris itself shows),
     saved in Lutris's coverart folder so Lutris uses it too. Returns its
@@ -92,14 +125,8 @@ def fetch_cover(name, slug):
     out = LUTRIS_COVERS / f"{slug}.jpg"
     if out.is_file():
         return str(out)
-    req = urllib.request.Request(LUTRIS_SEARCH + urllib.parse.quote(name), headers={"User-Agent": "ReyOS-Games"})
-    with urllib.request.urlopen(req, timeout=20) as r:
-        results = json.load(r).get("results", [])
-    # Real covers only: some entries point at one generic placeholder image.
-    covers = [g for g in results if "/cover_big/" in (g.get("coverart") or "")]
-    norm = lambda text: re.sub(r"[^a-z0-9]+", "", (text or "").lower())  # noqa: E731
-    pick = next((g for g in covers if norm(g.get("name")) == norm(name)), covers[0] if covers else None)
-    if pick is None:
+    pick = lutris_match(name)
+    if pick is None or not _real_cover(pick):
         COVERS.mkdir(parents=True, exist_ok=True)
         (COVERS / f"{slug}.nocover").touch()
         return ""
@@ -140,22 +167,31 @@ def set_game_gpu(game_id, value):
 
 def game_name(exe, installer):
     """A first guess for the name: the folder of a game, or an installer's
-    file name without "setup"/version noise."""
+    file name without "setup"/version/download-site noise, then the official
+    name from Lutris's database when it knows the game (so the box art is
+    found too). Runs in Add PC game's worker thread: the lookup may wait."""
     exe = Path(exe)
     raw = exe.stem if installer else exe.parent.name
     def clean(text):
         text = re.sub(r"[_\-]+", " ", text)
         text = re.sub(r"(?i)\bv?\d+(\.\d+)+\b", " ", text)  # versions, before dots become spaces
         text = text.replace(".", " ")
+        text = re.sub(RELEASE_TAGS, " ", text)
         return " ".join(re.sub(r"(?i)\b(setup|install(er)?|x64|x86|win(64|32)?)\b", " ", text).split())
     name = clean(raw)
     if not name and installer:  # just "setup.exe": its folder's name
         name = clean(exe.parent.name)
-    return name.title() if name else exe.stem
+    if not name:
+        return exe.stem
+    try:
+        match = lutris_match(name)
+    except (OSError, ValueError):  # offline: the cleaned-up name
+        match = None
+    return match["name"] if match else name.title()
 
 
 def slug_dir(name):
-    """A new folder for the game's Windows files under games_dir()."""
+    """A new folder for the game's Wine prefix under games_dir()."""
     base = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "game"
     root = games_dir()
     path, n = root / base, 2
