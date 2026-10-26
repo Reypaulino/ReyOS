@@ -2,6 +2,10 @@
 
 Real bugs found and fixed, with root cause. Newest first. See `bugs.md` for what's still open.
 
+## 2026-10-25 — Stable check failed because of the NVIDIA 580 packages (tools/stable-snapshot/smoke-test.sh)
+
+Issue #16: the weekly check of Arch snapshot 2026/10/24 failed with `failed retrieving file 'nvidia-580xx-dkms-…' from reypaulino.github.io : 404`. Since 2026-10-22 reyos-local also lists `nvidia-580xx-utils/-dkms` and `lib32-nvidia-580xx-utils`, whose files are in the `reyos-drivers` GitHub release (too big for Pages), and the smoke test installs `pacman -Slq reyos-local` — everything in the repo — with only the Pages `Server`. Not a problem with the snapshot. The smoke test now installs `reyos-*` only (what its header always said; a container can't test a kernel driver, and the 580 packages conflict with Arch's `nvidia-utils`) and lists the release as a second `Server` like real installs. Not covered by the check: whether `nvidia-580xx-dkms` still builds against a new snapshot's kernel.
+
 ## 2026-10-23 — Controller layout for Windows games, clean-up report, driver "restart" notice, mod DLL overrides (control-center-gui 1.0.0-141)
 
 From the laptop's handoff of 2026-10-22 evening (Control Center 140 on real hardware).

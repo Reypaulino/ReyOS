@@ -26,6 +26,7 @@ NoExtract = etc/hostname etc/os-release
 [reyos-local]
 SigLevel = Required
 Server = https://reypaulino.github.io/ReyOS/
+Server = https://github.com/Reypaulino/ReyOS/releases/download/reyos-drivers
 
 [core]
 Server = $SERVER
@@ -46,7 +47,10 @@ echo "::group::Upgrade the container to snapshot $DATE"
 pacman -Syyuu --noconfirm
 echo "::endgroup::"
 
-mapfile -t PKGS < <(pacman -Slq reyos-local)
+# reyos-* only: reyos-local also carries NVIDIA's 580 driver (nvidia-580xx-*,
+# from the reyos-drivers release), which a container can't test and which
+# conflicts with Arch's nvidia-utils; it broke the 2026/10/24 check.
+mapfile -t PKGS < <(pacman -Slq reyos-local | grep '^reyos-')
 echo "::group::Install ${#PKGS[@]} reyos-* packages"
 pacman -S --needed --noconfirm --overwrite /etc/hostname --overwrite /etc/os-release "${PKGS[@]}"
 echo "::endgroup::"
