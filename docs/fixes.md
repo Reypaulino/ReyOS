@@ -2,6 +2,17 @@
 
 Real bugs found and fixed, with root cause. Newest first. See `bugs.md` for what's still open.
 
+## 2026-10-25 — ReyOS Scan v1: malware scan with ClamAV (control-center-gui 1.0.0-143)
+
+GitHub issue #17 (owner's handoff) + the laptop's "ReyOS Scan" proposal. New `security_scan.py` (Qt-free).
+
+- **Engine**: ClamAV `clamscan` on demand, as the user (no clamd: ~1 GB resident). `clamav` is installed on first use through `reyos-admin install-apps`; new `reyos-admin malware-setup` enables `clamav-freshclam-once.timer` (daily) and runs `freshclam` (root: `/var/lib/clamav` belongs to clamav; definitions 108 MB, package 185 MB). Scans don't cross filesystems or follow symlinks (Wine prefixes link to `/` and other drives) and skip the quarantine. Results: `clean` ("No known threats found in N files", never "safe"), `found`, `not_verified` (no scanner/definitions, unreadable files, clamscan rc 2), `cancelled`; JSON reports (schema 1) in `~/.local/share/reyos/security/scans/`.
+- **Quarantine**: only on request, per file. Regular files only (symlinks refused), opened `O_NOFOLLOW`, copied into `~/.local/share/reyos/security/quarantine/` (0700) as mode 0400 with SHA-256 checked after the copy; the original is removed only if it's still the same inode. Restore checks the hash, puts back mode and mtime, and picks "<name> (restored N)" if the name is taken. Delete only after confirmation.
+- **Control Center → Security → Malware scan**: Install scanner / Quick scan (Downloads, Desktop, ~/Games, "Added games are kept in") / Choose folder… (also external drives) / Full home scan / Update definitions / Quarantine (N)…; last result, definitions date (warns over 7 days), progress with Stop, a "Move to quarantine" per finding.
+- **ReyOS Games → Add PC game**: before anything runs, the chosen .exe and the programs/scripts/archives in its folder (only the file when it's in Downloads/Desktop/home) are scanned. A threat blocks it (Move to quarantine / Leave it); "not verified" asks before going on; no scanner offers to set it up. Right-click a Windows game → **Scan for viruses** (its folder), with a result window.
+
+Tested on the Dev VM with the harmless EICAR file (68 bytes; a 67-byte copy with the `$` missing was rightly "OK"): infected folder → `found` (`Eicar-Test-Signature`, path with a space), clean folder → `clean`, missing path → `not_verified`, Stop on a `/usr/share` scan → `cancelled`; quarantine (0400 in a 0700 folder, hash OK, original gone, re-scan of the data dir clean), restore with the name taken → "(restored 1)", mode 0755 and content back, symlink refused, delete; Add PC game with an EICAR setup.exe → blocked before any prefix was made, quarantined; a clean game with EICAR only in a data file → added (data files aren't part of the pre-run check by design); `sudo -n reyos-admin malware-setup` → rc 0, timer enabled. **Not yet clicked through in the GUI** (owner will update and try it in the VM).
+
 ## 2026-10-25 — Windows game hung: Wine prefixes on the game drive; official game names (control-center-gui 1.0.0-142)
 
 From the laptop's handoff (2026-10-25).

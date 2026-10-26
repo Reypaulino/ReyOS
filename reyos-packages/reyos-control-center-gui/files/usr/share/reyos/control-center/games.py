@@ -22,6 +22,7 @@ sys.path.insert(0, str(APP_DIR))
 import emulation  # noqa: E402
 import game_shrink  # noqa: E402
 import pc_games  # noqa: E402
+import security_scan  # noqa: E402
 from controller_setup import ControllerSetupWorker  # noqa: E402
 from emulation import EMU_SYSTEMS  # noqa: E402
 
@@ -104,6 +105,54 @@ class AddPcGameWorker(QThread):
         out = subprocess.run(["kdialog", "--title", "Add PC Game", *args], capture_output=True, text=True)
         return out.returncode, out.stdout.strip()
 
+    def _scanner_ready(self):
+        return security_scan.installed() and bool(security_scan.definitions()["version"])
+
+    def _check_for_malware(self, exe):
+        """ReyOS Scan on the chosen file (and the programs next to it) before
+        anything runs. Returns True to go on; on False, self.blocked holds
+        the message to show ("" = the user cancelled)."""
+        self.blocked = ""
+        if not self._scanner_ready():
+            rc, _ = self._ask("--warningyesnocancel",
+                              "ReyOS can check this game for viruses before anything runs, but the malware "
+                              "scanner isn't set up yet (about 300 MB with its virus definitions).",
+                              "--yes-label", "Set it up and check", "--no-label", "Add without checking")
+            if rc == 2:
+                return False
+            if rc == 1:
+                return True
+            self.progress.emit("Installing the malware scanner and its virus definitions (about 300 MB)...", -1)
+            for cmd in (["install-apps", *security_scan.PACKAGES], ["malware-setup"]):
+                subprocess.run(["sudo", "-n", "/usr/share/reyos/bin/reyos-admin", *cmd],
+                               stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            if not self._scanner_ready():
+                rc, _ = self._ask("--warningcontinuecancel", "The scanner couldn't be set up (check your network "
+                                  "connection), so this game would be added without a virus check.",
+                                  "--continue-label", "Add without checking")
+                return rc == 0
+        paths, include = security_scan.program_scope(exe)
+        self.progress.emit(f"Checking {Path(exe).name} for viruses before anything runs...", -1)
+        report = security_scan.Scan(paths, "addgame", include, progress=lambda n, _p: self.progress.emit(
+            f"Checking for viruses before anything runs: {n} files...", -1)).run()
+        if report["status"] == "clean":
+            self.progress.emit(report["summary"], -1)
+            return True
+        if report["status"] == "found":
+            found = "\n".join(f"{Path(f['path']).name}: {f['signature']}" for f in report["findings"][:10])
+            rc, _ = self._ask("--warningyesno", f"ReyOS Scan found a threat, so nothing was run or added:\n\n{found}",
+                              "--yes-label", "Move to quarantine", "--no-label", "Leave it")
+            if rc == 0:
+                results = [security_scan.quarantine(f["path"], f["signature"]) for f in report["findings"]]
+                self.blocked = "Not added: a threat was found. " + " ".join(m for _ok, m in results)
+            else:
+                self.blocked = ("Not added: a threat was found and left where it is "
+                                "(Control Center → Security → Malware scan).")
+            return False
+        rc, _ = self._ask("--warningcontinuecancel", f"Not verified: {report['summary']}\n\nAdd the game anyway?",
+                          "--continue-label", "Add without checking")
+        return rc == 0
+
     def run(self):
         if not pc_games.ready():
             self.progress.emit("Installing Lutris, which runs Windows games (about 300 MB)...", -1)
@@ -131,6 +180,9 @@ class AddPcGameWorker(QThread):
             self.finished_ok.emit(True, "", [])
             return
         installer = (rc == 0) == guess_installer
+        if not self._check_for_malware(exe):
+            self.finished_ok.emit(not self.blocked, self.blocked, [])
+            return
         rc, name = self._ask("--inputbox", "Name of the game:", pc_games.game_name(exe, installer))
         if rc != 0 or not name.strip():
             self.finished_ok.emit(True, "", [])
@@ -176,6 +228,17 @@ class AddPcGameWorker(QThread):
         self.finished_ok.emit(True, f"{name} is in your library, under Windows games.", [f"lutris:{result}"])
 
 
+class GameScanWorker(QThread):
+    done = Signal("QVariantMap")
+
+    def __init__(self, paths):
+        super().__init__()
+        self.scan = security_scan.Scan(paths, "game")
+
+    def run(self):
+        self.done.emit(self.scan.run())
+
+
 class GamesBackend(QObject):
     coverReady = Signal(str, str)
     message = Signal(bool, str)
@@ -183,6 +246,7 @@ class GamesBackend(QObject):
     addProgress = Signal(str, float)
     addFinished = Signal(bool, str, "QVariantList")
     pcAddFinished = Signal(bool, str, str)
+    gameScanFinished = Signal("QVariantMap")
     controllerSetupStep = Signal(int, int, str, str, str, str)
     controllerSetupDone = Signal(bool, str)
 
@@ -301,6 +365,11 @@ class GamesBackend(QObject):
             setup.cancelled = True
             if not setup.wait(2000):
                 os._exit(0)
+        # A virus scan just stops (its report says "not everything was checked").
+        scan = getattr(self, "_scan_worker", None)
+        if scan is not None and scan.isRunning():
+            scan.scan.cancel()
+            scan.wait(3000)
         # Shrinking a game takes minutes; closing the window ends it. The
         # .part file is ignored and replaced on the next try.
         if self._add_worker is not None and self._add_worker.isRunning():
@@ -348,6 +417,35 @@ class GamesBackend(QObject):
     @Slot(result=str)
     def defaultGpu(self):
         return emulation.load_settings()["game_gpu"]
+
+    @Slot(str)
+    def scanGame(self, path):
+        """Right-click > Scan for viruses: the game's folder, in the background."""
+        worker = getattr(self, "_scan_worker", None)
+        if worker is not None and worker.isRunning():
+            return
+        exe = pc_games.game_exe(path.split(":", 1)[1])
+        if not exe:
+            self.gameScanFinished.emit({"status": "not_verified", "summary": "Couldn't find this game's files.", "findings": []})
+            return
+        if not (security_scan.installed() and security_scan.definitions()["version"]):
+            self.gameScanFinished.emit({"status": "no_scanner", "summary": "", "findings": []})
+            return
+        self._scan_worker = GameScanWorker([str(Path(exe).parent)])
+        self._scan_worker.done.connect(self.gameScanFinished.emit)
+        self._scan_worker.start()
+
+    @Slot(str, str, result="QVariantMap")
+    def quarantineFile(self, path, signature):
+        ok, message = security_scan.quarantine(path, signature)
+        return {"ok": ok, "message": message}
+
+    @Slot()
+    def openSecurity(self):
+        """Control Center's Security page (ReyOS Scan's setup and history)."""
+        env = dict(os.environ, REYOS_CC_INITIAL_PAGE="SecurityPage.qml")
+        subprocess.Popen([str(APP_DIR / "main.py")], env=env, stdin=subprocess.DEVNULL,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
 
     @Slot()
     def openLutris(self):

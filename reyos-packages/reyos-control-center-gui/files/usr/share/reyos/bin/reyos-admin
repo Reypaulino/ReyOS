@@ -133,6 +133,8 @@ APP_PACKAGES = {
     "nvidia-580xx-dkms", "nvidia-580xx-utils", "lib32-nvidia-580xx-utils", "nvidia-prime",
     # PC (Windows) games in ReyOS Games: Proton outside Steam, and Lutris's icon reader.
     "umu-launcher", "python-pefile",
+    # ReyOS Scan (Control Center > Security, ReyOS Games): on-demand malware scans.
+    "clamav",
     "lib32-vulkan-intel", "lib32-vulkan-radeon", "lib32-vulkan-nouveau",
     # The NVIDIA driver is built per kernel; the LTS backup kernel (reyos-boot) needs its headers.
     "linux-lts-headers",
@@ -181,6 +183,15 @@ def remove_package(args):
     need(pkg not in PROTECTED_PKGS and not pkg.startswith("reyos-"),
          f"{pkg} is part of the system and can't be removed here")
     return run("pacman", "-Rns", "--noconfirm", "--", pkg)
+
+
+def malware_setup(args):
+    """ReyOS Scan's definitions: ClamAV's own daily update timer on, and an
+    update now (both need root: /var/lib/clamav belongs to clamav)."""
+    need(not args, "usage: malware-setup")
+    need(Path("/usr/bin/freshclam").exists(), "ClamAV isn't installed")
+    run("systemctl", "enable", "--now", "clamav-freshclam-once.timer")
+    return run("freshclam")
 
 
 def remove_orphans(args):
@@ -401,6 +412,7 @@ ACTIONS = {
     "install-apps": install_apps,
     "remove-package": remove_package,
     "remove-orphans": remove_orphans,
+    "malware-setup": malware_setup,
     "clean-cache": clean_cache,
     "firewall": firewall,
     "vpn": vpn,

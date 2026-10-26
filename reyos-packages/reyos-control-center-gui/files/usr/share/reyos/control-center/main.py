@@ -35,6 +35,7 @@ from controller_setup import ControllerSetupWorker  # noqa: E402
 import game_shrink  # Qt-free: add downloaded games, shrink them to CHD
 import steam_options  # Qt-free: GameMode/MangoHud in Steam games' launch options
 import pc_games  # Qt-free: Windows games through Lutris (ReyOS Games' PC tab)
+import security_scan  # Qt-free: ReyOS Scan (ClamAV), reports and quarantine
 import flatpak_updates  # Qt-free: pending Flatpak updates, readable update errors
 import app_updates  # Qt-free: ReyOS + Flatpak updates for the "Updates are ready" dialog
 from emulation import EMU_SYSTEMS, GAMES_DIR, RETROARCH_REYOS_CFG
@@ -773,6 +774,22 @@ class ActionWorker(_Worker):
             self.finished_ok.emit(False, str(e))
 
 
+class MalwareScanWorker(_Worker):
+    """One ReyOS Scan run (security_scan.Scan) off the GUI thread."""
+    progress = Signal(int, str)
+    done = Signal("QVariantMap")
+
+    def __init__(self, paths, kind, include=None):
+        super().__init__()
+        self.scan = security_scan.Scan(paths, kind, include, progress=self.progress.emit)
+
+    def run(self):
+        try:
+            self.done.emit(self.scan.run())
+        except Exception as e:
+            self.done.emit({"status": "not_verified", "summary": f"The scan failed: {e}", "findings": [], "errors": [str(e)]})
+
+
 class InfoWorker(_Worker):
     ready = Signal("QVariantMap")
 
@@ -825,6 +842,10 @@ class Backend(QObject):
     vpnStatusReady = Signal("QVariantMap")
     vpnConfigSelected = Signal(str)
     securityOverviewReady = Signal("QVariantMap")
+    malwareLog = Signal(str)
+    malwareActionFinished = Signal(bool, str)
+    malwareProgress = Signal(int, str)
+    malwareScanFinished = Signal("QVariantMap")
     usbGuardStatusReady = Signal("QVariantMap")
     securityUpdatesReady = Signal("QVariantList")
     usersListed = Signal("QVariantList")
@@ -2844,6 +2865,84 @@ class Backend(QObject):
             "vpnProfileCount": len(vpn.get("profiles", [])),
             "shieldsBlocked": shields_blocked,
         }
+
+    @Slot(result="QVariantMap")
+    def malwareStatus(self):
+        """Security page's Malware scan card."""
+        defs = security_scan.definitions() if security_scan.installed() else {}
+        last = security_scan.last_report() or {}
+        return {"installed": security_scan.installed(), "engine": defs.get("engine", ""),
+                "definitions": defs.get("version", ""), "definitionsDate": defs.get("date", ""),
+                "ageDays": defs.get("age_days", -1), "last": last,
+                "quarantineCount": len(security_scan.quarantined()), "quickScope": security_scan.quick_scope()}
+
+    @Slot()
+    def installMalwareScanner(self):
+        if _is_live_session():
+            self.malwareActionFinished.emit(False, "Installing the scanner is disabled in the live session — install ReyOS first.")
+            return
+
+        def task(emit):
+            emit("Installing ClamAV with any waiting system updates...")
+            if _run(["sudo", "-n", REYOS_ADMIN, "install-apps", *security_scan.PACKAGES], emit) != 0:
+                return False, "Install failed — check your network connection and try again."
+            emit("Downloading virus definitions (about 110 MB)...")
+            if _run(["sudo", "-n", REYOS_ADMIN, "malware-setup"], emit) != 0:
+                return False, "The scanner is installed, but the virus definitions couldn't be downloaded — try Update definitions later."
+            return True, "The scanner is ready. Its definitions update by themselves every day."
+        self._malware_worker = ActionWorker(task)
+        self._malware_worker.progress.connect(self.malwareLog.emit)
+        self._malware_worker.finished_ok.connect(self.malwareActionFinished.emit)
+        self._malware_worker.start()
+
+    @Slot()
+    def updateMalwareDefinitions(self):
+        def task(emit):
+            rc = _run(["sudo", "-n", REYOS_ADMIN, "malware-setup"], emit)
+            d = security_scan.definitions()
+            return (rc == 0, f"Virus definitions are up to date ({d['date']})." if rc == 0
+                    else "Couldn't update the virus definitions — check your network connection.")
+        self._malware_worker = ActionWorker(task)
+        self._malware_worker.progress.connect(self.malwareLog.emit)
+        self._malware_worker.finished_ok.connect(self.malwareActionFinished.emit)
+        self._malware_worker.start()
+
+    @Slot(str, str)
+    def startMalwareScan(self, kind, folder):
+        """kind: "quick", "home" or "folder" (then folder is the path)."""
+        worker = getattr(self, "_scan_worker", None)
+        if worker is not None and worker.isRunning():
+            return
+        paths = {"quick": security_scan.quick_scope(), "home": [str(Path.home())], "folder": [folder]}[kind]
+        self._scan_worker = MalwareScanWorker(paths, kind)
+        self._scan_worker.progress.connect(self.malwareProgress.emit)
+        self._scan_worker.done.connect(self.malwareScanFinished.emit)
+        self._scan_worker.start()
+
+    @Slot()
+    def cancelMalwareScan(self):
+        worker = getattr(self, "_scan_worker", None)
+        if worker is not None and worker.isRunning():
+            worker.scan.cancel()
+
+    @Slot(str, str, result="QVariantMap")
+    def quarantineFile(self, path, signature):
+        ok, message = security_scan.quarantine(path, signature)
+        return {"ok": ok, "message": message}
+
+    @Slot(result="QVariantList")
+    def quarantineItems(self):
+        return security_scan.quarantined()
+
+    @Slot(str, result="QVariantMap")
+    def restoreQuarantined(self, qid):
+        ok, message = security_scan.restore(qid)
+        return {"ok": ok, "message": message}
+
+    @Slot(str, result="QVariantMap")
+    def deleteQuarantined(self, qid):
+        ok, message = security_scan.delete(qid)
+        return {"ok": ok, "message": message}
 
     @Slot()
     def refreshSecurityOverview(self):

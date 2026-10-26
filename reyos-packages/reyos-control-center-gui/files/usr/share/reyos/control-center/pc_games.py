@@ -75,6 +75,19 @@ def list_games():
     return [{"id": r[0], "name": r[1] or r[2], "slug": r[2], "runner": r[3]} for r in rows]
 
 
+def game_exe(game_id):
+    """A Lutris game's .exe path ("" if unknown), read from its config."""
+    try:
+        con = sqlite3.connect(f"file:{LUTRIS_DB}?mode=ro", uri=True, timeout=2)
+        row = con.execute("SELECT configpath FROM games WHERE id = ?", (int(game_id),)).fetchone()
+        con.close()
+        import yaml  # python-yaml comes with Lutris
+        config = yaml.safe_load((Path.home() / ".local/share/lutris/games" / f"{row[0]}.yml").read_text())
+        return str((config.get("game") or {}).get("exe") or "")
+    except Exception:
+        return ""
+
+
 def cover(slug):
     """Box art (Lutris's coverart, downloaded by fetch_cover or Lutris), else
     the icon from the game's .exe, else Lutris's small banner."""

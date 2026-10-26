@@ -404,9 +404,53 @@ Kirigami.Page {
         ]
     }
 
+    // Right-click > Scan for viruses (Windows games): result window.
+    property bool gameScanning: false
+    Kirigami.PromptDialog {
+        id: scanDialog
+        property var report: ({ findings: [] })
+        title: report.status === "found" ? "Threat found"
+               : report.status === "clean" ? "No known threats found"
+               : report.status === "no_scanner" ? "Malware scanner not set up"
+               : "Not verified"
+        subtitle: report.status === "no_scanner"
+                  ? "Install it in Control Center → Security → Malware scan (about 300 MB), then scan again."
+                  : (report.summary || "") + (report.status === "found"
+                     ? "\n\n" + report.findings.map(function (f) { return f.path + "\n   " + f.signature }).join("\n")
+                     : report.status === "clean" ? "\nA scan finds known threats only: it isn't a guarantee." : "")
+        standardButtons: Kirigami.Dialog.Close
+        customFooterActions: [
+            Kirigami.Action {
+                text: "Move to quarantine"
+                icon.name: "security-medium"
+                visible: scanDialog.report.status === "found"
+                onTriggered: {
+                    var msgs = []
+                    for (var i = 0; i < scanDialog.report.findings.length; i++) {
+                        var f = scanDialog.report.findings[i]
+                        msgs.push(backend.quarantineFile(f.path, f.signature).message)
+                    }
+                    scanDialog.close()
+                    applicationWindow().notify(msgs.join(" "))
+                }
+            },
+            Kirigami.Action {
+                text: "Set up the scanner"
+                icon.name: "security-high"
+                visible: scanDialog.report.status === "no_scanner"
+                onTriggered: { scanDialog.close(); backend.openSecurity() }
+            }
+        ]
+    }
+
     Connections {
         target: backend
         function onGamesChanged() { reload() }
+        function onGameScanFinished(report) {
+            gameScanning = false
+            scanDialog.report = report
+            scanDialog.open()
+        }
         function onPcAddFinished(ok, text, path) {
             adding = false
             if (text === "") return  // cancelled in a dialog
@@ -778,6 +822,18 @@ Kirigami.Page {
                             Controls.MenuSeparator {}
                             Controls.MenuItem { text: "NVIDIA graphics card (faster)"; checkable: true; checked: model.gpu === "nvidia"; onTriggered: setGpu(index, model.path, "nvidia") }
                             Controls.MenuItem { text: "Built-in graphics (cooler, longer battery)"; checkable: true; checked: model.gpu === "builtin"; onTriggered: setGpu(index, model.path, "builtin") }
+                        }
+                        Controls.MenuItem {
+                            visible: model.systemId === "pc"
+                            height: visible ? implicitHeight : 0
+                            text: gameScanning ? "Scanning for viruses…" : "Scan for viruses"
+                            icon.name: "security-high"
+                            enabled: !gameScanning
+                            onTriggered: {
+                                gameScanning = true
+                                applicationWindow().notify("Scanning " + model.title + " for viruses… this can take a few minutes.")
+                                backend.scanGame(model.path)
+                            }
                         }
                         Controls.MenuItem {
                             visible: model.systemId === "pc"
