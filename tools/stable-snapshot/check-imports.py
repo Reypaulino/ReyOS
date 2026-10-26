@@ -12,6 +12,10 @@ import sys
 from pathlib import Path
 
 ROOT = Path(sys.argv[1] if len(sys.argv) > 1 else "/usr/share/reyos")
+# Apps ReyOS installs only when asked (ReyOS Games installs Lutris on the
+# first "Add PC game"); their modules are imported by helper code that only
+# runs once they're there, so they count as optional, not missing.
+ON_DEMAND = {"lutris"}
 QML_IMPORT_RE = re.compile(r"^\s*import\s+([A-Za-z_][\w.]*)(?:\s+[\d.]+)?(?:\s+as\s+\w+)?\s*$")
 
 
@@ -56,7 +60,8 @@ def python_statements(py_files, local):
                 if node.module.split(".")[0] not in local:
                     names = ", ".join(sorted(a.name for a in node.names if a.name != "*"))
                     found = [f"from {node.module} import {names}" if names else f"import {node.module}"]
-            (optional if id(node) in opt else stmts).update(found)
+            on_demand = any(f.split()[1].split(".")[0] in ON_DEMAND for f in found)
+            (optional if id(node) in opt or on_demand else stmts).update(found)
     return sorted(stmts), sorted(optional - stmts)
 
 
