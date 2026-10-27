@@ -134,6 +134,36 @@ class TestScan(FakeClam):
         self.assertLess(time.time() - t, 10)
         self.assertEqual(r["status"], "cancelled")
 
+    def test_second_scan_is_refused_while_one_runs(self):
+        f = self.write("Downloads/a.txt")
+        self.clam([f"Scanning {f}", f"{f}: OK"])
+        os.environ["FAKE_CLAM_SLEEP"] = "3"
+        first = core.Scan([f.parent], "folder")
+        result = {}
+        t = threading.Thread(target=lambda: result.update(first.run()))
+        t.start()
+        time.sleep(0.5)
+        del os.environ["FAKE_CLAM_SLEEP"]
+        second = core.Scan([f.parent], "folder").run()
+        self.assertEqual(second["status"], "not_verified")
+        self.assertIn("Another ReyOS Scan", second["summary"])
+        t.join()
+        self.assertEqual(result["status"], "clean")
+        # and once it's done, the next one runs
+        self.assertEqual(core.Scan([f.parent], "folder").run()["status"], "clean")
+
+    def test_quick_leaves_disc_images_out_without_failing(self):
+        iso = self.write("Downloads/Game (USA).ISO", b"x")
+        f = self.write("Downloads/a.txt")
+        self.clam([f"Scanning {f}", f"{f}: OK", f"{iso}: Excluded"])
+        r = core.Scan([f.parent], "quick", leave_out=core.DISC_IMAGE_EXTS).run()
+        self.assertEqual(r["status"], "clean")
+        self.assertEqual(r["left_out"], [str(iso)])
+        self.assertIn("1 disc image left out", r["summary"])
+        args = self.args.read_text().splitlines()
+        self.assertIn("--exclude=" + core._ext_regex(core.DISC_IMAGE_EXTS), args)
+        self.assertIn("[iI][sS][oO]", core._ext_regex(core.DISC_IMAGE_EXTS))
+
     def test_reports_are_private_and_unique(self):
         self.clam([])
         core.Scan([self.home], "home").run()
@@ -169,6 +199,15 @@ class TestProgramCheck(FakeClam):
         self.assertEqual(r["checked_before"], 1)
         listed = [a for a in self.args.read_text().split("\n") if a.startswith("--file-list=")]
         self.assertTrue(listed)
+
+    def test_cached_check_saves_its_real_summary(self):
+        exe = self.write("Games/X/game.exe", b"MZ")
+        self.clam([f"Scanning {exe}", f"{exe}: OK"])
+        core.check_program(exe)
+        r = core.check_program(exe)
+        self.assertIn("unchanged since an earlier check", r["summary"])
+        self.assertEqual(core.last_report()["summary"], r["summary"])
+        self.assertEqual(len(core.history()), 2)
 
     def test_found_is_not_cached(self):
         exe = self.write("Games/X/game.exe", b"v1")
