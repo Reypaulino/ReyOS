@@ -3,8 +3,8 @@ pkgname=reyos-update-channel
 # pkgver is the Arch Linux Archive snapshot the stable channel uses
 # (files/usr/share/reyos/stable-snapshot). Move both forward together, only
 # after the snapshot passed .github/workflows/stable-snapshot-check.yml.
-pkgver=2026.10.19
-pkgrel=2
+pkgver=2026.10.24
+pkgrel=1
 pkgdesc="ReyOS update channels: stable (tested Arch snapshot, default) or rolling"
 arch=('any')
 license=('MIT')
