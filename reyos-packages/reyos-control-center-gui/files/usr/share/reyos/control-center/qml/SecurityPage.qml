@@ -296,6 +296,28 @@ Kirigami.ScrollablePage {
                     }
                 }
 
+                // What the last scan couldn't check, and the disc images Quick
+                // scan leaves out (listed apart, they don't make it "not verified").
+                Controls.Label {
+                    readonly property var notChecked: (lastScan.skipped || []).map(function (s) { return s.path })
+                                                      .concat((lastScan.errors || []).map(function (e) { return e.replace(/: [^:]*$/, "") }))
+                    Layout.fillWidth: true
+                    wrapMode: Text.Wrap
+                    opacity: 0.8
+                    visible: malware.installed && notChecked.length > 0
+                    text: "Not checked (too big, packed too deep or unreadable): " + notChecked.slice(0, 5).map(function (p) {
+                              return p.replace(/^.*\//, "") }).join(", ") + (notChecked.length > 5 ? " and " + (notChecked.length - 5) + " more" : "")
+                }
+                Controls.Label {
+                    readonly property var leftOut: lastScan.left_out || []
+                    Layout.fillWidth: true
+                    wrapMode: Text.Wrap
+                    opacity: 0.8
+                    visible: malware.installed && leftOut.length > 0
+                    text: "Left out (disc images, scan their folder to include them): " + leftOut.slice(0, 5).map(function (p) {
+                              return p.replace(/^.*\//, "") }).join(", ") + (leftOut.length > 5 ? " and " + (leftOut.length - 5) + " more" : "")
+                }
+
                 // A scan or an install running
                 ColumnLayout {
                     Layout.fillWidth: true

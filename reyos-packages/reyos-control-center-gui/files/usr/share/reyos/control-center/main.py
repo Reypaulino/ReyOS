@@ -780,9 +780,9 @@ class MalwareScanWorker(_Worker):
     progress = Signal(int, str)
     done = Signal("QVariantMap")
 
-    def __init__(self, paths, kind, include=None):
+    def __init__(self, paths, kind):
         super().__init__()
-        self.scan = security_scan.Scan(paths, kind, include, progress=self.progress.emit)
+        self.scan = security_scan.Scan(paths, kind, progress=self.progress.emit)
 
     def run(self):
         try:

@@ -132,10 +132,11 @@ class AddPcGameWorker(QThread):
                                   "connection), so this game would be added without a virus check.",
                                   "--continue-label", "Add without checking")
                 return rc == 0
-        paths, include = security_scan.program_scope(exe)
+        # The .exe and the programs, DLLs and archives next to it; files found
+        # clean before with the same definitions and unchanged are skipped.
         self.progress.emit(f"Checking {Path(exe).name} for viruses before anything runs...", -1)
-        report = security_scan.Scan(paths, "addgame", include, progress=lambda n, _p: self.progress.emit(
-            f"Checking for viruses before anything runs: {n} files...", -1)).run()
+        report = security_scan.check_program(exe, progress=lambda n, _p: self.progress.emit(
+            f"Checking for viruses before anything runs: {n} files...", -1))
         if report["status"] == "clean":
             self.progress.emit(report["summary"], -1)
             return True
