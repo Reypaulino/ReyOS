@@ -775,7 +775,7 @@
         <div class="platform-card">
           <div class="platform-icon">🎛️</div>
           <div class="platform-name">Control Center</div>
-          <p class="platform-desc">One settings app instead of a dozen. Updates (a read-only check first, then the whole system updated together so it never ends up half-updated, with a Timeshift snapshot before each update once Backup is set up), a Backup Center, a unified Security page (firewall, bring-your-own WireGuard VPN, Shields, permissions, opt-in USB device protection), CVE-tracked security updates, one-click NVIDIA driver install, network/Wi-Fi/sound/users, guarded permission repair, and live power &amp; performance tuning — including zram, systemd-oomd protection, and adaptive preload for faster everyday responsiveness and boot-time follow-through — organized as Home, Essentials, and Advanced. Updates come from a tested snapshot of Arch (the stable channel), so a half-finished Arch update can't break your apps; a Looks page restyles the whole desktop in one click; and anything that changes the system asks for your password. Every install also keeps a backup kernel in the boot menu, so a bad kernel update still leaves you a way back in. When updates are ready, Control Center offers to install ReyOS's own apps and Flatpak apps such as Reyva together, in one click.</p>
+          <p class="platform-desc">One settings app instead of a dozen. Updates (a read-only check first, then the whole system updated together so it never ends up half-updated, with a Timeshift snapshot before each update once Backup is set up), a Backup Center, a unified Security page (firewall, bring-your-own WireGuard VPN, Shields, permissions, opt-in USB device protection, on-demand malware scans with ClamAV and a quarantine you can restore from), CVE-tracked security updates, one-click NVIDIA driver install, network/Wi-Fi/sound/users, guarded permission repair, and live power &amp; performance tuning — including zram, systemd-oomd protection, and adaptive preload for faster everyday responsiveness and boot-time follow-through — organized as Home, Essentials, and Advanced. Updates come from a tested snapshot of Arch (the stable channel), so a half-finished Arch update can't break your apps; a Looks page restyles the whole desktop in one click; and anything that changes the system asks for your password. Every install also keeps a backup kernel in the boot menu, so a bad kernel update still leaves you a way back in. When updates are ready, Control Center offers to install ReyOS's own apps and Flatpak apps such as Reyva together, in one click.</p>
         </div>
         <div class="platform-card">
           <div class="platform-icon">🛠️</div>
@@ -869,7 +869,7 @@
         </div>
         <div class="status-card">
           <div class="status-card-title">Firewall &amp; Security</div>
-          <div class="status-row"><span class="status-dot live"></span> Working — firewall, bring-your-own VPN, Shields, USB protection</div>
+          <div class="status-row"><span class="status-dot live"></span> Working — firewall, bring-your-own VPN, Shields, USB protection, malware scan (ClamAV)</div>
         </div>
         <div class="status-card">
           <div class="status-card-title">Performance Tooling (zram, OOM protection, adaptive preload)</div>
@@ -882,6 +882,10 @@
         <div class="status-card">
           <div class="status-card-title">Gaming (Steam, emulators, GameMode)</div>
           <div class="status-row"><span class="status-dot live"></span> Working — tested on real hardware, and it runs fast</div>
+        </div>
+        <div class="status-card">
+          <div class="status-card-title">Remote Play (Moonlight to TV and phone)</div>
+          <div class="status-row"><span class="status-dot wip"></span> New — streaming to an iPhone works; Apple TV and laptop tests in progress</div>
         </div>
         <div class="status-card">
           <div class="status-card-title">Public ISO Download</div>
@@ -1025,6 +1029,16 @@
           <div class="platform-icon">💾</div>
           <div class="platform-name">Add games, save space</div>
           <p class="platform-desc"><strong>Add games…</strong> takes a <code>.zip</code>, <code>.7z</code>, <code>.rar</code>, <code>.iso</code> or <code>.cue</code> for PlayStation, PlayStation 2 or PSP, works out which console it's for, and stores it in a smaller file that plays the same (one PlayStation 2 game went from 4.66 GB to 1.02 GB). Games already in the library can be shrunk too, and the originals are only deleted when you say so.</p>
+        </div>
+        <div class="platform-card">
+          <div class="platform-icon">🪟</div>
+          <div class="platform-name">Windows games</div>
+          <p class="platform-desc"><strong>Add PC game…</strong> in ReyOS Games takes a game's installer or its <code>.exe</code> and runs it through Lutris and Proton, with GameMode, the overlay and (on a laptop) the NVIDIA card set up for you. Before anything runs, ReyOS checks the file and the programs next to it for known malware. Right-click a game to uninstall it while keeping your saves; adding it again later offers to put them back.</p>
+        </div>
+        <div class="platform-card">
+          <div class="platform-icon">📺</div>
+          <div class="platform-name">Remote Play (optional)</div>
+          <p class="platform-desc">Play on your TV or phone: the game runs on ReyOS and the free <strong>Moonlight</strong> app on an Apple TV, iPhone, iPad, Android device or another PC shows it, with sound and your controller. Off until you turn it on in Control Center → Gaming; each device pairs with a PIN, and only your home network and Tailscale (for playing away from home) are let through the firewall. No router ports are opened.</p>
         </div>
       </div>
 
