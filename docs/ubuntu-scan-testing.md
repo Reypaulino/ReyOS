@@ -58,9 +58,27 @@ The limits now mean 500 MB unpacked per file or archive. A highly compressible a
 
 What this shows: when Downloads/Desktop hold game folders and disc images, a "quick" scan isn't quick, and big ROMs and ISOs always keep it from reading "no known threats". To decide with the owner: say up front how much is about to be scanned, and maybe leave disc images (.iso/.chd/.cso) out of Quick scan or show them apart from real problems.
 
+## 2026-10-27: window app, .deb and ReyOS adapter
+
+Ubuntu 24.04.5 LTS (the T470p), ClamAV 1.5.4, definitions 28165.
+
+- **Core additions**, with tests: only one scan at a time (a lock in the data folder: a second scan is refused with "Another ReyOS Scan is running", never run alongside, since each clamscan holds about 1 GB); Quick scan leaves disc images out (.iso .chd .cso .img .rvz .wbfs, matched case-insensitively) and lists them apart, so they no longer make every quick scan "not verified" (the owner's question from 10-26; decided this way pending the owner's OK). Two real bugs fixed while testing on ReyOS: a pre-run check whose files all came from the cache saved its report with the placeholder summary ("Nothing new to check."), and two reports saved in the same second sorted the wrong way, so "last scan" showed the older one. Report names now carry milliseconds.
+- **Unit tests:** 44, all passing on this machine with real ClamAV (2 skipped: the optional 450 MB archive test, and the ReyOS-copy check runs in the repo checkout). 2 min 23 s wall, peak RSS 1.1 GB.
+- **.deb:** `packaging/build-deb.sh` → `reyos-scan_0.1.0_all.deb` (16 KB). Built twice → same SHA-256 (reproducible). `sudo apt install ./…deb` pulled `python3-pyqt6` and installed cleanly; `reyos-scan status` worked from `/usr/bin`; `desktop-file-validate` OK; `apt remove` left none of its files; reinstalled.
+- **GUI smoke test** (`tests/gui_smoke.py`, offscreen, real ClamAV, against both the source tree and the installed .deb): Quick scan with Cancel shown, a second scan refused meanwhile, EICAR found, the disc image listed apart, finding row + Move to quarantine, quarantine then restore with identical bytes, History row, a clean single file, Cancel → "cancelled". All passed. Screenshots checked by eye.
+- **Found on this machine:** `clamav-freshclam.service` is now **disabled** (it was running on 10-26; not changed by this work). The app says so and gives `sudo systemctl enable --now clamav-freshclam`. Left as it is for the owner to decide.
+
+## ReyOS (Dev VM, 2026-10-27)
+
+control-center-gui 1.0.0-147 built from this branch (not published), ClamAV 1.5.4, definitions 28166:
+- `security_scan.py` is now an adapter over `reyos_scan_core.py` (identical to `core.py`, checked by the test); same data folder, so v1's report and quarantine are still listed.
+- Backend with real ClamAV: quick-type scan found EICAR and left a .chd out; Add PC game's check (now `check_program`) took 20.6 s the first time and 0.0 s the second (cache), and caught a DLL replaced by EICAR afterwards; quarantine + restore matched.
+- Control Center → Security, clicked: Quick scan over Downloads/Desktop/~/Games showed the EICAR threat with Move to quarantine, "Not checked: Pokemon - SoulSilver Version (USA).zip" (over the limits; v1 would have counted it clean without saying so) and "Left out (disc images): test-disc.iso"; Move to quarantine moved the file (SHA-256 275a021bbfb6…, EICAR's).
+
 ## PENDING (not run yet)
 
-- Desktop app (`gui.py`), launchers and `.deb`: not built yet. Then `sudo apt install ./reyos-scan_0.1.0_all.deb` on this machine, the launcher in the GNOME app grid, and every button. Then `apt remove` (reports and quarantine stay in `~/.local/share/reyos/security`).
-- External drives (the owner, physically): a USB stick formatted NTFS and one formatted exFAT, mounted by GNOME under `/media/$USER/`; the "External drive" scan; unplugging a drive mid-scan (expected: not verified or cancelled, never clean, no crash).
+- The owner clicking through the installed window on the Ubuntu desktop (it shows in the app grid as "ReyOS Scan").
+- External drives (the owner, physically): a USB stick formatted NTFS and one formatted exFAT, mounted by GNOME under `/media/$USER/`; External drive…; unplugging a drive mid-scan (expected: not verified or cancelled, never clean, no crash).
 - A full home scan on this machine (time, CPU, RAM).
-- ReyOS adapter (Control Center's `security_scan.py` over a copy of `core.py`), tested on the Dev VM.
+- ReyOS on the laptop (HD 630 / 940MX): Add PC game with a real installer (check before it runs, cache on a second add), ReyOS Games right-click Scan for viruses, Security → Quick scan with the SD card's game folder, Steam/Lutris/PCSX2 unaffected.
+- Publishing: nothing is published. The ReyOS side ships as control-center-gui 147 only after the owner approves.

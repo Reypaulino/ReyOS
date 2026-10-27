@@ -18,6 +18,7 @@ Quarantine only on request, per file: copied into a private folder (0700),
 stored read-only and not executable, SHA-256 checked, the original removed
 only if it's still the same file. Restore checks the hash again. Nothing is
 deleted unasked."""
+import fcntl
 import hashlib
 import json
 import os
@@ -48,12 +49,23 @@ PROGRAM_EXTS = {".exe", ".dll", ".msi", ".bat", ".cmd", ".ps1", ".vbs", ".scr", 
 LIMITS = ["--max-filesize=500M", "--max-scansize=500M", "--max-recursion=16", "--max-files=20000",
           "--alert-exceeds-max=yes"]
 LIMIT_SIGNATURE = "Heuristics.Limits.Exceeded"
+# Quick scan leaves disc images out (game ISOs/CHDs: gigabytes each, always
+# over the limits above, so they'd only make every quick scan "not
+# verified"). They're listed apart in the report; a folder or home scan
+# still includes them.
+DISC_IMAGE_EXTS = ("iso", "chd", "cso", "img", "rvz", "wbfs")
 _FOUND_RE = re.compile(r"^(.*): (.+) FOUND$")
 _ERROR_RE = re.compile(r"^(.*): (.+) ERROR$")
 # Any other "path: message" line is a file that wasn't checked ("Access
 # denied" comes without ERROR), except these.
 _RESULT_RE = re.compile(r"^(/.*): (.+)$")
 _NOT_PROBLEMS = {"OK", "Empty file", "Symbolic link", "Excluded"}
+
+
+def _ext_regex(exts):
+    """clamscan's --exclude takes a POSIX regex (no (?i)): [iI][sS][oO]."""
+    alts = ["".join(f"[{c.lower()}{c.upper()}]" if c.isalpha() else re.escape(c) for c in ext) for ext in exts]
+    return r"\.(" + "|".join(alts) + ")$"
 
 
 def installed():
@@ -150,8 +162,9 @@ class Scan:
     exact list of files. run() blocks; cancel() may be called from another
     thread; progress(files_checked, current_path) is called as it goes."""
 
-    def __init__(self, paths, kind, progress=None, files=None):
+    def __init__(self, paths, kind, progress=None, files=None, leave_out=()):
         self.paths, self.kind = [str(p) for p in paths], kind
+        self.leave_out = tuple(leave_out)
         self.files = [str(f) for f in files] if files is not None else None
         self.progress = progress or (lambda n, path: None)
         self.proc = None
@@ -166,7 +179,7 @@ class Scan:
         defs = definitions()
         report = {"schema": SCHEMA, "app": f"reyos-scan {VERSION}", "kind": self.kind, "scope": self.paths,
                   "started": time.time(), "engine": defs["engine"], "definitions": defs["version"],
-                  "definitions_date": defs["date"], "files": 0, "findings": [], "skipped": [], "errors": []}
+                  "definitions_date": defs["date"], "files": 0, "findings": [], "skipped": [], "errors": [], "left_out": []}
         if not installed():
             return self._finish(report, "not_verified", "The scanner (ClamAV) isn't installed.", save)
         if not defs["version"]:
@@ -176,6 +189,8 @@ class Scan:
         cmd = ["clamscan", "--recursive", "--verbose", "--stdout", "--no-summary", "--cross-fs=no",
                "--follow-dir-symlinks=0", "--follow-file-symlinks=0",
                f"--exclude-dir=^{re.escape(str(QUARANTINE))}", *LIMITS]
+        if self.leave_out:
+            cmd.append(f"--exclude={_ext_regex(self.leave_out)}")
         listfile = None
         if self.files is not None:
             if not self.files:
@@ -186,17 +201,30 @@ class Scan:
             cmd.append(f"--file-list={listfile.name}")
         else:
             cmd += ["--"] + self.paths
+        # One scan at a time (each clamscan holds about 1 GB of definitions):
+        # a second one, from another window or a game check, is refused.
+        DATA.mkdir(parents=True, exist_ok=True)
+        lock = os.open(DATA / "scan.lock", os.O_RDWR | os.O_CREAT, 0o600)
         try:
-            self.proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                         stdin=subprocess.DEVNULL, text=True, errors="replace")
-        except OSError as e:
-            return self._finish(report, "not_verified", f"The scanner couldn't start: {e}", save)
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            os.close(lock)
+            if listfile is not None:
+                os.unlink(listfile.name)
+            return self._finish(report, "not_verified", "Another ReyOS Scan is running: try again when it has "
+                                "finished.", save)
         try:
+            try:
+                self.proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                             stdin=subprocess.DEVNULL, text=True, errors="replace")
+            except OSError as e:
+                return self._finish(report, "not_verified", f"The scanner couldn't start: {e}", save)
             with self.proc.stdout:
                 for line in self.proc.stdout:
                     self._line(report, line.rstrip("\n"))
             rc = self.proc.wait()
         finally:
+            os.close(lock)
             if listfile is not None:
                 os.unlink(listfile.name)
         if self.cancelled:
@@ -205,7 +233,10 @@ class Scan:
             n = len(report["findings"])
             return self._finish(report, "found", f"{n} threat{'s' if n > 1 else ''} found.", save)
         if rc == 0 and not report["errors"] and not report["skipped"]:
-            return self._finish(report, "clean", f"No known threats found in {report['files']} files.", save)
+            left = len(report["left_out"])
+            return self._finish(report, "clean", f"No known threats found in {report['files']} files."
+                                + (f" {left} disc image{'s' if left > 1 else ''} left out (scan their folder to "
+                                   "include them)." if left else ""), save)
         problems = []
         if report["skipped"]:
             problems.append(f"{len(report['skipped'])} too big or too deeply packed to check")
@@ -235,21 +266,32 @@ class Scan:
                 report["errors"].append(f"{m.group(1)}: {m.group(2)}")
         elif line.startswith(("WARNING:", "ERROR:", "LibClamAV Error")):
             report["errors"].append(line)
+        elif (m := _RESULT_RE.match(line)) and m.group(2) == "Excluded" and self.leave_out:
+            if m.group(1).lower().endswith(tuple("." + e for e in self.leave_out)):
+                report["left_out"].append(m.group(1))
         elif (m := _RESULT_RE.match(line)) and m.group(2) not in _NOT_PROBLEMS:
             report["errors"].append(f"{m.group(1)}: {m.group(2)}")
 
     def _finish(self, report, status, summary, save):
         report.update(status=status, summary=summary, finished=time.time())
         if save:
-            REPORTS.mkdir(parents=True, exist_ok=True)
-            os.chmod(DATA, 0o700)
-            name = time.strftime("%Y%m%d-%H%M%S", time.localtime(report["started"])) + f"-{report['kind']}.json"
-            path = REPORTS / name
-            n = 1
-            while path.exists():
-                path, n = REPORTS / name.replace(".json", f"-{n}.json"), n + 1
-            path.write_text(json.dumps(report, indent=1))
+            save_report(report)
         return report
+
+
+def save_report(report):
+    """Into the history (one private JSON file per scan)."""
+    REPORTS.mkdir(parents=True, exist_ok=True)
+    os.chmod(DATA, 0o700)
+    # Milliseconds too: names sort in time order (history, last_report), even
+    # for two reports in the same second.
+    started = report["started"]
+    stamp = time.strftime("%Y%m%d-%H%M%S", time.localtime(started)) + f"{int(started * 1000) % 1000:03d}"
+    path = REPORTS / f"{stamp}-{report['kind']}.json"
+    n = 1
+    while path.exists():
+        path, n = REPORTS / f"{stamp}{n:02d}-{report['kind']}.json", n + 1
+    path.write_text(json.dumps(report, indent=1))
 
 
 # ---- Pre-run check (Windows games): only files not already checked ----------
@@ -279,7 +321,8 @@ def check_program(target, progress=None):
         if cache.get(h) != defs["version"] or not defs["version"]:
             todo.append(f)
     scan = Scan([str(Path(target).parent)], "addgame", progress=progress, files=todo)
-    report = scan.run()
+    # Saved below, once the summary says what the cache skipped.
+    report = scan.run(save=False)
     report["checked_before"] = len(files) - len(todo)
     if report["status"] == "clean" and defs["version"]:
         bad = {f["path"] for f in report["findings"]}
@@ -291,6 +334,7 @@ def check_program(target, progress=None):
         if report["checked_before"]:
             report["summary"] = (f"No known threats found ({len(todo)} files checked now, "
                                  f"{report['checked_before']} unchanged since an earlier check).")
+    save_report(report)
     return report
 
 

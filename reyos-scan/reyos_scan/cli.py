@@ -35,6 +35,8 @@ def _print_report(report, as_json):
         print(f"  THREAT  {f['path']}  ({f['signature']}, sha256 {f['sha256'][:16]}…)")
     for s in report.get("skipped", []):
         print(f"  NOT CHECKED  {s['path']}  ({s['reason']})")
+    for p in report.get("left_out", [])[:20]:
+        print(f"  LEFT OUT (disc image)  {p}")
     for e in report.get("errors", [])[:20]:
         print(f"  ERROR  {e}")
     if report.get("definitions"):
@@ -63,7 +65,8 @@ def cmd_status(args):
           + (f" ({defs['age_days']} days old)" if defs["age_days"] >= 0 else ""))
     print({"service": "Definitions update automatically (clamav-freshclam service).",
            "timer": "Definitions update automatically every day (clamav-freshclam-once timer).",
-           "manual": "Definitions don't update by themselves: run `sudo freshclam`."}[info["updater"]])
+           "manual": "Definitions don't update by themselves: turn the updater on with "
+                      "`sudo systemctl enable --now clamav-freshclam`, or run `sudo freshclam` once."}[info["updater"]])
     if last:
         print(f"Last scan ({last['kind']}, {time.strftime('%Y-%m-%d %H:%M', time.localtime(last['finished']))}): {last['summary']}")
     print(f"In quarantine: {info['quarantined']}")
@@ -81,8 +84,10 @@ def _run_scan(scan, args):
 
 
 def cmd_scan(args):
+    leave_out = ()
     if args.quick:
         paths, kind = core.quick_scope(), "quick"
+        leave_out = core.DISC_IMAGE_EXTS
     elif args.home:
         paths, kind = [os.path.expanduser("~")], "home"
     elif args.paths:
@@ -90,7 +95,7 @@ def cmd_scan(args):
     else:
         print("Say what to scan: --quick, --home or one or more paths.", file=sys.stderr)
         return 2
-    return _run_scan(core.Scan(paths, kind, progress=None if args.json else _progress), args)
+    return _run_scan(core.Scan(paths, kind, progress=None if args.json else _progress, leave_out=leave_out), args)
 
 
 def cmd_check(args):
