@@ -13,6 +13,7 @@ from pathlib import Path
 def needs_password(action, args):
     return (action in ("service", "remove-package", "autologin")
             or (action in ("firewall", "usbguard") and args[:1] == ["disable"])
+            or (action == "remote-play-firewall" and args[:1] == ["on"])
             or (action == "time" and args[:1] == ["set"]))
 
 
@@ -139,6 +140,9 @@ APP_PACKAGES = {
     "lib32-vulkan-intel", "lib32-vulkan-radeon", "lib32-vulkan-nouveau",
     # The NVIDIA driver is built per kernel; the LTS backup kernel (reyos-boot) needs its headers.
     "linux-lts-headers",
+    # Remote Play (Gaming page, ReyOS Games): Sunshine from ReyOS's repo, vainfo
+    # and Intel's VA-API driver (the video encoder on most laptops).
+    "sunshine", "libva-utils", "intel-media-driver",
 }
 
 
@@ -234,6 +238,41 @@ def firewall(args):
         need(len(rest) == 1 and rest[0].isdigit(), "usage: firewall delete RULE_NUMBER")
         return run("ufw", "--force", "delete", rest[0])
     raise Refused(f"unknown firewall action: {verb}")
+
+
+# Remote Play: Moonlight's ports (never 47990, Sunshine's web settings), only from
+# private home networks and from Tailscale's interface. "on" needs the password.
+REMOTE_PLAY_COMMENT = "ReyOS Remote Play"
+REMOTE_PLAY_SOURCES = ("192.168.0.0/16", "10.0.0.0/8", "172.16.0.0/12")
+REMOTE_PLAY_PORTS = (("47984,47989,48010", "tcp"), ("47998:48000,48002", "udp"))
+
+
+def remote_play_rules():
+    rules = []
+    for src in REMOTE_PLAY_SOURCES:
+        for ports, proto in REMOTE_PLAY_PORTS:
+            rules.append(["from", src, "to", "any", "port", ports, "proto", proto])
+        # mDNS, so Moonlight finds this PC by itself.
+        rules.append(["from", src, "to", "any", "port", "5353", "proto", "udp"])
+    for ports, proto in REMOTE_PLAY_PORTS:
+        rules.append(["in", "on", "tailscale0", "to", "any", "port", ports, "proto", proto])
+    return rules
+
+
+def remote_play_firewall(args):
+    need(len(args) == 1 and args[0] in ("on", "off"), "usage: remote-play-firewall on|off")
+    rc = 0
+    for rule in remote_play_rules():
+        if args[0] == "on":
+            cmd = ["ufw", "allow", *rule, "comment", REMOTE_PLAY_COMMENT]
+        else:
+            cmd = ["ufw", "delete", "allow", *rule]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        # Deleting a rule that isn't there isn't a failure.
+        if result.returncode != 0 and not (args[0] == "off" and "Could not delete non-existent rule" in result.stdout):
+            print(result.stdout + result.stderr, end="", file=sys.stderr)
+            rc = result.returncode
+    return rc
 
 
 # --- VPN ------------------------------------------------------------------------
@@ -464,6 +503,7 @@ ACTIONS = {
     "malware-setup": malware_setup,
     "clean-cache": clean_cache,
     "firewall": firewall,
+    "remote-play-firewall": remote_play_firewall,
     "vpn": vpn,
     "nm-import-wireguard": nm_import_wireguard,
     "usbguard": usbguard,

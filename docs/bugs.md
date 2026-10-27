@@ -6,6 +6,14 @@ This file was rewritten from scratch on 2026-08-18 after a full audit of the wor
 
 **2026-10-08 verification pass:** see `BUG_VERIFICATION_REPORT.md` for what was re-tested and how. Entries below carry a "Status 2026-10-08" line where they were checked; resolved entries moved to the "Resolved" section at the end.
 
+## Remote Play: limits and untested parts (2026-10-27)
+
+control-center-gui 1.0.0-146, GitHub #22:
+- No real stream has been run yet (VM: pairing and app list only). Apple TV, iPhone, Tailscale, the HD 630 VA-API encoder and controllers over Moonlight are the owner's tests (`docs/remote-play-testing.md`).
+- Capture needs an unlocked, logged-in session with the screen on (KWin capture). Lid closed or locked = nothing or the lock screen.
+- Sunshine as a user service has no file capabilities (no KMS capture, "Failed to gain CAP_SYS_ADMIN" in its log is expected) and no CAP_SYS_NICE (EGL priority warning).
+- `sunshine` in reyos-local is a fixed upstream build: it isn't rebuilt when Arch's libraries change soname (miniupnpc, libmfx…), and the stable check only tests reyos-* packages. Recheck `ldd /usr/bin/sunshine` when promoting a snapshot.
+
 ## Login screen: Xorg crashed at boot with an HDMI screen; no login attempt reached SDDM (2026-10-26, laptop)
 
 Laptop, Oct 26 09:01: the greeter's Xorg segfaulted in `RRTellChanged` (RandR) 10 s into boot and took `sddm-greeter-qt6` with it; SDDM restarted both and the greeter came up on eDP-1 and HDMI-1. For the next 30 minutes the journal shows no authentication attempt at all (not even a failed password), so typing didn't reach the password field, probably because keyboard focus was on the other screen. First boot with the HDMI screen attached. Not reproduced, not fixed. Cores: `/var/lib/systemd/coredump/core.Xorg.0.*` and `core.sddm-greeter-qt.*` on the laptop.

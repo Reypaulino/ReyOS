@@ -23,6 +23,7 @@ import emulation  # noqa: E402
 import game_shrink  # noqa: E402
 import pc_games  # noqa: E402
 import security_scan  # noqa: E402
+from remote_play_backend import RemotePlayBackend  # noqa: E402
 from controller_setup import ControllerSetupWorker  # noqa: E402
 from emulation import EMU_SYSTEMS  # noqa: E402
 
@@ -169,6 +170,17 @@ class AddPcGameWorker(QThread):
         if rc != 0 or not exe:
             self.finished_ok.emit(True, "", [])
             return
+        drive = pc_games.temporary_drive(exe)
+        if drive:
+            rc, _ = self._ask("--warningcontinuecancel",
+                              f"{Path(exe).name} is on \"{drive}\", a drive that's only there until you restart "
+                              "(it was opened in Dolphin, or it's an SD card or USB drive). After a restart the "
+                              "game won't start until the drive is opened again.\n\nTo avoid that, copy the game "
+                              "to ~/Games first, or have the drive mounted at startup.",
+                              "--continue-label", "Add it from there")
+            if rc != 0:
+                self.finished_ok.emit(True, "", [])
+                return
         guess_installer = bool(re.search(r"(?i)setup|install", Path(exe).name))
         # kdialog's --default doesn't apply to --yesnocancel: "Yes" is always
         # the focused button, so the likelier answer goes on it.
@@ -231,12 +243,41 @@ class AddPcGameWorker(QThread):
                               "renamed, not deleted.", "--yes-label", "Turn it off", "--no-label", "Leave it")
             if rc == 0:
                 pc_games.disable_gamepad_list(game_exe)
+        restored = self._restore_saves(name, prefix, game_exe)
         self.progress.emit(f"Adding {name} to Lutris...", -1)
         ok, result = pc_games.add_to_lutris(name, game_exe, prefix, directory)
         if not ok:
             self.finished_ok.emit(False, f"Couldn't add {name} to Lutris: {result}", [])
             return
-        self.finished_ok.emit(True, f"{name} is in your library, under Windows games.", [f"lutris:{result}"])
+        self.finished_ok.emit(True, f"{name} is in your library, under Windows games." + restored, [f"lutris:{result}"])
+
+    def _restore_saves(self, name, prefix, game_exe):
+        """Saves Uninstall kept for this game (~/Games/Saves/PC/…): offered
+        back before the first start. Returns a sentence for the result."""
+        kept = pc_games.kept_saves_for(name)
+        if kept is None:
+            return ""
+        shown = str(kept).replace(str(Path.home()), "~", 1)
+        rc, _ = self._ask("--yesno", f"Saves from an earlier install of a game like {name} were kept in {shown}."
+                          "\n\nCopy them into this game? Nothing already there is replaced.",
+                          "--yes-label", "Copy my saves", "--no-label", "Start fresh")
+        if rc != 0:
+            return ""
+        if pc_games.prefix_user_dir(prefix) is None:
+            self.progress.emit("Preparing the game's Windows folder for your saves...", -1)
+            log_path = emulation.LAUNCH_LOG.with_name("pc-install.log")
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                with log_path.open("a") as log:
+                    pc_games.init_prefix(prefix, log)
+            except (OSError, subprocess.SubprocessError):
+                pass
+        try:
+            copied = pc_games.restore_saves(kept, prefix, game_exe)
+        except OSError as e:
+            return f" Your saves weren't copied ({e.strerror}); they're still in {shown}."
+        return (f" Your saves from {shown} were copied in ({copied} file{'s' if copied != 1 else ''})." if copied
+                else f" No saves were copied: they're still in {shown}.")
 
 
 class TaskWorker(QThread):
@@ -658,6 +699,13 @@ class GamesBackend(QObject):
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
 
     @Slot()
+    def openRemotePlaySetup(self):
+        """Control Center's Gaming page with Remote Play open."""
+        env = dict(os.environ, REYOS_CC_INITIAL_PAGE="GamingPage.qml", REYOS_CC_START="remote-play")
+        subprocess.Popen([str(APP_DIR / "main.py")], env=env, stdin=subprocess.DEVNULL,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+
+    @Slot()
     def openSetup(self):
         """Control Center's Gaming page: install emulators, controllers, BIOS."""
         env = dict(os.environ, REYOS_CC_INITIAL_PAGE="GamingPage.qml")
@@ -676,6 +724,8 @@ def main():
     backend = GamesBackend()
     app.aboutToQuit.connect(backend.stop)
     engine.rootContext().setContextProperty("backend", backend)
+    remote_play = RemotePlayBackend()
+    engine.rootContext().setContextProperty("remotePlay", remote_play)
     engine.load(QUrl.fromLocalFile(str(APP_DIR / "qml" / "GamesMain.qml")))
     if not engine.rootObjects():
         sys.exit(1)

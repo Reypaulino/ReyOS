@@ -41,7 +41,8 @@ WHT=$'\033[1;38;2;255;243;230m'   # ivory heading
 DIM=$'\033[2;38;2;215;193;170m'    # warm muted detail
 RST=$'\033[0m'
 
-STAT_ROW=4     # row where stats start (after clear)
+STAT_ROW=0     # zero-indexed row where stats start -- computed fresh in draw_menu()
+STATS_PID=""   # background live-stats loop, running only while the menu waits for input
 PROMPT_ROW=0   # zero-indexed row of the in-menu input field -- computed fresh in draw_menu()
 PROMPT_COL=19  # column immediately after "  Select option: "
 
@@ -226,6 +227,30 @@ refresh_stats() {
   gather_stats
   tput cup $STAT_ROW 0
   print_stats
+}
+
+# Redraw the stats rows once a second while the menu waits for a choice.
+# Each frame is built first and written in one printf, between a cursor
+# save/restore, so whatever the user is typing at the prompt stays put.
+start_stats_refresh() {
+  # If the menu is taller than the window it has scrolled and the stats
+  # rows are no longer where STAT_ROW says, so leave them alone.
+  [ "$((PROMPT_ROW + 2))" -lt "$TERM_ROWS" ] 2>/dev/null || return
+  (
+    trap 'exit 0' TERM
+    while sleep 0.8; do
+      frame=$(tput sc; refresh_stats; tput rc)
+      printf '%s' "$frame"
+    done
+  ) &
+  STATS_PID=$!
+}
+
+stop_stats_refresh() {
+  [ -n "$STATS_PID" ] || return
+  kill "$STATS_PID" 2>/dev/null
+  wait "$STATS_PID" 2>/dev/null
+  STATS_PID=""
 }
 
 show_cpu_hogs() {
@@ -812,6 +837,7 @@ draw_menu() {
   border_line "$TOP"
   crow "  ${WHT}REYOS SYSTEM TOOLS${RST}   ${DIM}${USER}${RST}"
   border_line "$MID"
+  STAT_ROW=$LINE_COUNT
   print_stats
 
   # ── PERFORMANCE ─────────────────────────────────────────
@@ -876,6 +902,7 @@ draw_menu() {
 }
 
 cleanup() {
+  stop_stats_refresh
   tput cnorm
   echo ''
   [ -n "$SUDO_KEEPALIVE_PID" ] && kill "$SUDO_KEEPALIVE_PID" 2>/dev/null
@@ -884,8 +911,10 @@ trap cleanup EXIT INT TERM
 
 while true; do
   draw_menu
+  start_stats_refresh
 
   read -r choice
+  stop_stats_refresh
 
   case $choice in
     1) htop ;;

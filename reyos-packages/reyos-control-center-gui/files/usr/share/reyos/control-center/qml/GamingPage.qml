@@ -41,6 +41,7 @@ Kirigami.ScrollablePage {
     property bool emuExpanded: false
     property bool steamExpanded: false
     property bool lutrisExpanded: false
+    property bool remotePlayExpanded: false
     property bool expandedLoaded: false
     property bool biosExpanded: false
     property var biosMissing: bios.filter(function (b) { return !b.ok }).map(function (b) { return b.name })
@@ -119,6 +120,8 @@ Kirigami.ScrollablePage {
         var start = backend.startWith()
         if (start === "controller-setup" && controllers.length > 0)
             Qt.callLater(startSetup, controllers.find(function (c) { return !c.configured }) || controllers[0])
+        else if (start === "remote-play")
+            remotePlayExpanded = true
         else if (start.indexOf("buttons:") === 0) {
             // ReyOS Games' right-click "Controller buttons for …".
             var i = systemLayouts.findIndex(function (l) { return l.id === start.slice(8) })
@@ -954,6 +957,37 @@ Kirigami.ScrollablePage {
                             toolTipText: "Sets Lutris's own defaults, so games started from Lutris get them too, not only those started from ReyOS Games. The overlay (FPS, CPU, GPU) follows the switch under Display; Right Shift+F12 hides it during a game."
                         }
                     }
+                }
+
+                Kirigami.Separator { Layout.fillWidth: true }
+
+                // Remote Play: stream to a TV or phone with Moonlight (optional)
+                RowLayout {
+                    Layout.fillWidth: true
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 0
+                        Controls.Label { text: "Remote Play (TV, phone, tablet)"; font.bold: true }
+                        Controls.Label {
+                            Layout.fillWidth: true
+                            elide: Text.ElideRight
+                            opacity: 0.7
+                            text: !remotePlayPanel.st.installed ? "Not installed (optional)"
+                                  : remotePlayPanel.st.running ? "On" : "Installed, off"
+                        }
+                    }
+                    Controls.Button {
+                        text: remotePlayExpanded ? "Hide" : "Show"
+                        icon.name: remotePlayExpanded ? "arrow-up" : "arrow-down"
+                        flat: true
+                        onClicked: { remotePlayExpanded = !remotePlayExpanded; if (remotePlayExpanded) remotePlayPanel.refresh() }
+                    }
+                }
+                RemotePlayPanel {
+                    id: remotePlayPanel
+                    visible: remotePlayExpanded
+                    Layout.fillWidth: true
+                    Layout.leftMargin: Kirigami.Units.largeSpacing
                 }
             }
         }

@@ -553,6 +553,136 @@ def uninstall(game_id, remove_prefix, remove_files, keep_saves):
     return True, message
 
 
+# ---- Drives that aren't there after a restart --------------------------------
+# A drive opened in Dolphin (or an SD card) is mounted under /run/media/<you>/
+# only until the next restart; /etc/fstab mounts are there at startup.
+
+def _mount_point(path):
+    path = Path(path).absolute()
+    while not os.path.ismount(path) and path != path.parent:
+        path = path.parent
+    return path
+
+
+def _fstab_mounts():
+    points = set()
+    try:
+        for line in Path("/etc/fstab").read_text().splitlines():
+            fields = line.split()
+            if len(fields) >= 2 and not fields[0].startswith("#"):
+                points.add(fields[1])
+    except OSError:
+        pass
+    return points
+
+
+def temporary_drive(path):
+    """The drive's name when `path` is on a drive that's only mounted until
+    the next restart (opened in Dolphin, an SD card or USB drive), else ""."""
+    mount = _mount_point(path)
+    if str(mount) in _fstab_mounts() or not (str(mount).startswith(("/run/media/", "/media/"))):
+        return ""
+    return mount.name
+
+
+def _drive_of_missing(path):
+    """For a path under /run/media/<user>/<name>/ that's missing: <name>
+    (a disk label or UUID, which is what udisks names the folder)."""
+    parts = Path(path).parts
+    if len(parts) > 4 and parts[1] == "run" and parts[2] == "media":
+        return parts[4]
+    if len(parts) > 3 and parts[1] == "media":
+        return parts[3] if parts[2] == os.environ.get("USER", "") and len(parts) > 4 else parts[2]
+    return ""
+
+
+def mount_drive_for(path):
+    """Tries to mount the drive a missing game was on (udisks, no password
+    for the logged-in user's internal and removable drives). Returns the
+    drive's name ("" when the path isn't on such a drive)."""
+    name = _drive_of_missing(path)
+    if not name:
+        return ""
+    for link in (Path("/dev/disk/by-label") / name, Path("/dev/disk/by-uuid") / name):
+        if link.exists():
+            subprocess.run(["udisksctl", "mount", "--no-user-interaction", "-b", str(link.resolve())],
+                           capture_output=True, timeout=30)
+            break
+    return name
+
+
+# ---- Saves kept by Uninstall, back into a re-added game -------------------------
+
+def _slug(text):
+    return re.sub(r"[^a-z0-9]+", "-", (text or "").lower()).strip("-")
+
+
+def kept_saves_for(name):
+    """The newest ~/Games/Saves/PC/<slug>[-N] folder Uninstall left for a
+    game with this name, or None. The name may have grown or shrunk since
+    ("…-most-wanted" vs "…-most-wanted-black-edition"), so a whole-word
+    prefix of two words or more either way counts; the user confirms it."""
+    new = _slug(name)
+    if not new or not SAVES.is_dir():
+        return None
+    found = []
+    for folder in SAVES.iterdir():
+        if not folder.is_dir() or folder.is_symlink():
+            continue
+        old = re.sub(r"-\d+$", "", folder.name)
+        shorter = min(old, new, key=len)
+        if old == new or (shorter.count("-") >= 1 and (new.startswith(old + "-") or old.startswith(new + "-"))):
+            if any(f.is_file() for f in folder.rglob("*")):
+                found.append(folder)
+    return max(found, key=lambda f: f.stat().st_mtime) if found else None
+
+
+def prefix_user_dir(prefix):
+    """The prefix's Windows user folder (Proton's user is steamuser)."""
+    users = Path(prefix) / "drive_c" / "users"
+    if (users / "steamuser").is_dir():
+        return users / "steamuser"
+    return next((u for u in (users.iterdir() if users.is_dir() else [])
+                 if u.is_dir() and not u.is_symlink() and u.name != "Public"), None)
+
+
+def init_prefix(prefix, log):
+    """Creates the game's Wine prefix now (it's normally made at the first
+    start), so kept saves can go into it before the game runs."""
+    Path(prefix).mkdir(parents=True, exist_ok=True)
+    # cwd: the runtime container can't enter /usr (where ReyOS Games runs from).
+    subprocess.run(["umu-run", "wineboot", "-u"], env=proton_env(prefix), cwd=str(prefix), stdin=subprocess.DEVNULL,
+                   stdout=log, stderr=subprocess.STDOUT, timeout=900)
+    return prefix_user_dir(prefix)
+
+
+def restore_saves(kept, prefix, game_exe):
+    """Copies a kept saves folder back: Documents/…, AppData/… into the
+    prefix's user folder, "Game folder/<name>" next to the game. Never
+    overwrites a file that's already there. Returns the number of files."""
+    user = prefix_user_dir(prefix)
+    folder = _game_folder(str(game_exe), str(prefix))
+    copied = 0
+    for src in Path(kept).rglob("*"):
+        if not src.is_file() or src.is_symlink():
+            continue
+        rel = src.relative_to(kept)
+        if rel.parts[0] == "Game folder":
+            if folder is None:
+                continue
+            dest = folder / Path(*rel.parts[1:])
+        elif user is not None:
+            dest = user / rel
+        else:
+            continue
+        if dest.exists():
+            continue
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dest)
+        copied += 1
+    return copied
+
+
 def human_size(n):
     for unit in ("bytes", "KB", "MB", "GB"):
         if n < 1024 or unit == "GB":
@@ -626,6 +756,16 @@ def launch(path):
     game = next((g for g in list_games() if str(g["id"]) == game_id), None)
     if game is None:
         return False, "That game isn't in Lutris any more."
+    # The game's drive may not be mounted (opened in Dolphin before the last
+    # restart): mount it, else say so instead of Lutris's "file not found".
+    exe = game_exe(game_id)
+    if exe and not Path(exe).exists():
+        drive = mount_drive_for(exe)
+        if not Path(exe).exists():
+            if drive:
+                return False, (f"{game['name']} is on the drive \"{drive}\", which isn't connected. Connect it "
+                               "(or open it in Dolphin), then press Play again.")
+            return False, f"{game['name']} isn't where it was added from any more: {exe}"
     log = emulation.LAUNCH_LOG.with_name("lutris-last.log")
     log.parent.mkdir(parents=True, exist_ok=True)
     with log.open("w") as f:

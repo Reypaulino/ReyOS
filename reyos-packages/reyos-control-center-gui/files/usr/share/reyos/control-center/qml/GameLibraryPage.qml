@@ -22,6 +22,9 @@ Kirigami.Page {
     property var controllers: []
     readonly property var unconfiguredPad: controllers.find(function (c) { return !c.configured }) || null
     property var setupPad: ({})
+    // "Play on another device": only when Remote Play is installed and its
+    // switch (Control Center → Gaming → Remote Play) is on.
+    property bool showRemotePlay: remotePlay.showInGames()
 
     // The step-by-step setup runs right here (same steps as Control Center).
     function setUpController(pad) {
@@ -152,6 +155,13 @@ Kirigami.Page {
             onTriggered: setUpController(null)
         },
         Kirigami.Action {
+            text: "Play on another device…"
+            icon.name: "video-display"
+            visible: showRemotePlay
+            tooltip: "Stream your games to a TV, phone or tablet with Moonlight (Remote Play)."
+            onTriggered: { remotePlayDialog.open(); remotePlayPanel.refresh() }
+        },
+        Kirigami.Action {
             text: "Set up emulators"
             icon.name: "configure"
             onTriggered: backend.openSetup()
@@ -171,6 +181,7 @@ Kirigami.Page {
     property string gamesSignature: ""
 
     function reload() {
+        showRemotePlay = remotePlay.showInGames()
         var games = backend.emulationGames()
         // Only rebuild the grid when something changed, so a focus-change
         // rescan doesn't lose the scroll position.
@@ -380,6 +391,43 @@ Kirigami.Page {
                 visible: !!buttonsDialog.layout.note
                 text: buttonsDialog.layout.note || ""
                 opacity: 0.75
+            }
+        }
+    }
+
+    Kirigami.Dialog {
+        id: remotePlayDialog
+        title: "Play on another device"
+        preferredWidth: Kirigami.Units.gridUnit * 34
+        padding: Kirigami.Units.largeSpacing
+        standardButtons: Kirigami.Dialog.Close
+        customFooterActions: [
+            Kirigami.Action {
+                text: "Don't show this here"
+                icon.name: "view-hidden"
+                tooltip: "Hides this button. Turn it back on in Control Center → Gaming → Remote Play."
+                onTriggered: {
+                    remotePlay.setShowInGames(false)
+                    showRemotePlay = false
+                    remotePlayDialog.close()
+                }
+            },
+            Kirigami.Action {
+                text: "More settings"
+                icon.name: "configure"
+                onTriggered: backend.openRemotePlaySetup()
+            }
+        ]
+        // A fixed width: the panel's help text would otherwise ask for a
+        // window as wide as its longest paragraph.
+        Item {
+            implicitWidth: Kirigami.Units.gridUnit * 32
+            implicitHeight: remotePlayPanel.implicitHeight
+            RemotePlayPanel {
+                id: remotePlayPanel
+                width: parent.width
+                allowInstall: false
+                showGamesSwitch: false
             }
         }
     }

@@ -24,3 +24,4 @@ GamingPage 1.0 GamingPage.qml
 ReyOSProgressBar 1.0 ReyOSProgressBar.qml
 ReyOSChangePopup 1.0 ReyOSChangePopup.qml
 ControllerSetupDialog 1.0 ControllerSetupDialog.qml
+RemotePlayPanel 1.0 RemotePlayPanel.qml

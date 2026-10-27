@@ -35,6 +35,7 @@ from controller_setup import ControllerSetupWorker  # noqa: E402
 import game_shrink  # Qt-free: add downloaded games, shrink them to CHD
 import steam_options  # Qt-free: GameMode/MangoHud in Steam games' launch options
 import pc_games  # Qt-free: Windows games through Lutris (ReyOS Games' PC tab)
+from remote_play_backend import RemotePlayBackend  # Gaming page's Remote Play (Sunshine)
 import security_scan  # Qt-free: ReyOS Scan (ClamAV), reports and quarantine
 import flatpak_updates  # Qt-free: pending Flatpak updates, readable update errors
 import app_updates  # Qt-free: ReyOS + Flatpak updates for the "Updates are ready" dialog
@@ -4512,6 +4513,8 @@ def main():
     # A package update still running when the window closes finishes first.
     app.aboutToQuit.connect(_THREADS.wait_all)
     engine.rootContext().setContextProperty("backend", backend)
+    remote_play_backend = RemotePlayBackend()
+    engine.rootContext().setContextProperty("remotePlay", remote_play_backend)
     engine.rootContext().setContextProperty("reyosAccentColor", _reyos_accent_color())
     # Lets launchers (e.g. ReyOS Welcome's "Check for Updates" button) open
     # straight to a specific page instead of always landing on System Info.
