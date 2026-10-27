@@ -31,7 +31,11 @@ What has really been run, where, and what's still **PENDING**. Anything not phys
 
 Bugs found and fixed during this test (not in any published build): ReyOS Games' entry in Moonlight pointed at a `reyos-games` command that doesn't exist (now the real `games.py` path, and an entry written with the old command is repaired); the install progress line was hidden; the firewall warning's button covered its text; the ReyOS Games window had a zero-height panel (the help text's natural width broke the dialog's layout); a binding warning when Tailscale isn't installed; the panel didn't refresh when the window came back to the front.
 
-**Not done on the VM:** a real video stream. Running Moonlight's `stream` was blocked by this session's command checks, so streaming, audio, and input over a stream have **not** been run anywhere yet.
+**Owner's iPhone → Dev VM, 2026-10-27 (real stream):** iPhone Moonlight paired as "iphone test" through Control Center's PIN box (address 192.168.68.87, the VM's home-network NIC) and streamed Desktop twice (10:23–10:25, 10:25–). Sunshine on the VM: KWin capture 1280×800, libx264 software encode, ~6 Mbps sent, 80–84 % of one core for Sunshine; VM load ~6.5 on 5 cores (KWin software rendering ~1.3 cores, RetroArch, Sunshine). The iPhone showed "slow connection, reduce the bitrate": the VM's CPU, not the network (no send errors on the NIC). Virtual keyboard, mouse, touchscreen and pen created; audio moved to Sunshine's sink during the stream and back after. The owner's N64-style controller (paired to the iPhone) arrived as "Sunshine (libvirtualhid) X-Box Series Controller" (045e:0b13; 16 buttons, 6 axes, D-pad as hat); ReyOS lists it as an Xbox pad but had no RetroArch profile for it, so N64 games ignored it until the owner ran ReyOS Games → Controller… while streaming; then it worked. Two RetroArch processes were running during the stream (cause not checked: the owner may have started the game twice).
+
+Follow-up: ship RetroArch profiles for Sunshine's virtual pads (Xbox Series, DualShock 4, DualSense, Switch) so a streamed controller works without setup. That needs a full-size controller run through every button (the N64 pad's profile has no right/top face button, right trigger or Select).
+
+**Not done from the host:** a video stream to Moonlight on the Ubuntu host. Running Moonlight's `stream` was blocked by this session's command checks, so streaming, audio, and input over a stream have **not** been run anywhere yet.
 
 ## Real hardware (owner, 2026-10-27): PENDING
 
