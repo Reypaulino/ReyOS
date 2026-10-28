@@ -6,10 +6,30 @@ This file was rewritten from scratch on 2026-08-18 after a full audit of the wor
 
 **2026-10-08 verification pass:** see `BUG_VERIFICATION_REPORT.md` for what was re-tested and how. Entries below carry a "Status 2026-10-08" line where they were checked; resolved entries moved to the "Resolved" section at the end.
 
-## Remote Play: limits and untested parts (2026-10-27)
+## RustDesk: the remote screen is mostly green with black areas (2026-10-27, laptop)
+
+Owner report (GitHub #25, Scope D), physical laptop (T470p, HD 630 + 940MX, NVIDIA 580, Plasma 6.8 Wayland), RustDesk Flatpak (1.5.0 as of 10-26, started at login by `~/reyos-handoff/rustdesk-background.sh`). The client sees a mostly green picture with black patches. **Cause unknown, not diagnosed.** RustDesk is separate from Remote Play (Sunshine/Moonlight); no ReyOS package ships RustDesk, it's a laptop-only setup.
+
+A lead, not a finding: on Wayland RustDesk captures through the desktop portal (PipeWire ScreenCast from KWin), the same KWin DMA-BUF path where Sunshine's `hevc_vaapi` failed on this laptop (10-27, `docs/remote-play-testing.md`). An all-green frame is what a YUV picture full of zeros looks like, so the frames may be empty or unreadable rather than wrongly colored.
+
+Owner test steps (in the apps, no terminal; one change at a time, put it back after; results in the laptop handoff):
+1. Write down: RustDesk version on both sides (About), the client device, same network or over the internet, and whether the whole screen is green or only some windows (desktop vs a game).
+2. On the **client**, during the session: toolbar → Display → codec. Try **VP8**, **VP9**, **H264** in turn. Note which ones are green.
+3. On the **laptop**, RustDesk → Settings → General: turn **Enable hardware codec** off, reconnect; then turn it back on.
+4. Same test from a second client (phone vs PC), and on the same Wi-Fi vs remote.
+5. Only if the owner chooses to: log in to the X11 session once (if the login screen offers it) and connect. Don't change the default session for this.
+
+Advanced (the laptop's Claude session, read-only): `flatpak info com.rustdesk.RustDesk`, `reyos-channel status`, `pacman -Q kwin xdg-desktop-portal-kde pipewire intel-media-driver mesa nvidia-580xx-utils`, `echo $XDG_SESSION_TYPE`, the Graphics card for games setting, and the RustDesk server log around a green session (`~/.local/share/logs/RustDesk/server/`), looking for the pixel format/modifier PipeWire negotiated and any codec or dmabuf errors. Redact IDs, passwords and IP addresses before posting anything publicly.
+
+Not allowed for this: forcing a display-server switch, downgrading a driver, changing the Graphics card for games setting, turning hardware acceleration off system-wide. Fixed means correct colors and usable speed on the physical laptop after a reboot and a reconnect; until then it stays open.
+
+## Remote Play: limits and untested parts (2026-10-27, updated 10-28)
 
 control-center-gui 1.0.0-146, GitHub #22:
-- No real stream has been run yet (VM: pairing and app list only). Apple TV, iPhone, Tailscale, the HD 630 VA-API encoder and controllers over Moonlight are the owner's tests (`docs/remote-play-testing.md`).
+- Real streams so far: owner's iPhone → Dev VM (software x264, 10-27) and iPhone → laptop (10-27/28), both in `docs/remote-play-testing.md`. **Apple TV not tested yet**; Tailscale, controllers over Moonlight on the laptop and the security checks are pending.
+- **Laptop (HD 630, intel-media-driver 26.3.5): `hevc_vaapi` aborts Sunshine** about 1 s into every session (KWin and KMS capture, 8- and 10-bit; `Failed to end picture encode issue: 24`). H.264 VA-API works. ReyOS's defaults don't turn HEVC/AV1 off, so a client that asks for HEVC (likely the Apple TV) crashes Sunshine. Laptop workaround: `hevc_mode = 1`, `av1_mode = 1` in `~/.config/sunshine/sunshine.conf`. Not fixed in the package.
+- **Laptop: `capture = kms` stutters** (`Couldn't get drm fb for plane [0]`, 32 encoder resets in ~6 min on hybrid i915 + nvidia-drm). `capture = kwin` (the ReyOS default) + H.264 VA-API is stable.
+- **Laptop: a PS2 game at 4× slows the stream**: PCSX2 and the H.264 encoder share the HD 630. The owner asked for separate graphics-card settings for PC games and PS2 (laptop patches 0010/0011, not built yet) and a lower PS2 upscale while streaming.
 - Capture needs an unlocked, logged-in session with the screen on (KWin capture). Lid closed or locked = nothing or the lock screen.
 - Sunshine as a user service has no file capabilities (no KMS capture, "Failed to gain CAP_SYS_ADMIN" in its log is expected) and no CAP_SYS_NICE (EGL priority warning).
 - `sunshine` in reyos-local is a fixed upstream build: it isn't rebuilt when Arch's libraries change soname (miniupnpc, libmfx…), and the stable check only tests reyos-* packages. Recheck `ldd /usr/bin/sunshine` when promoting a snapshot.

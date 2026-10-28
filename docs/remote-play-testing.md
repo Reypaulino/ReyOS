@@ -35,9 +35,39 @@ Bugs found and fixed during this test (not in any published build): ReyOS Games'
 
 Follow-up: ship RetroArch profiles for Sunshine's virtual pads (Xbox Series, DualShock 4, DualSense, Switch) so a streamed controller works without setup. That needs a full-size controller run through every button (the N64 pad's profile has no right/top face button, right trigger or Select).
 
-**Not done from the host:** a video stream to Moonlight on the Ubuntu host. Running Moonlight's `stream` was blocked by this session's command checks, so streaming, audio, and input over a stream have **not** been run anywhere yet.
+**Not done from the host:** a video stream to Moonlight on the Ubuntu host (Moonlight's `stream` was blocked by this session's command checks). The owner's iPhone stream above is the VM's only real stream.
+
+## Laptop, iPhone (owner + the laptop's Claude session, 2026-10-27/28)
+
+From the laptop handoff (`~/reyos-handoff/START-HERE.md`, Results). T470p, HD 630 + 940MX, sunshine 2026.914.233613-1, intel-media-driver 26.3.5, mesa 26.2.5, kwin 6.8.1-2, Moonlight on the owner's iPhone, same home Wi-Fi. Config changes were local edits to `~/.config/sunshine/sunshine.conf`, with backups.
+
+| When | Config | Result |
+|---|---|---|
+| 10-27 11:41 | ReyOS default: `capture = kwin`, `encoder = vaapi`, renderD128 | ❌ Sunshine SIGABRT ~1 s after connect, 4×. `Creating encoder [hevc_vaapi]`, 10-bit. |
+| 10-27 11:45 | + `hevc_mode = 2` (8-bit HEVC) | ❌ same crash; `[hevc_vaapi] Failed to end picture encode issue: 24 (internal encoding error)`. `ffmpeg` hevc_vaapi from a file works, so it's Sunshine's live path. |
+| 10-27 11:47 | `encoder = software` | ✅ no crash, ❌ slow: ~27.6 fps, 27 keyframes requested in 68 s. |
+| 10-27 12:07 | `capture = kms`, vaapi | ❌ same hevc_vaapi abort: not the capture method. |
+| 10-27 12:18 | `capture = kms`, vaapi, `hevc_mode = 1`, `av1_mode = 1` (H.264 only) | ✅ two sessions, no crash, normal disconnect. |
+| 10-27 22:52 | same | ❌ "still running slow": 1511× `Couldn't get drm fb for plane [0]`, 32 encoder resets in ~6 min. |
+| 10-27 22:59, 10-28 09:12 | `capture = kwin`, vaapi, H.264 only | ✅ desktop smooth, no resets. The iPhone asks for 30 fps / 5.7 Mbps. |
+| 10-28 09:16 | same + NBA Street Vol. 2 (PCSX2 4×, Intel) | ❌ stream slow while the game runs: iGPU pinned at 1100 MHz (PS2 render + KWin + H.264 encode), 940MX idle. |
+
+So far, on the HD 630: KWin capture + H.264 VA-API works; HEVC VA-API crashes Sunshine (a Sunshine build with symbols would give a backtrace; ReyOS should probably default `hevc_mode = 1` on Intel Gen9 until then); KMS capture is unusable on this hybrid laptop; PS2 at 4× and streaming don't fit on one iGPU.
 
 ## Real hardware (owner, 2026-10-27): PENDING
+
+**Before the Apple TV test:** keep the laptop's H.264-only config from the table above (`hevc_mode = 1`, `av1_mode = 1`). Moonlight on the Apple TV will otherwise ask for HEVC and Sunshine crashes.
+
+Results table (one row per run; PENDING rows stay until really run):
+
+| Date | Machine / snapshot | Sunshine / Moonlight | Client, path | What streamed | Res / fps / bitrate / codec | Video / audio / controller | Latency, drops | Result / blocker |
+|---|---|---|---|---|---|---|---|---|
+| PENDING | T470p / 2026-10-24 | 2026.914.233613-1 / ? | Apple TV 4K, LAN (Deco mesh) | Desktop | 720p60 / 8 Mbps / H.264 | | | |
+| PENDING | | | Apple TV 4K, LAN | Desktop | 1080p60 / 12 Mbps / H.264 | | | |
+| PENDING | | | Apple TV 4K, LAN | NFS Most Wanted (Proton, NVIDIA) | | | | |
+| PENDING | | | Apple TV 4K, LAN | PS2 game (PCSX2, Intel) | | | | |
+| PENDING | | | Apple TV 4K, LAN | Steam game | | | | |
+| PENDING | | | iPhone, cellular + Tailscale | Desktop | | | | |
 
 Laptop: ThinkPad T470p, Intel HD 630 + GeForce 940MX (GM108, NVIDIA 580), ReyOS Plasma Wayland. Write results here with model/OS/app versions; redact nothing private from the diagnostics except what you don't want public.
 
