@@ -472,11 +472,11 @@ Kirigami.ScrollablePage {
                         toolTipText: "Right Shift + F12 hides it during a game. PlayStation 2 and 3DS show their own numbers instead."
                     }
                 }
-                // Laptops with an NVIDIA card: which one games use.
+                // Laptops with an NVIDIA card: which one PC games and PS2 use.
                 RowLayout {
                     visible: nvidiaPresent
                     spacing: Kirigami.Units.largeSpacing
-                    Controls.Label { text: "Graphics card for games" }
+                    Controls.Label { text: "Graphics card for PC games" }
                     Controls.ComboBox {
                         wheelEnabled: false
                         enabled: nvidiaReady && !busy
@@ -486,13 +486,32 @@ Kirigami.ScrollablePage {
                         onActivated: function (i) {
                             saveSettings({ game_gpu: i === 1 ? "builtin" : "nvidia" })
                             refreshStatus()
-                            displayNote = "Saved. PlayStation 2 and Windows games use " + (i === 1 ? "the built-in graphics" : "the NVIDIA card")
+                            displayNote = "Saved. Windows games use " + (i === 1 ? "the built-in graphics" : "the NVIDIA card")
                                           + " from their next start." + (steamInstalled ? " Steam games: press the Steam button below again." : "")
                             if (lutrisInstalled) { startJob(); backend.applyLutrisDefaults() }
                         }
                     }
                     Kirigami.ContextualHelpButton {
-                        toolTipText: "The desktop always stays on the built-in graphics. This picks the card for PlayStation 2 (PCSX2), Windows games (ReyOS Games, Lutris) and, after pressing its button again, Steam games. One Windows game can still be switched in ReyOS Games (right-click)."
+                        toolTipText: "The desktop always stays on the built-in graphics. This picks the card for Windows games (ReyOS Games, Lutris) and, after pressing its button again, Steam games. One Windows game can still be switched in ReyOS Games (right-click)."
+                    }
+                }
+                RowLayout {
+                    visible: nvidiaPresent
+                    spacing: Kirigami.Units.largeSpacing
+                    Controls.Label { text: "Graphics card for PlayStation 2" }
+                    Controls.ComboBox {
+                        wheelEnabled: false
+                        enabled: nvidiaReady && !busy
+                        Layout.preferredWidth: Kirigami.Units.gridUnit * 18
+                        model: ["NVIDIA graphics card", "Built-in graphics (recommended)"]
+                        currentIndex: !nvidiaReady || emuSettings.ps2_gpu !== "nvidia" ? 1 : 0
+                        onActivated: function (i) {
+                            saveSettings({ ps2_gpu: i === 1 ? "builtin" : "nvidia" })
+                            displayNote = "Saved. PlayStation 2 games use " + (i === 1 ? "the built-in graphics" : "the NVIDIA card") + " from their next start."
+                        }
+                    }
+                    Kirigami.ContextualHelpButton {
+                        toolTipText: "PCSX2 is often faster on the built-in graphics: on many laptops the screen is wired to it, and PS2 games copy the picture back and forth a lot. A graphics card picked inside PCSX2 (Settings → Graphics → Adapter) is kept."
                     }
                 }
                 Controls.Label {

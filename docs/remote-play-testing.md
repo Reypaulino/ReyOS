@@ -74,7 +74,7 @@ Laptop: ThinkPad T470p, Intel HD 630 + GeForce 940MX (GM108, NVIDIA 580), ReyOS 
 - [ ] **A. Install + pair (LAN).** Update everything → Gaming → Remote Play → Install → Turn on → Allow. Moonlight on the Apple TV 4K: pair (PIN in Control Center). Stream **Desktop**, then **ReyOS Games** → NFS Most Wanted (Lutris/Proton), a PS2 game (PCSX2), a Steam game. PENDING
 - [ ] **B. Quality.** 720p60 ~8 Mbps H.264; then 1080p60 ~12 Mbps. Note latency (Moonlight's stats overlay: Ctrl+Alt+Shift+S on a PC client; long-press on Apple TV), frame drops, audio, every controller button, reconnect after closing Moonlight, and what happens after the laptop sleeps. PENDING
 - [ ] **C. iPhone.** Same Wi-Fi; then cellular + Tailscale (sign in on the laptop in Connect → VPN and on the iPhone; add the 100.x address in Moonlight). Note whether the panel says the iPhone is **direct** or **relayed**. PENDING
-- [ ] **D. Encoder.** Copy diagnostics after Turn on: expected `encoder = vaapi`, `adapter_name` = the Intel render node, "H.264 with h264_vaapi". Run a game on the NVIDIA card (Graphics card for games = NVIDIA) while streaming: stable? PENDING
+- [ ] **D. Encoder.** Copy diagnostics after Turn on: expected `encoder = vaapi`, `adapter_name` = the Intel render node, "H.264 with h264_vaapi". Run a game on the NVIDIA card (Graphics card for PC games = NVIDIA) while streaming: stable? PENDING
 - [ ] **E. Security.** An unpaired device can't stream; Remove a paired device and check it has to pair again; `https://<laptop-ip>:47990` from another device doesn't open; Turn off ends a running stream; Block again closes the ports. PENDING
 - [ ] **F.** Paste the diagnostics and results into this file. PENDING
 

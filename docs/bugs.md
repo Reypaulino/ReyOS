@@ -21,7 +21,7 @@ Owner test steps (in the apps, no terminal; one change at a time, put it back af
 
 Advanced (the laptop's Claude session, read-only): `flatpak info com.rustdesk.RustDesk`, `reyos-channel status`, `pacman -Q kwin xdg-desktop-portal-kde pipewire intel-media-driver mesa nvidia-580xx-utils`, `echo $XDG_SESSION_TYPE`, the Graphics card for games setting, and the RustDesk server log around a green session (`~/.local/share/logs/RustDesk/server/`), looking for the pixel format/modifier PipeWire negotiated and any codec or dmabuf errors. Redact IDs, passwords and IP addresses before posting anything publicly.
 
-Not allowed for this: forcing a display-server switch, downgrading a driver, changing the Graphics card for games setting, turning hardware acceleration off system-wide. Fixed means correct colors and usable speed on the physical laptop after a reboot and a reconnect; until then it stays open.
+Not allowed for this: forcing a display-server switch, downgrading a driver, changing the Gaming page's graphics card settings, turning hardware acceleration off system-wide. Fixed means correct colors and usable speed on the physical laptop after a reboot and a reconnect; until then it stays open.
 
 ## Remote Play: limits and untested parts (2026-10-27, updated 10-28)
 
@@ -29,7 +29,7 @@ control-center-gui 1.0.0-146, GitHub #22:
 - Real streams so far: owner's iPhone → Dev VM (software x264, 10-27) and iPhone → laptop (10-27/28), both in `docs/remote-play-testing.md`. **Apple TV not tested yet**; Tailscale, controllers over Moonlight on the laptop and the security checks are pending.
 - **Laptop (HD 630, intel-media-driver 26.3.5): `hevc_vaapi` aborts Sunshine** about 1 s into every session (KWin and KMS capture, 8- and 10-bit; `Failed to end picture encode issue: 24`). H.264 VA-API works. ReyOS's defaults don't turn HEVC/AV1 off, so a client that asks for HEVC (likely the Apple TV) crashes Sunshine. Laptop workaround: `hevc_mode = 1`, `av1_mode = 1` in `~/.config/sunshine/sunshine.conf`. Not fixed in the package.
 - **Laptop: `capture = kms` stutters** (`Couldn't get drm fb for plane [0]`, 32 encoder resets in ~6 min on hybrid i915 + nvidia-drm). `capture = kwin` (the ReyOS default) + H.264 VA-API is stable.
-- **Laptop: a PS2 game at 4× slows the stream**: PCSX2 and the H.264 encoder share the HD 630. The owner asked for separate graphics-card settings for PC games and PS2 (laptop patches 0010/0011, not built yet) and a lower PS2 upscale while streaming.
+- **Laptop: a PS2 game at 4× slows the stream**: PCSX2 and the H.264 encoder share the HD 630. Separate graphics-card settings for PC games and PS2 shipped in control-center-gui 1.0.0-147; a lower PS2 upscale while streaming (owner's request) is not built.
 - Capture needs an unlocked, logged-in session with the screen on (KWin capture). Lid closed or locked = nothing or the lock screen.
 - Sunshine as a user service has no file capabilities (no KMS capture, "Failed to gain CAP_SYS_ADMIN" in its log is expected) and no CAP_SYS_NICE (EGL priority warning).
 - `sunshine` in reyos-local is a fixed upstream build: it isn't rebuilt when Arch's libraries change soname (miniupnpc, libmfx…), and the stable check only tests reyos-* packages. Recheck `ldd /usr/bin/sunshine` when promoting a snapshot.

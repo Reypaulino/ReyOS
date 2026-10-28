@@ -2,6 +2,16 @@
 
 Real bugs found and fixed, with root cause. Newest first. See `bugs.md` for what's still open.
 
+## 2026-10-28 — Separate graphics card for PC games and PS2; PCSX2 keeps the adapter you pick (control-center-gui 1.0.0-147)
+
+From the laptop handoff (2026-10-27/28, patches 0010 + 0011, written and tested against a copy on the laptop).
+
+- **PS2 ran at 36% speed on the 940MX.** Since 1.0.0-137 + the NVIDIA 580 driver, "Graphics card for games" sent PCSX2 to the NVIDIA card too. On the T470p the displays are wired to the Intel GPU, so every frame is copied back over PRIME: NBA Street Vol. 2 at 4× ran at 36% speed on the 940MX and full speed on the HD 630. And `_apply_pcsx2_gpu` cleared any non-NVIDIA `Adapter` picked in PCSX2 on every start, so the owner couldn't move PS2 back to Intel without also moving PC games off NVIDIA.
+- **Gaming → Display now has two rows** on laptops with an NVIDIA card: "Graphics card for PC games" (`game_gpu`, unchanged meaning for Lutris, ReyOS Games' PC games and Steam's `prime-run`; default NVIDIA) and **"Graphics card for PlayStation 2"** (new `ps2_gpu`, default **built-in**). `pcsx2_on_nvidia()` reads `ps2_gpu` instead of `games_use_nvidia()`. Existing users whose PS2 games ran on NVIDIA move to the built-in graphics after the update; the switch puts them back.
+- **An adapter picked inside PCSX2 that isn't the NVIDIA card is kept** (`_pcsx2_picked_builtin`): no offload variables, no Vulkan switch, and nothing is cleared.
+
+Tested: `tests/test_ps2_gpu.py` (defaults, PC/PS2 independent, bad value, picked adapter kept, no driver); built and installed on the Dev VM; a copy of the Control Center with the NVIDIA checks forced on showed both rows, and switching PS2 to NVIDIA saved `ps2_gpu: nvidia` with the note "PlayStation 2 games use the NVIDIA card from their next start". The VM has no NVIDIA card, so a real PS2 game on each card is the laptop's test.
+
 ## 2026-10-27 — Remote Play (Sunshine + Moonlight), Add PC game drive/save fixes, live System Tools stats (control-center-gui 1.0.0-146, reyos-control-center 1.0.0-29, sunshine 2026.914.233613-1)
 
 GitHub #22 (Remote Play) and the laptop handoff (2026-10-26: patch 0009, NFS Most Wanted report).

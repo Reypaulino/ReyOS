@@ -127,7 +127,7 @@ def system_installed(system):
 
 
 # ---- Display settings -----------------------------------------------------
-DEFAULT_SETTINGS = {"fullscreen": True, "overlay": True, "picture": "clean", "resolution": 1, "ps2_graphics": True, "windowed_games": [], "expanded": None, "bios_expanded": False, "boxart": True, "game_storage": "", "game_resolution": {}, "pad_types": {}, "player1": "", "button_maps": {}, "ps2_pad_written": {}, "azahar_written": {}, "ps2_vulkan_written": False, "pc_builtin_gpu": [], "game_gpu": "nvidia", "pc_gpu": {}}
+DEFAULT_SETTINGS = {"fullscreen": True, "overlay": True, "picture": "clean", "resolution": 1, "ps2_graphics": True, "windowed_games": [], "expanded": None, "bios_expanded": False, "boxart": True, "game_storage": "", "game_resolution": {}, "pad_types": {}, "player1": "", "button_maps": {}, "ps2_pad_written": {}, "azahar_written": {}, "ps2_vulkan_written": False, "pc_builtin_gpu": [], "game_gpu": "nvidia", "pc_gpu": {}, "ps2_gpu": "builtin"}
 
 # 3D internal resolution per core, keyed by ReyOS's 1x / 2x / 4x choice.
 # Option names and values checked against the cores Arch ships.
@@ -169,6 +169,8 @@ def load_settings():
         settings["game_resolution"] = {}
     if settings["game_gpu"] not in ("nvidia", "builtin"):
         settings["game_gpu"] = "nvidia"
+    if settings["ps2_gpu"] not in ("nvidia", "builtin"):
+        settings["ps2_gpu"] = "builtin"
     if not isinstance(settings["pc_gpu"], dict):
         settings["pc_gpu"] = {}
     if not isinstance(settings["pc_builtin_gpu"], list):
@@ -268,8 +270,9 @@ def nvidia_offload_ready():
 
 
 def games_use_nvidia(settings=None):
-    """Games go to the NVIDIA card: it's usable and the Gaming page's
-    "Graphics card for games" isn't set to the built-in graphics."""
+    """PC games go to the NVIDIA card: it's usable and the Gaming page's
+    "Graphics card for PC games" isn't set to the built-in graphics. PS2 has
+    its own choice (ps2_gpu, pcsx2_on_nvidia)."""
     return nvidia_offload_ready() and (settings or load_settings())["game_gpu"] != "builtin"
 
 
@@ -285,9 +288,26 @@ def nvidia_flatpak_extensions():
 
 
 def pcsx2_on_nvidia():
+    """The Gaming page's "Graphics card for PlayStation 2" is NVIDIA. Built-in
+    by default: on a T470p the 940MX ran NBA Street Vol. 2 at 36% speed, and
+    HD 630 at full speed (its displays are wired to the Intel GPU)."""
     ext = nvidia_flatpak_extensions()
-    return games_use_nvidia() and bool(ext) and any(
-        (d / "runtime" / ext[0]).is_dir() for d in (Path.home() / ".local/share/flatpak", Path("/var/lib/flatpak")))
+    return (nvidia_offload_ready() and load_settings()["ps2_gpu"] == "nvidia" and bool(ext)
+            and not _pcsx2_picked_builtin() and any(
+                (d / "runtime" / ext[0]).is_dir() for d in (Path.home() / ".local/share/flatpak", Path("/var/lib/flatpak"))))
+
+
+def _pcsx2_picked_builtin():
+    """An adapter picked in PCSX2 itself that isn't the NVIDIA card (e.g. the
+    Intel one): PCSX2 stays on it. On a T470p (940MX, displays wired to the
+    Intel GPU) NBA Street Vol. 2 ran at 36% speed on the NVIDIA card and full
+    speed on Intel HD 630."""
+    try:
+        lines = PCSX2_INI.read_text(errors="replace").splitlines()
+    except OSError:
+        return False
+    adapter = _ini_get(lines, "EmuCore/GS", "Adapter") or ""
+    return bool(adapter) and "nvidia" not in adapter.lower()
 
 
 def gpu_is_weak():
@@ -519,17 +539,13 @@ def _apply_pcsx2_gpu(lines, settings):
     offload variables (launch_command) put it on the NVIDIA card; Automatic
     picks OpenGL, which stays on the built-in graphics. Only Automatic or
     OpenGL is changed, and it goes back to Automatic when the card isn't
-    usable any more. An adapter picked in PCSX2 that isn't the NVIDIA card
-    is cleared: with the offload on, Vulkan lists the NVIDIA card first and
-    PCSX2's default adapter is the first one (checked inside the Flatpak)."""
+    usable any more, or when an adapter that isn't the NVIDIA card was picked
+    in PCSX2 (_pcsx2_picked_builtin), which is kept."""
     renderer = _ini_get(lines, "EmuCore/GS", "Renderer")
     if pcsx2_on_nvidia():
         if renderer in (None, "", "-1", "12"):  # Automatic, OpenGL
             _ini_set(lines, "EmuCore/GS", "Renderer", "14")  # Vulkan
             save_settings({"ps2_vulkan_written": True})
-        adapter = _ini_get(lines, "EmuCore/GS", "Adapter") or ""
-        if adapter and "nvidia" not in adapter.lower():
-            _ini_set(lines, "EmuCore/GS", "Adapter", "")
     elif settings["ps2_vulkan_written"] and renderer == "14":
         _ini_set(lines, "EmuCore/GS", "Renderer", "-1")
         save_settings({"ps2_vulkan_written": False})
