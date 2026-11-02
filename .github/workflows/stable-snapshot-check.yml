@@ -5,6 +5,13 @@ name: Stable snapshot check
 # and QML modules load. tools/stable-snapshot/promote.sh, run daily on the
 # machine with the signing key, promotes a passed snapshot and starts this
 # workflow itself for the next day's snapshot when the last one failed.
+#
+# Three results, one issue per snapshot date (a rerun updates the open issue):
+#   passed      - "Stable snapshot D passed: ready to promote"
+#   not tested  - "Stable snapshot D NOT TESTED: ..." downloads from the archive
+#                 kept failing; nothing is known about D, run it again
+#   failed      - "Stable snapshot D FAILED: keep the current date"
+# Only "passed" lets promote.sh promote D.
 
 on:
   schedule:
@@ -23,8 +30,10 @@ jobs:
   smoke:
     runs-on: ubuntu-latest
     container: archlinux:latest
+    timeout-minutes: 60
     outputs:
       date: ${{ steps.pick.outputs.date }}
+      outcome: ${{ steps.smoke.outputs.outcome }}
     steps:
       - uses: actions/checkout@v4
       - id: pick
@@ -35,37 +44,78 @@ jobs:
           d="${INPUT_DATE:-$(date -u -d yesterday +%Y/%m/%d)}"
           echo "date=$d" >> "$GITHUB_OUTPUT"
           echo "Snapshot: $d"
-      - name: Smoke test
-        run: bash tools/stable-snapshot/smoke-test.sh "${{ steps.pick.outputs.date }}" 2>&1 | tee smoke.log
-        shell: bash -o pipefail {0}
+      - id: smoke
+        name: Smoke test
+        shell: bash {0}
+        env:
+          DATE: ${{ steps.pick.outputs.date }}
+        run: |
+          bash tools/stable-snapshot/smoke-test.sh "$DATE" 2>&1 | tee smoke.log
+          rc=${PIPESTATUS[0]}
+          case $rc in
+            0) outcome=passed ;;
+            75) outcome=not-validated ;;
+            *) outcome=failed ;;
+          esac
+          echo "outcome=$outcome" >> "$GITHUB_OUTPUT"
+          [ -f smoke-summary.md ] && cat smoke-summary.md >> "$GITHUB_STEP_SUMMARY"
+          exit $rc
       - name: Upload log
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: smoke-log
-          path: smoke.log
+          path: |
+            smoke.log
+            smoke-summary.md
+          retention-days: 90
 
   report:
     needs: smoke
     if: always() && needs.smoke.outputs.date != ''
     runs-on: ubuntu-latest
     steps:
-      - name: Open an issue with the result
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: smoke-log
+      - name: Open or update the issue for this snapshot
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           DATE: ${{ needs.smoke.outputs.date }}
+          OUTCOME: ${{ needs.smoke.outputs.outcome }}
           RESULT: ${{ needs.smoke.result }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          if [ "$RESULT" = success ]; then
-            title="Stable snapshot $DATE passed: ready to promote"
-            body="All reyos-* packages installed on Arch snapshot \`$DATE\` and their imports and QML modules loaded.
-
-          \`tools/stable-snapshot/promote.sh\` (daily timer on the signing machine) promotes it and closes this issue. By hand: \`promote.sh --force --date $DATE\`.
-
-          Run: $RUN_URL"
+          case "$OUTCOME" in
+            passed)
+              title="Stable snapshot $DATE passed: ready to promote"
+              next="\`tools/stable-snapshot/promote.sh\` (daily timer on the signing machine) promotes it and closes this issue. By hand: \`promote.sh --force --date $DATE\`." ;;
+            not-validated)
+              title="Stable snapshot $DATE NOT TESTED: download failure, not validated"
+              next="Downloads from archive.archlinux.org kept failing after every retry, so the snapshot was never installed or checked. This is not a result about $DATE. Don't promote it; run the check again for the same date: *Actions → Stable snapshot check → Run workflow*, date \`$DATE\` (this issue is updated)." ;;
+            failed)
+              title="Stable snapshot $DATE FAILED: keep the current date"
+              next="A package, signature, dependency, import or QML check failed. Don't promote it; the stable channel stays on its current date." ;;
+            *)
+              title="Stable snapshot $DATE NOT TESTED: the check didn't finish ($RESULT)"
+              next="The check stopped before it reached a result (job $RESULT). Don't promote it; run the check again for \`$DATE\`." ;;
+          esac
+          {
+            if [ -f smoke-summary.md ]; then cat smoke-summary.md; else echo "## Stable snapshot check: \`$DATE\`"; fi
+            echo
+            echo "$next"
+            echo
+            echo "Run: $RUN_URL (full log: the \`smoke-log\` artifact, kept 90 days)"
+          } > body.md
+          # One issue per date: a rerun updates the open one instead of adding another.
+          num=$(gh issue list --state open --limit 100 --search "\"Stable snapshot $DATE\" in:title" \
+                  --json number,title -q "[.[] | select(.title | startswith(\"Stable snapshot $DATE \"))][0].number // empty")
+          if [ -n "$num" ]; then
+            gh issue edit "$num" --title "$title"
+            gh issue comment "$num" --body-file body.md
+            echo "Updated #$num: $title"
           else
-            title="Stable snapshot $DATE FAILED: keep the current date"
-            body="The smoke test failed on Arch snapshot \`$DATE\`. Don't promote it; the stable channel stays on its current date. See the log: $RUN_URL"
+            gh issue create --title "$title" --body-file body.md
           fi
-          gh issue create --repo "${{ github.repository }}" --title "$title" --body "$body"

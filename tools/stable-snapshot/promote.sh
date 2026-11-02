@@ -71,10 +71,12 @@ echo probe > "$STATE/sigprobe"
 gpg --batch --yes --pinentry-mode error --local-user "$KEY" --detach-sign "$STATE/sigprobe" 2>/dev/null \
     || fail "can't sign with the ReyOS key $KEY without a passphrase prompt"
 
-results() {  # "<date> <passed|FAILED> <issue number>", newest date first
+results() {  # "<date> <passed|FAILED|NOT> <issue number>", newest date first
+    # NOT = "NOT TESTED": the archive downloads failed, so nothing is known about
+    # that date; it's neither promoted nor skipped as failed.
     gh issue list --repo "$GH_REPO" --state all --limit 100 --search "Stable snapshot in:title" \
         --json number,title -q '.[] | "\(.title) #\(.number)"' \
-    | sed -nE 's#^Stable snapshot ([0-9]{4}/[0-9]{2}/[0-9]{2}) (passed|FAILED).* \#([0-9]+)$#\1 \2 \3#p' | sort -r
+    | sed -nE 's#^Stable snapshot ([0-9]{4}/[0-9]{2}/[0-9]{2}) (passed|FAILED|NOT)[ :].* \#([0-9]+)$#\1 \2 \3#p' | sort -r
 }
 newest_pass() {
     results | while read -r d r n; do
@@ -110,6 +112,11 @@ if [ -z "$pick" ]; then
     sleep 20  # the report job opens the issue after the test job
     CANDIDATE=$test_date
     pick=$(newest_pass)
+    if [ -z "$pick" ] && results | grep -q "^$test_date NOT "; then
+        echo "snapshot $test_date couldn't be tested (archive downloads failed); stable stays on $current; the next run checks the next day's (rerun this date by hand to test it)"
+        notify "Arch snapshot $test_date couldn't be tested" "Downloads from the Arch archive failed. Stable stays on $current; it will try again tomorrow."
+        exit 0
+    fi
     if [ -z "$pick" ]; then
         echo "snapshot $test_date FAILED the check; stable stays on $current, next run tries the next day's"
         notify "Arch snapshot $test_date failed the ReyOS check" "Stable stays on $current. It will try again tomorrow."
