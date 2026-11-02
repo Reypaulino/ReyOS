@@ -15,7 +15,10 @@ ROOT = Path(sys.argv[1] if len(sys.argv) > 1 else "/usr/share/reyos")
 # Apps ReyOS installs only when asked (ReyOS Games installs Lutris on the
 # first "Add PC game"); their modules are imported by helper code that only
 # runs once they're there, so they count as optional, not missing.
-ON_DEMAND = {"lutris"}
+# yaml: pc_games.py reads Lutris's game configs with it, and Arch's lutris
+# depends on python-yaml (2026/10/31 no longer had it through anything else).
+# A future non-Lutris yaml import needs python-yaml in that package's depends.
+ON_DEMAND = {"lutris", "yaml"}
 QML_IMPORT_RE = re.compile(r"^\s*import\s+([A-Za-z_][\w.]*)(?:\s+[\d.]+)?(?:\s+as\s+\w+)?\s*$")
 
 
