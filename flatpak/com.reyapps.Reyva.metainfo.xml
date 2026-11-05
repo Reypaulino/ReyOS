@@ -67,6 +67,12 @@
   </requires>
 
   <releases>
+    <release version="0.1.12" date="2026-11-05">
+      <description>
+        <p>Reyva starts again after the KDE runtime update to Qt 6.11.3 (it closed right away on launch).</p>
+        <p>"Ask where to save each file" is on by default, so every download asks for a folder. It can still be turned off in Settings.</p>
+      </description>
+    </release>
     <release version="0.1.11" date="2026-10-20">
       <description>
         <p>Add Shortcut, Find in page, Session History and Privacy &amp; Shields now look like the other Reyva windows (rounded corners, same header and buttons).</p>

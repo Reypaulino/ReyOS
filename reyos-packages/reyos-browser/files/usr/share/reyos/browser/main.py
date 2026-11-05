@@ -18,7 +18,7 @@ from pathlib import Path
 
 # Reyva's own version, shown in Settings. Bump it with every release (and the
 # Flatpak metainfo <release>); the .deb/Windows package numbers are separate.
-APP_VERSION = "0.1.11"
+APP_VERSION = "0.1.12"
 
 IS_WINDOWS = sys.platform == "win32"
 IS_FLATPAK = os.path.exists("/.flatpak-info")
@@ -642,7 +642,9 @@ class BrowserBackend(QObject):
         self._fingerprint_script_source = load_fingerprint_protection_script_source(secrets.token_hex(16))
         self._password_bridge = PasswordBridge(self)
         self._low_memory_mode = load_low_memory_mode()
-        self._ask_download_location = load_setting("askDownloadLocation", False)
+        # On by default: with it off every download lands in ~/Downloads and
+        # people expect to pick the folder (Rey, 10-28).
+        self._ask_download_location = load_setting("askDownloadLocation", True)
         self._blocked_request_count = 0
         self._current_site = ""
         self._print_files: set[str] = set()
