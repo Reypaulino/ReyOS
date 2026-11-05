@@ -2,6 +2,16 @@
 
 Real bugs found and fixed, with root cause. Newest first. See `bugs.md` for what's still open. Entries up to 2026-10-28 are in `fixes-old.md`.
 
+## 2026-11-05 — Reyva Flatpak closed on launch after Flathub's Qt 6.11.3 runtime update; downloads ask where to save by default (Reyva 0.1.12)
+
+Laptop report (2026-11-04): Reyva didn't open after a normal update. Flathub moved `org.kde.Platform//6.11` to Qt 6.11.3 on 2026-10-31 (commit `fb23e178`). Reyva 0.1.11 carries the PySide6 from `io.qt.PySide.BaseApp//6.11` as it was when it was built (Qt 6.11.2), and PySide6 links Qt's private API, which is tied to the exact Qt version: `ImportError: .../PySide6/QtCore.abi3.so: undefined symbol: _ZN14QObjectPrivateC2E16QtPrivate_6_11_2, version Qt_6_PRIVATE_API`. Every Flatpak user is hit, not just the laptop. Reproduced on the Dev VM: updating its runtime from `76fa01ac` (10-24) to `fb23e178` gave the same error.
+
+- **Fix:** rebuilt against the BaseApp that Flathub now ships (6.11.3, commit `25537519`). No code change was needed for it. Dev VM on runtime `fb23e178`: 0.1.12 installed from the release bundle, opens example.com, renderer up, no import or Mojo errors.
+- **Patch 0012 (laptop, Rey's request):** `askDownloadLocation` defaults to on (`main.py`). A `settings.json` that already says `false` is kept. Dev VM with no settings file: the Downloads window says "Asks where to save each file".
+- Built in RAM on the Ubuntu host (disk at 1.9 GB free): a separate Flatpak installation via `FLATPAK_USER_DIR=/dev/shm/...` with Flathub's KDE SDK/runtime and the BaseApp, flatpak-builder `--state-dir` and build dir in `/dev/shm`. Only the signed export into `~/reyva-flatpak-work/site/repo` touches the disk (+180 MB). Testing a build from that separate installation on the host's own desktop doesn't work: the window never appears, and the host's Flatpak services report the app "not installed" because they only know the real installation. Test on the Dev VM instead.
+- **This comes back with every Qt point release** in the 6.11 runtime: whenever Flathub updates `org.kde.Platform//6.11` and the BaseApp, Reyva has to be rebuilt the same day or it stops starting. To check: `flatpak remote-info flathub io.qt.PySide.BaseApp//6.11` (Version) against the Qt version Reyva was built with.
+- Published: commits `496a616` (source) and `9aae1ae` (manifest pin), Flatpak repo `d6d1875` (commit `208110b3`), GitHub Release `reyva-flatpak-v0.1.12`. Not done: Windows 0.1.0.114 and `.deb` 128ubuntu1 (only patch 0012 applies to them).
+
 ## 2026-11-02 — Stable check: Arch Archive download timeouts reported as a failed snapshot (tools/stable-snapshot/, GitHub #26, #27)
 
 The weekly check of Arch snapshot 2026/10/31 (run 41307235414, issue #26) failed while pacman was still downloading: `mkinitcpio`, `kded` and `libmalcontent` stalled on archive.archlinux.org ("Operation too slow. Less than 1 bytes/sec transferred the last 10 seconds"), pacman gave up on the server ("too many errors"), and the transaction was never committed. No ReyOS package or QML check ran. The workflow still opened "FAILED: keep the current date", and promote.sh treats a FAILED title as a real result, so it would never have checked 10/31 again.
