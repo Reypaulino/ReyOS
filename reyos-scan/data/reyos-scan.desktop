@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=ReyOS Scan
+GenericName=Malware Scanner
+Comment=Scan files, drives and game installers for known malware (ClamAV)
+Exec=reyos-scan-gui
+Icon=reyos-scan
+Terminal=false
+Categories=System;Security;
+Keywords=virus;malware;antivirus;clamav;scan;security;
+StartupWMClass=reyos-scan
