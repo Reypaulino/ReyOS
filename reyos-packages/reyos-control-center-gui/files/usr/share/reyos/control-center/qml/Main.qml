@@ -311,8 +311,46 @@ Kirigami.ApplicationWindow {
         // The Updates page shows its own restart dialog; elsewhere (the
         // "Updates are ready" dialog) say it in the popup instead.
         function onRestartRecommended() {
-            if (drawer.currentPage !== "UpdatesPage.qml")
+            if (drawer.currentPage === "UpdatesPage.qml") return
+            var k = backend.kernelRestart()
+            if (k.needed) {
+                kernelRestartDialog.modulesMissing = k.modulesMissing
+                kernelRestartDialog.open()
+            } else {
                 changePopup.show("Updates installed. Restart your computer to finish updating.", true)
+            }
+        }
+    }
+
+    // A new kernel only runs after a restart; say so plainly instead of a
+    // popup that disappears.
+    Controls.Dialog {
+        id: kernelRestartDialog
+        property bool modulesMissing: false
+        title: "Restart needed"
+        modal: true
+        anchors.centerIn: Controls.Overlay.overlay
+        width: Math.min(appWindow.width * 0.85, 480)
+        footer: Controls.DialogButtonBox {
+            Controls.Button {
+                text: "Restart now"
+                highlighted: true
+                Controls.DialogButtonBox.buttonRole: Controls.DialogButtonBox.AcceptRole
+                onClicked: { kernelRestartDialog.close(); backend.restartNow() }
+            }
+            Controls.Button {
+                text: "Later"
+                Controls.DialogButtonBox.buttonRole: Controls.DialogButtonBox.RejectRole
+                onClicked: kernelRestartDialog.close()
+            }
+        }
+        Controls.Label {
+            width: kernelRestartDialog.availableWidth
+            wrapMode: Text.Wrap
+            text: (kernelRestartDialog.modulesMissing
+                   ? "A new Linux kernel was installed. Restart now: until you do, Bluetooth and USB devices you connect (game controllers, USB drives) may not work."
+                   : "A new Linux kernel was installed. Restart your computer to start using it.")
+                  + " Save any open work first."
         }
     }
 

@@ -9,6 +9,15 @@ Kirigami.Page {
     padding: Kirigami.Units.largeSpacing
 
     property var allGames: []
+    // An update replaced the running kernel and its modules are gone, so a
+    // controller connected now gets no driver (laptop 2026-11-16).
+    property bool kernelModulesMissing: backend.kernelRestart().modulesMissing
+    Timer {
+        interval: 60000
+        repeat: true
+        running: true
+        onTriggered: kernelModulesMissing = backend.kernelRestart().modulesMissing
+    }
     property var systems: []
     property string gameFilter: ""
     property string gameSearch: ""
@@ -665,6 +674,20 @@ Kirigami.Page {
                 value: Math.max(0, addPercent)
                 indeterminate: addPercent < 0
             }
+        }
+
+        Kirigami.InlineMessage {
+            Layout.fillWidth: true
+            visible: kernelModulesMissing
+            type: Kirigami.MessageType.Warning
+            text: "Controller drivers can't load until you restart: a system update installed a new Linux kernel."
+            actions: [
+                Kirigami.Action {
+                    text: "Restart now"
+                    icon.name: "system-reboot"
+                    onTriggered: backend.restartNow()
+                }
+            ]
         }
 
         Kirigami.InlineMessage {

@@ -23,6 +23,7 @@ Kirigami.ScrollablePage {
         function onPkgFinished(ok, message) {
             running = false
             channelInfo = backend.updateChannel()
+            kernelInfo = backend.kernelRestart()
             appendLog(ok ? "\n✓ " + message : "\n✗ " + message)
         }
         function onOrphansListed(list) {
@@ -55,13 +56,19 @@ Kirigami.ScrollablePage {
     property bool securityChecked: false
     property bool moreOptions: false
     property var channelInfo: backend.updateChannel()
+    // A kernel update only takes effect after a restart (Arch replaces the
+    // running kernel's files in place).
+    property var kernelInfo: backend.kernelRestart()
+    readonly property string kernelText: kernelInfo.modulesMissing
+        ? "A new Linux kernel was installed. Restart now: until you do, Bluetooth and USB devices you connect (game controllers, USB drives) may not work."
+        : "A new Linux kernel was installed. Restart your computer to start using it."
 
     ListModel { id: pkgModel }
     ListModel { id: secUpdatesModel }
 
     Controls.Dialog {
         id: restartDialog
-        title: "Restart to finish updating"
+        title: kernelInfo.needed ? "Restart needed" : "Restart to finish updating"
         modal: true
         anchors.centerIn: Controls.Overlay.overlay
         width: 480
@@ -87,14 +94,16 @@ Kirigami.ScrollablePage {
 
         Controls.Label {
             width: restartDialog.availableWidth
-            text: "Updates were installed. Restart your computer so the desktop and your apps start using the new versions. Save any open work first.\n\nNo time now? Refresh desktop shows new icons and themes right away; apps update when you next open them."
+            text: (kernelInfo.needed ? kernelText + " Save any open work first."
+                                     : "Updates were installed. Restart your computer so the desktop and your apps start using the new versions. Save any open work first.")
+                  + "\n\nNo time now? Refresh desktop shows new icons and themes right away; apps update when you next open them."
             wrapMode: Text.Wrap
         }
     }
 
     Connections {
         target: backend
-        function onRestartRecommended() { restartDialog.open() }
+        function onRestartRecommended() { kernelInfo = backend.kernelRestart(); restartDialog.open() }
     }
 
     Controls.Dialog {
@@ -172,6 +181,21 @@ Kirigami.ScrollablePage {
         y: Kirigami.Units.gridUnit
         width: parent.width - Kirigami.Units.gridUnit * 2
         spacing: Kirigami.Units.gridUnit
+
+        Kirigami.InlineMessage {
+            Layout.fillWidth: true
+            visible: kernelInfo.needed
+            type: kernelInfo.modulesMissing ? Kirigami.MessageType.Warning : Kirigami.MessageType.Information
+            text: kernelText
+            actions: [
+                Kirigami.Action {
+                    text: "Restart now"
+                    icon.name: "system-reboot"
+                    enabled: !running
+                    onTriggered: backend.restartNow()
+                }
+            ]
+        }
 
         RowLayout {
             Layout.fillWidth: true

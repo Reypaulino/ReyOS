@@ -5,8 +5,10 @@ desktop notification if any are found. Fetches the repo database over plain HTTP
 (which needs root) so this can run unprivileged as a per-user systemd timer.
 """
 import io
+import os
 import shutil
 import subprocess
+import sys
 import tarfile
 import urllib.error
 import urllib.request
@@ -89,7 +91,81 @@ def already_told(key):
     return False
 
 
+def kernel_replaced():
+    """True when an update replaced the running kernel (Arch removes its
+    package files in place), so a restart is needed to start the new one.
+    Same check as Control Center's kernel_status.py."""
+    running = os.uname().release
+    modules = Path("/usr/lib/modules")
+    if "microsoft" in running.lower() or not modules.is_dir():
+        return False
+    if not (modules / running / "modules.dep").is_file():
+        return True
+    try:
+        return subprocess.run(["pacman", "-Qqo", str(modules / running / "vmlinuz")],
+                              capture_output=True, timeout=10).returncode != 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+def restart_notice():
+    """Once per boot: "Restart needed" with a Restart button, after an
+    update (any tool: Control Center, pacman) installed a new kernel."""
+    if not kernel_replaced() or not shutil.which("notify-send"):
+        return
+    stamp = Path.home() / ".cache" / "reyos" / "restart-notified"
+    try:
+        boot_id = Path("/proc/sys/kernel/random/boot_id").read_text().strip()
+    except OSError:
+        boot_id = ""
+    try:
+        if stamp.read_text() == boot_id:
+            return
+    except OSError:
+        pass
+    try:
+        stamp.parent.mkdir(parents=True, exist_ok=True)
+        stamp.write_text(boot_id)
+    except OSError:
+        pass
+    # notify-send --wait only returns once the notification is answered or
+    # dismissed, so it waits in its own unit instead of holding up this
+    # timer's service.
+    subprocess.run(["systemd-run", "--user", "--quiet", "--collect", "--unit=reyos-restart-notice",
+                    __file__, "--restart-notice"], capture_output=True)
+
+
+def wait_restart_notice():
+    try:
+        answer = subprocess.run([
+            # Stays up until answered or dismissed: once a popup times out,
+            # Plasma drops it with no history entry and the button is gone.
+            "notify-send", "-a", "ReyOS", "-i", "system-reboot", "--expire-time=0",
+            "--action=restart=Restart now", "--wait",
+            "Restart needed",
+            "A system update installed a new Linux kernel. Restart your computer to finish the update. "
+            "Until then, Bluetooth and USB devices you connect (game controllers, USB drives) may not work.",
+        ], capture_output=True, text=True).stdout.strip()
+    except OSError:
+        return
+    if answer == "restart":
+        # Plasma's logout-and-reboot (unsaved-work prompts); systemctl as the fallback.
+        if subprocess.run(["qdbus6", "org.kde.Shutdown", "/Shutdown", "org.kde.Shutdown.logoutAndReboot"],
+                          capture_output=True).returncode != 0:
+            subprocess.run(["systemctl", "reboot"])
+
+
 def main():
+    if "--restart-notice" in sys.argv:
+        wait_restart_notice()
+        return
+    try:
+        check_updates()
+    finally:
+        restart_notice()
+
+
+def check_updates():
     remote = fetch_repo_versions() or {}
 
     updates = []

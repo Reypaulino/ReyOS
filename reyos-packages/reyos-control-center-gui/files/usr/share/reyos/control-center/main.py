@@ -39,6 +39,7 @@ from remote_play_backend import RemotePlayBackend  # Gaming page's Remote Play (
 import security_scan  # Qt-free: ReyOS Scan (ClamAV), reports and quarantine
 import flatpak_updates  # Qt-free: pending Flatpak updates, readable update errors
 import app_updates  # Qt-free: ReyOS + Flatpak updates for the "Updates are ready" dialog
+import kernel_status  # Qt-free: restart needed after a kernel update
 from emulation import EMU_SYSTEMS, GAMES_DIR, RETROARCH_REYOS_CFG
 
 
@@ -1006,6 +1007,10 @@ class Backend(QObject):
         ).returncode
         if rc != 0:
             subprocess.Popen(["systemctl", "reboot"])
+
+    @Slot(result="QVariantMap")
+    def kernelRestart(self):
+        return kernel_status.status()
 
     @Slot(result="QVariantList")
     def defaultAppsInfo(self):

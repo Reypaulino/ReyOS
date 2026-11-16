@@ -21,6 +21,7 @@ APP_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(APP_DIR))
 import emulation  # noqa: E402
 import game_shrink  # noqa: E402
+import kernel_status  # noqa: E402
 import pc_games  # noqa: E402
 import security_scan  # noqa: E402
 from remote_play_backend import RemotePlayBackend  # noqa: E402
@@ -659,6 +660,21 @@ class GamesBackend(QObject):
     def cancelControllerSetup(self):
         if getattr(self, "_controller_worker", None) is not None:
             self._controller_worker.cancelled = True
+
+    @Slot(result="QVariantMap")
+    def kernelRestart(self):
+        return kernel_status.status()
+
+    @Slot()
+    def restartNow(self):
+        # Same as Control Center: Plasma's logout-and-reboot (unsaved-work
+        # prompts), plain systemctl reboot only as the fallback.
+        rc = subprocess.run(
+            ["qdbus6", "org.kde.Shutdown", "/Shutdown", "org.kde.Shutdown.logoutAndReboot"],
+            capture_output=True,
+        ).returncode
+        if rc != 0:
+            subprocess.Popen(["systemctl", "reboot"])
 
     @Slot(result="QVariantMap")
     def player1Controller(self):

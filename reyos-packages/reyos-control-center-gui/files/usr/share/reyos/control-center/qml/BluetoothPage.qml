@@ -67,7 +67,9 @@ Kirigami.ScrollablePage {
         running: hasAdapter && powered && !scanning && !acting
         onTriggered: backend.refreshBluetoothStatus()
     }
-    Component.onDestruction: backend.stopBluetoothScan()
+    // At quit the engine drops `backend` before pages are destroyed; the
+    // scan is stopped by main.py's aboutToQuit then.
+    Component.onDestruction: if (backend) backend.stopBluetoothScan()
 
     ListModel { id: deviceModel }
 
