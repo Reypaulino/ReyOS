@@ -82,6 +82,27 @@ Largest object is ~88 MB (QtWebEngine), close to GitHub's 100 MB per-file limit.
 To test without publishing, serve `site/` with `python3 -m http.server` and use a
 copy of the flatpakref with a local Url.
 
+Automatic rebuilds (since 2026-11-16): `tools/reyva-flatpak/rebuild.sh` runs daily
+(systemd user timer `reyva-flatpak-rebuild`, 08:00, installed with
+`tools/reyva-flatpak/install-timer.sh`) on the machine with the signing key and
+`~/reyva-flatpak-work/site`. Reyva's PySide6 uses Qt's private API, so every Qt point
+release in `org.kde.Platform//6.11` stops the published Reyva from starting
+(`undefined symbol ... QtPrivate_6_11_2`, 2026-10-31). The script compares the
+runtime and `io.qt.PySide.BaseApp` commits recorded in the published commit's
+`/app/manifest.json` with Flathub's. When either changed, it rebuilds that exact
+manifest (same source commit, same version) in RAM against Flathub's current ones,
+installs it in a separate Flatpak installation, checks the PySide6 imports and
+runs Reyva offscreen for 30 s, and only then signs it into `site/repo`
+(`build-commit-from`), prunes to the last 3 commits (GitHub Pages' 1 GB limit),
+pushes, and waits for Pages. A combination that fails the test isn't retried
+until Flathub changes the runtime or the BaseApp again: Flathub updates the
+BaseApp a few days after the runtime (6.11.3: runtime 10-31, BaseApp 11-02), and
+Reyva can't start in between whatever is done here. Desktop notification on
+publish or failure; log `~/.local/state/reyva-rebuild/rebuild.log`. By hand:
+`rebuild.sh --dry-run` (build + test only), `--force` (even if nothing changed).
+It doesn't rebuild the GitHub Release bundle (bundle installs update from the repo)
+or the `.deb`/Windows builds (they bundle their own Qt).
+
 **Flathub's generative-AI policy (checked 2026-10-05) blocks an agent-driven submission:**
 "Flathub manifests must not contain AI-generated or AI-assisted content", "AI tools or
 agents must not open or automate Flathub submission pull requests, or generate their

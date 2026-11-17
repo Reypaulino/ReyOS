@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily check whether Flathub updated the runtime the Reyva Flatpak is built on
+
+[Timer]
+OnCalendar=*-*-* 08:00:00
+Persistent=true
+RandomizedDelaySec=10min
+
+[Install]
+WantedBy=timers.target

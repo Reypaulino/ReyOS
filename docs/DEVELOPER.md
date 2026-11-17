@@ -17,6 +17,7 @@ Custom Arch Linux distro (KDE Plasma 6, Wayland) built via `mkarchiso`, targetin
 │   └── airootfs/             overlay files + customize_airootfs.sh
 ├── flatpak/                  Reyva Flatpak manifest, metainfo, release steps
 ├── tools/stable-snapshot/    stable update channel: check, promote, signing key (public)
+├── tools/reyva-flatpak/      automatic Reyva Flatpak rebuild after Flathub runtime updates
 ├── website/                  reyos.reyapps.com (one page + screenshots)
 ├── wsl/                      ReyOS WSL build
 ├── .github/workflows/        stable-snapshot check, Reyva for Windows
@@ -53,7 +54,7 @@ The repo's files (packages, `.sig` files, `reyos-local.db`/`.files`) live on the
 | `reyos-calamares`, `reyos-calamares-core` | Installer configuration and branding; the Calamares engine built for ReyOS |
 | `reyos-kde-customization` | Optional extra desktop customization |
 
-Reyva (the browser) is also shipped outside ReyOS: a Flatpak repo (`flatpak/README.md`), an Ubuntu/Debian `.deb` (`reyos-packages/reyos-browser/debian/build.sh`) and a Windows installer (`.github/workflows/reyos-browser-windows.yml`), each published as a GitHub Release (only the newest of each is kept).
+Reyva (the browser) is also shipped outside ReyOS: a Flatpak repo (`flatpak/README.md`; rebuilt automatically when Flathub updates its runtime, `tools/reyva-flatpak/`), an Ubuntu/Debian `.deb` (`reyos-packages/reyos-browser/debian/build.sh`) and a Windows installer (`.github/workflows/reyos-browser-windows.yml`), each published as a GitHub Release (only the newest of each is kept).
 
 ## VMs
 
