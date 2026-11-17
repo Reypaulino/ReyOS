@@ -2387,6 +2387,9 @@ ApplicationWindow {
         modal: false
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
         background: Rectangle { color: accentSurfaceRaised; border.color: accentBorder; border.width: 1; radius: 12 }
+        // The full menu is ~760 px tall: in a shorter window the rows shrink,
+        // and below that it scrolls (Quit used to be cut off at the bottom).
+        readonly property bool compact: window.contentItem.height < 790
 
         component MenuDivider: Rectangle {
             Layout.fillWidth: true
@@ -2401,6 +2404,7 @@ ApplicationWindow {
             clip: true
             contentHeight: menuColumn.implicitHeight
             boundsBehavior: Flickable.StopAtBounds
+            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
             ColumnLayout {
                 id: menuColumn
@@ -2408,6 +2412,8 @@ ApplicationWindow {
                 spacing: 2
 
                 MenuRow {
+
+                    compact: browserMenu.compact
                     text: "New Tab"
                     iconSource: Qt.resolvedUrl("../icons/reyos-plus.svg")
                     shortcutText: "Ctrl+T"
@@ -2415,6 +2421,7 @@ ApplicationWindow {
                     onClicked: { browserMenu.close(); window.addTab() }
                 }
                 MenuRow {
+                    compact: browserMenu.compact
                     text: "Reopen Closed Tab"
                     iconSource: Qt.resolvedUrl("../icons/reyos-history.svg")
                     shortcutText: "Ctrl+Shift+T"
@@ -2425,12 +2432,15 @@ ApplicationWindow {
                 MenuDivider {}
 
                 MenuRow {
+
+                    compact: browserMenu.compact
                     text: "Bookmarks"
                     iconSource: Qt.resolvedUrl("../icons/reyos-bookmark.svg")
                     hoverColor: accentSurfaceHover
                     onClicked: { browserMenu.close(); bookmarksDialog.open() }
                 }
                 MenuRow {
+                    compact: browserMenu.compact
                     text: "Downloads"
                     iconSource: Qt.resolvedUrl("../icons/reyos-download.svg")
                     shortcutText: window.activeDownloadCount > 0 ? window.activeDownloadCount + " active" : ""
@@ -2438,18 +2448,21 @@ ApplicationWindow {
                     onClicked: { browserMenu.close(); downloadsDialog.open() }
                 }
                 MenuRow {
+                    compact: browserMenu.compact
                     text: "Session History"
                     iconSource: Qt.resolvedUrl("../icons/reyos-history.svg")
                     hoverColor: accentSurfaceHover
                     onClicked: { browserMenu.close(); historyDialog.open() }
                 }
                 MenuRow {
+                    compact: browserMenu.compact
                     text: "Passwords"
                     iconSource: Qt.resolvedUrl("../icons/reyos-password.svg")
                     hoverColor: accentSurfaceHover
                     onClicked: { browserMenu.close(); passwordsDialog.open() }
                 }
                 MenuRow {
+                    compact: browserMenu.compact
                     text: "Install This Site as an App"
                     visible: browserBackend.webAppsSupported
                     iconSource: Qt.resolvedUrl("../icons/reyos-webapp.svg")
@@ -2458,6 +2471,7 @@ ApplicationWindow {
                     onClicked: { browserMenu.close(); window.installCurrentAsApp() }
                 }
                 MenuRow {
+                    compact: browserMenu.compact
                     text: "Manage Web Apps"
                     visible: browserBackend.webAppsSupported
                     iconSource: Qt.resolvedUrl("../icons/reyos-webapp.svg")
@@ -2468,12 +2482,15 @@ ApplicationWindow {
                 MenuDivider {}
 
                 MenuRow {
+
+                    compact: browserMenu.compact
                     text: "Privacy & Shields"
                     iconSource: Qt.resolvedUrl("../icons/reyos-shields.svg")
                     hoverColor: accentSurfaceHover
                     onClicked: { browserMenu.close(); siteSafetyDialog.open() }
                 }
                 MenuRow {
+                    compact: browserMenu.compact
                     text: "Low Memory Mode"
                     iconSource: Qt.resolvedUrl("../icons/reyos-memory.svg")
                     hoverColor: accentSurfaceHover
@@ -2486,6 +2503,8 @@ ApplicationWindow {
                 MenuDivider {}
 
                 MenuRow {
+
+                    compact: browserMenu.compact
                     text: window.readerIsActive() ? "Exit Reader Mode" : "Reader Mode"
                     iconSource: Qt.resolvedUrl("../icons/reyos-reader.svg")
                     shortcutText: "Ctrl+Shift+R"
@@ -2494,6 +2513,7 @@ ApplicationWindow {
                     onClicked: { browserMenu.close(); window.openReaderMode() }
                 }
                 MenuRow {
+                    compact: browserMenu.compact
                     text: "Find in Page"
                     iconSource: Qt.resolvedUrl("../icons/reyos-find.svg")
                     shortcutText: "Ctrl+F"
@@ -2502,6 +2522,7 @@ ApplicationWindow {
                     onClicked: { browserMenu.close(); window.openFind() }
                 }
                 MenuRow {
+                    compact: browserMenu.compact
                     text: "Print…"
                     iconSource: Qt.resolvedUrl("../icons/reyos-print.svg")
                     shortcutText: "Ctrl+P"
@@ -2510,6 +2531,7 @@ ApplicationWindow {
                     onClicked: { browserMenu.close(); window.printPage(currentView, "print") }
                 }
                 MenuRow {
+                    compact: browserMenu.compact
                     text: "Save Page as PDF…"
                     iconSource: Qt.resolvedUrl("../icons/reyos-download.svg")
                     hoverColor: accentSurfaceHover
@@ -2520,12 +2542,15 @@ ApplicationWindow {
                 MenuDivider {}
 
                 MenuRow {
+
+                    compact: browserMenu.compact
                     text: "Settings"
                     iconSource: Qt.resolvedUrl("../icons/reyos-settings.svg")
                     hoverColor: accentSurfaceHover
                     onClicked: { browserMenu.close(); settingsDialog.open() }
                 }
                 MenuRow {
+                    compact: browserMenu.compact
                     text: "Quit Reyva"
                     iconSource: Qt.resolvedUrl("../icons/reyos-quit.svg")
                     shortcutText: "Ctrl+Q"

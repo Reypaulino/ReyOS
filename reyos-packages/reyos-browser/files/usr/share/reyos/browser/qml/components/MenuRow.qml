@@ -10,9 +10,11 @@ ItemDelegate {
     property bool on: false
     property color hoverColor: "#3B2B1C"
     property color accent: "#C97932"
+    // Shorter rows when the window is too short for the whole menu.
+    property bool compact: false
 
     Layout.fillWidth: true
-    implicitHeight: 36
+    implicitHeight: compact ? 30 : 36
     leftPadding: 10
     rightPadding: 10
     focusPolicy: Qt.NoFocus
