@@ -115,7 +115,9 @@ ApplicationWindow {
     property int activeDownloadCount: 0
     // Tabs along the top (default) or in a sidebar (Settings > Tabs).
     readonly property bool verticalTabs: browserBackend.tabLayout === "vertical"
-    readonly property int sideTabsWidth: verticalTabs && !pageFullScreen ? 248 : 0
+    // The side list folds down to a strip of site icons (button in the tab strip).
+    readonly property bool sideTabsCollapsed: browserBackend.sideTabsCollapsed
+    readonly property int sideTabsWidth: verticalTabs && !pageFullScreen ? (sideTabsCollapsed ? 52 : 248) : 0
 
     ListModel { id: tabs }
     ListModel { id: downloads }
@@ -960,6 +962,19 @@ ApplicationWindow {
                 }
 
                 IconButton {
+                    id: sideTabsToggle
+                    visible: window.verticalTabs
+                    iconSource: Qt.resolvedUrl("../icons/reyos-sidebar.svg")
+                    iconSize: 17
+                    implicitWidth: 34
+                    implicitHeight: 34
+                    hoverColor: accentSurfaceHover
+                    active: !window.sideTabsCollapsed
+                    tip: window.sideTabsCollapsed ? "Show tab names" : "Fold the tab list to icons"
+                    onClicked: browserBackend.setSideTabsCollapsed(!window.sideTabsCollapsed)
+                }
+
+                IconButton {
                     id: newTabButton
                     iconSource: Qt.resolvedUrl("../icons/reyos-plus.svg")
                     iconSize: 18
@@ -1488,6 +1503,7 @@ ApplicationWindow {
     Dialog {
         id: bookmarksDialog
         modal: true
+        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.55) }
         parent: Overlay.overlay
         width: Math.min(560, window.width - 48)
         height: Math.min(640, window.height - 72)
@@ -1718,6 +1734,7 @@ ApplicationWindow {
         id: resetBookmarksConfirmDialog
         title: "Delete all bookmarks?"
         modal: true
+        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.55) }
         width: 360
         anchors.centerIn: parent
         padding: 18
@@ -1750,6 +1767,7 @@ ApplicationWindow {
     Dialog {
         id: passwordsDialog
         modal: true
+        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.55) }
         parent: Overlay.overlay
         width: Math.min(560, window.width - 48)
         height: Math.min(600, window.height - 72)
@@ -1984,6 +2002,7 @@ ApplicationWindow {
         id: resetPasswordsConfirmDialog
         title: "Delete all passwords?"
         modal: true
+        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.55) }
         width: 360
         anchors.centerIn: parent
         padding: 18
@@ -2193,6 +2212,7 @@ ApplicationWindow {
     Dialog {
         id: installAppNameDialog
         modal: true
+        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.55) }
         width: Math.min(440, window.width - 32)
         anchors.centerIn: parent
         padding: 20
@@ -2248,6 +2268,7 @@ ApplicationWindow {
     Dialog {
         id: manageAppsDialog
         modal: true
+        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.55) }
         onAboutToShow: browserBackend.refreshWebApps()
         parent: Overlay.overlay
         width: Math.min(520, window.width - 48)
@@ -2587,6 +2608,7 @@ ApplicationWindow {
     Dialog {
         id: historyDialog
         modal: true
+        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.55) }
         width: Math.min(560, window.width - 48)
         height: Math.min(470, window.height - 72)
         anchors.centerIn: parent
@@ -2665,6 +2687,7 @@ ApplicationWindow {
         property string what: ""
         property bool answered: false
         modal: true
+        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.55) }
         width: Math.min(440, window.width - 32)
         anchors.centerIn: parent
         padding: 20
@@ -2721,6 +2744,7 @@ ApplicationWindow {
     Dialog {
         id: settingsDialog
         modal: true
+        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.55) }
         parent: Overlay.overlay
         width: Math.min(600, window.width - 48)
         height: Math.min(settingsColumn.implicitHeight + settingsHeader.implicitHeight + 44, window.height - 72)
@@ -3070,13 +3094,18 @@ ApplicationWindow {
                     SettingRow {
                         first: true
                         label: "Tabs on the side"
-                        description: "Show tabs in a list on the left instead of along the top. Ctrl+Shift+A searches your open tabs either way."
+                        description: "Show tabs in a list on the left instead of along the top. The button next to + folds the list down to site icons. Ctrl+Shift+A searches your open tabs either way."
                         ThemedSwitch {
                             checked: window.verticalTabs
                             onToggled: browserBackend.setTabLayout(checked ? "vertical" : "horizontal")
                         }
                     }
+                }
+
+                SettingsSection {
+                    title: "After a crash"
                     SettingRow {
+                        first: true
                         label: "Restore tabs after a crash"
                         description: browserBackend.crashRecovery
                             ? "On: while Reyva runs, the addresses and titles of your open tabs are kept in a file on this computer (never page contents, cookies, form data or passwords). It's deleted when Reyva closes normally. After a crash you're asked whether to reopen them."
@@ -3546,6 +3575,10 @@ ApplicationWindow {
                 focusPolicy: Qt.NoFocus
                 padding: 0
                 onClicked: tabBar.currentIndex = index
+                readonly property bool folded: window.sideTabsCollapsed
+                ToolTip.visible: folded && hovered
+                ToolTip.delay: 300
+                ToolTip.text: pageTitle
                 Accessible.name: pageTitle + (sleep === "frozen" ? ", sleeping" : (sleep === "discarded" ? ", unloaded" : ""))
                 Accessible.role: Accessible.PageTab
                 Accessible.selected: isCurrent
@@ -3558,7 +3591,7 @@ ApplicationWindow {
                 contentItem: RowLayout {
                     spacing: 6
                     Item {
-                        Layout.leftMargin: 8
+                        Layout.leftMargin: sideTab.folded ? (sideTab.width - 16) / 2 : 8
                         Layout.preferredWidth: 16
                         Layout.preferredHeight: 16
                         Image {
@@ -3579,14 +3612,16 @@ ApplicationWindow {
                         }
                     }
                     Label {
+                        visible: !sideTab.folded
                         text: sideTab.pageTitle
                         color: sideTab.isCurrent ? "#FFF3E6" : "#C9B6A3"
                         font.pixelSize: 13
                         elide: Text.ElideRight
                         Layout.fillWidth: true
                     }
+                    Item { visible: sideTab.folded; Layout.fillWidth: true }
                     Label {
-                        visible: sideTab.sleep.length > 0
+                        visible: sideTab.sleep.length > 0 && !sideTab.folded
                         text: sideTab.sleep === "discarded" ? "◌" : "❄"
                         color: "#F4D5A8"
                         font.pixelSize: 14
@@ -3595,7 +3630,7 @@ ApplicationWindow {
                         HoverHandler { id: sideSleepHover }
                     }
                     ToolButton {
-                        visible: sideTab.keepAlive || sideTab.hovered
+                        visible: !sideTab.folded && (sideTab.keepAlive || sideTab.hovered)
                         focusPolicy: Qt.NoFocus
                         icon.source: Qt.resolvedUrl("../icons/reyos-pin.svg")
                         icon.width: 14
@@ -3611,6 +3646,7 @@ ApplicationWindow {
                         Accessible.name: "Keep tab running in background"
                     }
                     ToolButton {
+                        visible: !sideTab.folded
                         focusPolicy: Qt.NoFocus
                         icon.source: Qt.resolvedUrl("../icons/reyos-close.svg")
                         icon.width: 12
@@ -3788,6 +3824,7 @@ ApplicationWindow {
         property int editIndex: -1
         property string errorText: ""
         modal: true
+        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.55) }
         width: Math.min(420, window.width - 32)
         anchors.centerIn: parent
         padding: 20

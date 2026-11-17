@@ -710,6 +710,7 @@ class BrowserBackend(QObject):
         self._recovery = reyva_core.RecoveryStore(BROWSER_STATE_DIR / "recovery")
         self._pending_recovery = None
         self._tab_layout = load_setting("tabLayout", "horizontal", {"horizontal", "vertical"})
+        self._side_tabs_collapsed = load_setting("sideTabsCollapsed", False)
         self._onboarding_completed = load_setting("onboardingCompleted", False)
         if not self._onboarding_completed and existing_user_data():
             # People who already use Reyva aren't sent through the welcome.
@@ -1322,6 +1323,17 @@ class BrowserBackend(QObject):
     @Property(str, notify=tabLayoutChanged)
     def tabLayout(self) -> str:
         return self._tab_layout
+
+    @Property(bool, notify=tabLayoutChanged)
+    def sideTabsCollapsed(self) -> bool:
+        return self._side_tabs_collapsed
+
+    @Slot(bool)
+    def setSideTabsCollapsed(self, collapsed: bool) -> None:
+        if collapsed != self._side_tabs_collapsed:
+            self._side_tabs_collapsed = collapsed
+            save_setting("sideTabsCollapsed", collapsed)
+            self.tabLayoutChanged.emit()
 
     @Slot(str)
     def setTabLayout(self, layout: str) -> None:
