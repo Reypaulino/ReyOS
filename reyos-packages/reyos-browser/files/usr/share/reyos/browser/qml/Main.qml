@@ -2281,7 +2281,7 @@ ApplicationWindow {
         Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.55) }
         onAboutToShow: browserBackend.refreshWebApps()
         parent: Overlay.overlay
-        width: Math.min(520, window.width - 48)
+        width: Math.min(580, window.width - 48)
         height: Math.min(Math.max(220, browserBackend.installedWebApps.length * 66 + 112), window.height - 72)
         anchors.centerIn: parent
         padding: 0
@@ -2379,7 +2379,15 @@ ApplicationWindow {
                                         Layout.fillWidth: true
                                         spacing: 2
                                         Label { text: webAppEntry.modelData.name; color: "#FFF3E6"; font.pixelSize: 14; elide: Text.ElideRight; Layout.fillWidth: true }
-                                        Label { text: webAppEntry.modelData.comment; color: "#D7C1AA"; font.pixelSize: 12; elide: Text.ElideRight; Layout.fillWidth: true }
+                                        Label {
+                                            // Just the site: "Installed from https://www.example.com with Reyva" -> "example.com"
+                                            text: webAppEntry.modelData.comment.replace(/^Installed from /, "").replace(/ with (Reyva|ReyOS Browser)$/, "")
+                                                  .replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "")
+                                            color: "#D7C1AA"; font.pixelSize: 12; elide: Text.ElideMiddle; Layout.fillWidth: true
+                                            ToolTip.visible: siteHover.hovered && truncated
+                                            ToolTip.text: text
+                                            HoverHandler { id: siteHover }
+                                        }
                                     }
                                     ThemedButton {
                                         text: "Open"
@@ -2415,12 +2423,14 @@ ApplicationWindow {
         background: Rectangle { color: accentSurfaceRaised; border.color: accentBorder; border.width: 1; radius: 14 }
         contentItem: Flickable {
             clip: true
+            contentWidth: width
             contentHeight: webAppsColumn.implicitHeight
             boundsBehavior: Flickable.StopAtBounds
+            flickableDirection: Flickable.VerticalFlick
             ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
             ColumnLayout {
                 id: webAppsColumn
-                width: parent.width
+                width: webAppsPopup.availableWidth
                 spacing: 10
                 RowLayout {
                     Layout.fillWidth: true
@@ -2450,8 +2460,9 @@ ApplicationWindow {
                             id: appTile
                             required property var modelData
                             // Four equal columns, whatever the names' lengths.
-                            Layout.preferredWidth: (webAppsColumn.width - 18) / 4
-                            Layout.maximumWidth: (webAppsColumn.width - 18) / 4
+                            Layout.preferredWidth: Math.floor((webAppsColumn.width - 18) / 4)
+                            Layout.maximumWidth: Math.floor((webAppsColumn.width - 18) / 4)
+                            Layout.minimumWidth: 0
                             implicitHeight: 84
                             hoverEnabled: true
                             focusPolicy: Qt.NoFocus
