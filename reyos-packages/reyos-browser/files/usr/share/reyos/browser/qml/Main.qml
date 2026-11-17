@@ -2178,43 +2178,52 @@ ApplicationWindow {
 
     Dialog {
         id: installAppNameDialog
-        title: "Install as App"
         modal: true
-        width: 400
+        width: Math.min(440, window.width - 32)
         anchors.centerIn: parent
-        padding: 18
+        padding: 20
+        topPadding: 14
         property string pendingUrl: ""
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-        background: Rectangle { color: accentSurfaceRaised; border.color: accentBorder; border.width: 1; radius: 12 }
+        background: Rectangle { color: accentSurfaceRaised; border.color: accentBorder; border.width: 1; radius: 14 }
+        header: DialogHeader {
+            title: "Install as App"
+            subtitle: installAppNameDialog.pendingUrl.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "")
+            onCloseClicked: installAppNameDialog.close()
+        }
+        function install() {
+            var pendingTitle = installAppNameField.text.trim()
+            if (!pendingTitle.length) return
+            close()
+            window.confirmInstallApp(installAppNameDialog.pendingUrl, pendingTitle)
+        }
         contentItem: ColumnLayout {
-            spacing: 12
-            Label {
-                text: "App name"
-                color: "#D7C1AA"
-                Layout.fillWidth: true
-            }
-            TextField {
+            spacing: 8
+            Label { text: "App name"; color: "#D7C1AA" }
+            ThemedField {
                 id: installAppNameField
                 Layout.fillWidth: true
-                selectByMouse: true
-                color: "#FFF3E6"
-                background: Rectangle { color: accentSurfaceHover; radius: 6; border.color: accentBorder; border.width: 1 }
-                onAccepted: if (installAppInstallButton.enabled) installAppInstallButton.clicked()
+                placeholderText: "Name in your app launcher"
+                onAccepted: installAppNameDialog.install()
+            }
+            Label {
+                text: "It opens in its own window with its own icon, and stays signed in between launches. Your private browsing in Reyva isn't shared with it."
+                color: "#9F8873"
+                font.pixelSize: 12
+                wrapMode: Text.Wrap
+                Layout.fillWidth: true
+                Layout.topMargin: 4
             }
             RowLayout {
                 Layout.fillWidth: true
+                Layout.topMargin: 6
                 Item { Layout.fillWidth: true }
-                Button { text: "Cancel"; onClicked: installAppNameDialog.close() }
-                Button {
+                ThemedButton { text: "Cancel"; onClicked: installAppNameDialog.close() }
+                ThemedButton {
                     id: installAppInstallButton
                     text: "Install"
                     enabled: installAppNameField.text.trim().length > 0
-                    onClicked: {
-                        var pendingUrl = installAppNameDialog.pendingUrl
-                        var pendingTitle = installAppNameField.text.trim()
-                        installAppNameDialog.close()
-                        window.confirmInstallApp(pendingUrl, pendingTitle)
-                    }
+                    onClicked: installAppNameDialog.install()
                 }
             }
         }
