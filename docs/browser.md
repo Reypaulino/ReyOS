@@ -2,7 +2,7 @@
 
 Reyva is ReyOS's private-by-default web browser: a native PySide6 / Qt Quick application on Qt WebEngine (Chromium). It is not a Firefox wrapper. The package and source folder are still called `reyos-browser` (renamed to Reyva on 2026-10-04).
 
-Current version: **0.1.10** (`APP_VERSION` in `main.py`, shown in Settings; bump it with every release).
+Current version: **0.1.12** published; **0.1.13** is the candidate on branch `feature/reyva-lightweight-dashboard-qa` (not released, see `docs/reyva-audit.md`). `APP_VERSION` in `main.py` is shown in Settings; bump it with every release.
 
 ## Where it runs
 
@@ -18,7 +18,10 @@ Only the newest GitHub Release of each build is kept.
 ## Features
 
 - **Private by default:** off-the-record profile, no persistent history; browsing data is cleared at exit, settings are kept (`settings.json`).
-- **Shields:** refreshable ad/tracker domain blocklist with per-site on/off, HTTPS upgrade, tracking-parameter stripping, canvas/WebGL/audio fingerprint noise.
+- **Shields:** refreshable ad/tracker domain blocklist with per-site on/off (reloads the page), per-site blocked count, HTTPS upgrade (not for IP addresses, one-word or local-network names; a site with no working HTTPS can be opened over HTTP for the session), tracking-parameter stripping, canvas/WebGL/audio fingerprint noise.
+- **New Tab dashboard (0.1.13):** one search box finds open tabs (switches to them), bookmarks and installed web apps (opens their own window); Enter on plain text searches the web. Ctrl+Shift+A searches open tabs; Settings › Tabs on the side.
+- **Welcome tour (0.1.13)** on a new profile only (bookmark/password import, search engine); **Restore tabs after a crash** (0.1.13, opt-in, addresses and titles only, deleted on clean quit).
+- **Permissions:** the dialog names the site and what it wants; Privacy & Shields lists this session's answers with Reset (0.1.13; before that, requests were never answered).
 - **Passwords:** saved in the system keyring (Secret Service / KWallet; Windows Credential Manager), save prompt and autofill, CSV import from other browsers.
 - **Bookmarks** with folders and HTML import, a bookmarks bar.
 - **Downloads** list with progress, notifications, Open, and Show in Folder (file manager's `org.freedesktop.FileManager1`, file selected; Explorer `/select` on Windows). Optional "Ask where to save each file": the dialog comes before `accept()` and the download goes straight into the picked folder when Reyva can write there (`canDownloadInto`; the Flatpak has `--filesystem=/run/media` and `/media` for USB sticks and other drives); only a folder the sandbox can't reach falls back to Downloads-then-move. The portal's `/run/user/<uid>/doc/...` path is mapped to the real one with the document portal's `GetHostPaths`; `safe_file_name()` replaces characters exFAT/FAT/NTFS refuse. Clear button and per-row ✕ remove finished downloads from the list (files stay).
@@ -30,6 +33,8 @@ Only the newest GitHub Release of each build is kept.
 ## Source
 
 - `reyos-packages/reyos-browser/files/usr/share/reyos/browser/main.py`: backend (`BrowserBackend`), Shields interceptor, passwords, printing, downloads.
+- `reyva_core.py`: Qt-free logic (Shields matching, HTTPS-upgrade rule, dashboard search, crash-recovery files, launcher parsing/quoting); tests in `tests/test_reyva_core.py` and `tests/test_reyva_backend.py`.
+- `tools/reyva-bench/`: memory/CPU/startup benchmark (`bench.py`, `compare.py`) and GUI checks (`uitest.py`) under Xvfb.
 - `qml/Main.qml` (+ `qml/components/`): the UI; `AppWindow.qml` for installed web apps.
 - `shields-blocklist.txt`, `fingerprint-protection.js`, `password-autofill.js`, `home.html` (New Tab page).
 - Packaging: `PKGBUILD` + `arch-flatpak/` (ReyOS launcher), `debian/`, `windows/`, and `flatpak/` at the repo root.

@@ -1,0 +1,766 @@
+{
+  "label": "baseline origin/main 39c1a7b (Reyva 0.1.12)",
+  "source": "reyos-packages/reyos-browser/files/usr/share/reyos/browser at 39c1a7b",
+  "python": ".deb venv (PySide6 6.11.2)",
+  "started": "2026-11-16 20:42:53",
+  "machine": {
+    "kernel": "7.0.0-43-generic",
+    "cpu": "Intel(R) Core(TM) i7-7820HQ CPU @ 2.90GHz",
+    "ram_gb": 31.1,
+    "distro": "Ubuntu 24.04.5 LTS",
+    "pyside": "6.11.2 6.11.2",
+    "governor": "performance"
+  },
+  "scenarios": {
+    "blank": {
+      "summary": {
+        "ready_seconds": {
+          "median": 1.05,
+          "min": 1.02,
+          "max": 1.08,
+          "n": 3
+        },
+        "pss_mb": {
+          "median": 397.5,
+          "min": 396.3,
+          "max": 398.3,
+          "n": 3
+        },
+        "rss_mb": {
+          "median": 594.8,
+          "min": 593.6,
+          "max": 595.4,
+          "n": 3
+        },
+        "webengine_processes": {
+          "median": 3,
+          "min": 3,
+          "max": 3,
+          "n": 3
+        },
+        "idle_cpu_seconds": {
+          "median": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "n": 3
+        },
+        "clean_exit_seconds": {
+          "median": 0.11,
+          "min": 0.11,
+          "max": 0.11,
+          "n": 3
+        },
+        "leftover_processes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "n": 3
+        }
+      },
+      "runs": [
+        {
+          "ready_seconds": 1.08,
+          "pss_mb": 398.3,
+          "rss_mb": 595.4,
+          "processes": 4,
+          "webengine_processes": 3,
+          "pss_by_name_mb": {
+            "QtWebEngineProc": 97.3,
+            "reyos-browser": 301.0
+          },
+          "idle_cpu_seconds": 0.0,
+          "idle_window": 30.0,
+          "exit_code": 0,
+          "clean_exit_seconds": 0.11,
+          "leftover_processes": 0
+        },
+        {
+          "ready_seconds": 1.02,
+          "pss_mb": 397.5,
+          "rss_mb": 594.8,
+          "processes": 4,
+          "webengine_processes": 3,
+          "pss_by_name_mb": {
+            "QtWebEngineProc": 97.6,
+            "reyos-browser": 300.0
+          },
+          "idle_cpu_seconds": 0.0,
+          "idle_window": 30.0,
+          "exit_code": 0,
+          "clean_exit_seconds": 0.11,
+          "leftover_processes": 0
+        },
+        {
+          "ready_seconds": 1.05,
+          "pss_mb": 396.3,
+          "rss_mb": 593.6,
+          "processes": 4,
+          "webengine_processes": 3,
+          "pss_by_name_mb": {
+            "QtWebEngineProc": 97.6,
+            "reyos-browser": 298.7
+          },
+          "idle_cpu_seconds": 0.0,
+          "idle_window": 30.0,
+          "exit_code": 0,
+          "clean_exit_seconds": 0.11,
+          "leftover_processes": 0
+        }
+      ]
+    },
+    "tabs1": {
+      "summary": {
+        "ready_seconds": {
+          "median": 1.14,
+          "min": 1.1,
+          "max": 1.16,
+          "n": 3
+        },
+        "pss_mb": {
+          "median": 406.8,
+          "min": 405.3,
+          "max": 406.9,
+          "n": 3
+        },
+        "rss_mb": {
+          "median": 610.3,
+          "min": 608.7,
+          "max": 610.5,
+          "n": 3
+        },
+        "webengine_processes": {
+          "median": 3,
+          "min": 3,
+          "max": 3,
+          "n": 3
+        },
+        "idle_cpu_seconds": {
+          "median": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "n": 3
+        },
+        "clean_exit_seconds": {
+          "median": 0.11,
+          "min": 0.11,
+          "max": 0.11,
+          "n": 3
+        },
+        "leftover_processes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "n": 3
+        }
+      },
+      "runs": [
+        {
+          "ready_seconds": 1.1,
+          "pss_mb": 406.9,
+          "rss_mb": 610.3,
+          "processes": 4,
+          "webengine_processes": 3,
+          "pss_by_name_mb": {
+            "QtWebEngineProc": 110.0,
+            "reyos-browser": 296.9
+          },
+          "idle_cpu_seconds": 0.0,
+          "idle_window": 30.0,
+          "exit_code": 0,
+          "clean_exit_seconds": 0.11,
+          "leftover_processes": 0
+        },
+        {
+          "ready_seconds": 1.16,
+          "pss_mb": 405.3,
+          "rss_mb": 608.7,
+          "processes": 4,
+          "webengine_processes": 3,
+          "pss_by_name_mb": {
+            "QtWebEngineProc": 110.0,
+            "reyos-browser": 295.4
+          },
+          "idle_cpu_seconds": 0.0,
+          "idle_window": 30.0,
+          "exit_code": 0,
+          "clean_exit_seconds": 0.11,
+          "leftover_processes": 0
+        },
+        {
+          "ready_seconds": 1.14,
+          "pss_mb": 406.8,
+          "rss_mb": 610.5,
+          "processes": 4,
+          "webengine_processes": 3,
+          "pss_by_name_mb": {
+            "QtWebEngineProc": 110.0,
+            "reyos-browser": 296.8
+          },
+          "idle_cpu_seconds": 0.0,
+          "idle_window": 30.0,
+          "exit_code": 0,
+          "clean_exit_seconds": 0.11,
+          "leftover_processes": 0
+        }
+      ]
+    },
+    "tabs5": {
+      "summary": {
+        "ready_seconds": {
+          "median": 1.23,
+          "min": 1.22,
+          "max": 1.25,
+          "n": 3
+        },
+        "pss_mb": {
+          "median": 522.2,
+          "min": 521.8,
+          "max": 523.2,
+          "n": 3
+        },
+        "rss_mb": {
+          "median": 1065.9,
+          "min": 1065.8,
+          "max": 1067.7,
+          "n": 3
+        },
+        "webengine_processes": {
+          "median": 7,
+          "min": 7,
+          "max": 7,
+          "n": 3
+        },
+        "idle_cpu_seconds": {
+          "median": 0.01,
+          "min": 0.0,
+          "max": 0.01,
+          "n": 3
+        },
+        "clean_exit_seconds": {
+          "median": 0.11,
+          "min": 0.11,
+          "max": 0.11,
+          "n": 3
+        },
+        "leftover_processes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "n": 3
+        }
+      },
+      "runs": [
+        {
+          "ready_seconds": 1.23,
+          "pss_mb": 522.2,
+          "rss_mb": 1065.8,
+          "processes": 8,
+          "webengine_processes": 7,
+          "pss_by_name_mb": {
+            "QtWebEngineProc": 231.0,
+            "reyos-browser": 291.2
+          },
+          "idle_cpu_seconds": 0.0,
+          "idle_window": 30.0,
+          "exit_code": 0,
+          "clean_exit_seconds": 0.11,
+          "leftover_processes": 0
+        },
+        {
+          "ready_seconds": 1.22,
+          "pss_mb": 521.8,
+          "rss_mb": 1065.9,
+          "processes": 8,
+          "webengine_processes": 7,
+          "pss_by_name_mb": {
+            "QtWebEngineProc": 230.4,
+            "reyos-browser": 291.4
+          },
+          "idle_cpu_seconds": 0.01,
+          "idle_window": 30.0,
+          "exit_code": 0,
+          "clean_exit_seconds": 0.11,
+          "leftover_processes": 0
+        },
+        {
+          "ready_seconds": 1.25,
+          "pss_mb": 523.2,
+          "rss_mb": 1067.7,
+          "processes": 8,
+          "webengine_processes": 7,
+          "pss_by_name_mb": {
+            "QtWebEngineProc": 231.0,
+            "reyos-browser": 292.1
+          },
+          "idle_cpu_seconds": 0.01,
+          "idle_window": 30.0,
+          "exit_code": 0,
+          "clean_exit_seconds": 0.11,
+          "leftover_processes": 0
+        }
+      ]
+    },
+    "tabs10": {
+      "summary": {
+        "ready_seconds": {
+          "median": 1.48,
+          "min": 1.39,
+          "max": 1.54,
+          "n": 3
+        },
+        "pss_mb": {
+          "median": 637.2,
+          "min": 634.3,
+          "max": 637.3,
+          "n": 3
+        },
+        "rss_mb": {
+          "median": 1606.6,
+          "min": 1605.0,
+          "max": 1607.7,
+          "n": 3
+        },
+        "webengine_processes": {
+          "median": 12,
+          "min": 12,
+          "max": 12,
+          "n": 3
+        },
+        "idle_cpu_seconds": {
+          "median": 0.02,
+          "min": 0.01,
+          "max": 0.03,
+          "n": 3
+        },
+        "clean_exit_seconds": {
+          "median": 0.16,
+          "min": 0.11,
+          "max": 0.16,
+          "n": 3
+        },
+        "leftover_processes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "n": 3
+        }
+      },
+      "runs": [
+        {
+          "ready_seconds": 1.39,
+          "pss_mb": 637.3,
+          "rss_mb": 1607.7,
+          "processes": 13,
+          "webengine_processes": 12,
+          "pss_by_name_mb": {
+            "QtWebEngineProc": 338.9,
+            "reyos-browser": 298.4
+          },
+          "idle_cpu_seconds": 0.01,
+          "idle_window": 30.0,
+          "exit_code": 0,
+          "clean_exit_seconds": 0.11,
+          "leftover_processes": 0
+        },
+        {
+          "ready_seconds": 1.54,
+          "pss_mb": 634.3,
+          "rss_mb": 1605.0,
+          "processes": 13,
+          "webengine_processes": 12,
+          "pss_by_name_mb": {
+            "QtWebEngineProc": 338.6,
+            "reyos-browser": 295.7
+          },
+          "idle_cpu_seconds": 0.02,
+          "idle_window": 30.0,
+          "exit_code": 0,
+          "clean_exit_seconds": 0.16,
+          "leftover_processes": 0
+        },
+        {
+          "ready_seconds": 1.48,
+          "pss_mb": 637.2,
+          "rss_mb": 1606.6,
+          "processes": 13,
+          "webengine_processes": 12,
+          "pss_by_name_mb": {
+            "QtWebEngineProc": 338.8,
+            "reyos-browser": 298.4
+          },
+          "idle_cpu_seconds": 0.03,
+          "idle_window": 30.0,
+          "exit_code": 0,
+          "clean_exit_seconds": 0.16,
+          "leftover_processes": 0
+        }
+      ]
+    },
+    "tabs20": {
+      "summary": {
+        "ready_seconds": {
+          "median": 1.81,
+          "min": 1.73,
+          "max": 2.1,
+          "n": 3
+        },
+        "pss_mb": {
+          "median": 897.2,
+          "min": 896.4,
+          "max": 898.9,
+          "n": 3
+        },
+        "rss_mb": {
+          "median": 2722.4,
+          "min": 2720.7,
+          "max": 2724.5,
+          "n": 3
+        },
+        "webengine_processes": {
+          "median": 22,
+          "min": 22,
+          "max": 22,
+          "n": 3
+        },
+        "idle_cpu_seconds": {
+          "median": 0.01,
+          "min": 0.01,
+          "max": 0.02,
+          "n": 3
+        },
+        "clean_exit_seconds": {
+          "median": 0.16,
+          "min": 0.16,
+          "max": 0.17,
+          "n": 3
+        },
+        "leftover_processes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "n": 3
+        }
+      },
+      "runs": [
+        {
+          "ready_seconds": 2.1,
+          "pss_mb": 896.4,
+          "rss_mb": 2720.7,
+          "processes": 23,
+          "webengine_processes": 22,
+          "pss_by_name_mb": {
+            "QtWebEngineProc": 590.6,
+            "reyos-browser": 305.8
+          },
+          "idle_cpu_seconds": 0.01,
+          "idle_window": 30.0,
+          "exit_code": 0,
+          "clean_exit_seconds": 0.17,
+          "leftover_processes": 0
+        },
+        {
+          "ready_seconds": 1.81,
+          "pss_mb": 897.2,
+          "rss_mb": 2722.4,
+          "processes": 23,
+          "webengine_processes": 22,
+          "pss_by_name_mb": {
+            "QtWebEngineProc": 591.7,
+            "reyos-browser": 305.5
+          },
+          "idle_cpu_seconds": 0.02,
+          "idle_window": 30.0,
+          "exit_code": 0,
+          "clean_exit_seconds": 0.16,
+          "leftover_processes": 0
+        },
+        {
+          "ready_seconds": 1.73,
+          "pss_mb": 898.9,
+          "rss_mb": 2724.5,
+          "processes": 23,
+          "webengine_processes": 22,
+          "pss_by_name_mb": {
+            "QtWebEngineProc": 591.0,
+            "reyos-browser": 307.8
+          },
+          "idle_cpu_seconds": 0.01,
+          "idle_window": 30.0,
+          "exit_code": 0,
+          "clean_exit_seconds": 0.16,
+          "leftover_processes": 0
+        }
+      ]
+    },
+    "heavy3": {
+      "summary": {
+        "ready_seconds": {
+          "median": 1.83,
+          "min": 1.62,
+          "max": 2.15,
+          "n": 3
+        },
+        "pss_mb": {
+          "median": 462.6,
+          "min": 462.4,
+          "max": 462.9,
+          "n": 3
+        },
+        "rss_mb": {
+          "median": 835.7,
+          "min": 835.5,
+          "max": 836.4,
+          "n": 3
+        },
+        "webengine_processes": {
+          "median": 5,
+          "min": 5,
+          "max": 5,
+          "n": 3
+        },
+        "idle_cpu_seconds": {
+          "median": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "n": 3
+        },
+        "clean_exit_seconds": {
+          "median": 0.11,
+          "min": 0.11,
+          "max": 0.11,
+          "n": 3
+        },
+        "leftover_processes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "n": 3
+        }
+      },
+      "runs": [
+        {
+          "ready_seconds": 2.15,
+          "pss_mb": 462.6,
+          "rss_mb": 835.7,
+          "processes": 6,
+          "webengine_processes": 5,
+          "pss_by_name_mb": {
+            "QtWebEngineProc": 162.9,
+            "reyos-browser": 299.8
+          },
+          "idle_cpu_seconds": 0.0,
+          "idle_window": 30.0,
+          "exit_code": 0,
+          "clean_exit_seconds": 0.11,
+          "leftover_processes": 0
+        },
+        {
+          "ready_seconds": 1.83,
+          "pss_mb": 462.4,
+          "rss_mb": 835.5,
+          "processes": 6,
+          "webengine_processes": 5,
+          "pss_by_name_mb": {
+            "QtWebEngineProc": 162.1,
+            "reyos-browser": 300.3
+          },
+          "idle_cpu_seconds": 0.0,
+          "idle_window": 30.0,
+          "exit_code": 0,
+          "clean_exit_seconds": 0.11,
+          "leftover_processes": 0
+        },
+        {
+          "ready_seconds": 1.62,
+          "pss_mb": 462.9,
+          "rss_mb": 836.4,
+          "processes": 6,
+          "webengine_processes": 5,
+          "pss_by_name_mb": {
+            "QtWebEngineProc": 162.6,
+            "reyos-browser": 300.3
+          },
+          "idle_cpu_seconds": 0.0,
+          "idle_window": 30.0,
+          "exit_code": 0,
+          "clean_exit_seconds": 0.11,
+          "leftover_processes": 0
+        }
+      ]
+    },
+    "heavy3-list150k": {
+      "summary": {
+        "ready_seconds": {
+          "median": 18.17,
+          "min": 14.04,
+          "max": 20.13,
+          "n": 3
+        },
+        "pss_mb": {
+          "median": 479.0,
+          "min": 477.9,
+          "max": 480.2,
+          "n": 3
+        },
+        "rss_mb": {
+          "median": 852.9,
+          "min": 851.2,
+          "max": 854.1,
+          "n": 3
+        },
+        "webengine_processes": {
+          "median": 5,
+          "min": 5,
+          "max": 5,
+          "n": 3
+        },
+        "idle_cpu_seconds": {
+          "median": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "n": 3
+        },
+        "clean_exit_seconds": {
+          "median": 0.21,
+          "min": 0.21,
+          "max": 0.57,
+          "n": 3
+        },
+        "leftover_processes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "n": 3
+        }
+      },
+      "runs": [
+        {
+          "ready_seconds": 14.04,
+          "pss_mb": 477.9,
+          "rss_mb": 851.2,
+          "processes": 6,
+          "webengine_processes": 5,
+          "pss_by_name_mb": {
+            "QtWebEngineProc": 162.7,
+            "reyos-browser": 315.3
+          },
+          "idle_cpu_seconds": 0.0,
+          "idle_window": 30.0,
+          "exit_code": 0,
+          "clean_exit_seconds": 0.21,
+          "leftover_processes": 0
+        },
+        {
+          "ready_seconds": 20.13,
+          "pss_mb": 479.0,
+          "rss_mb": 852.9,
+          "processes": 6,
+          "webengine_processes": 5,
+          "pss_by_name_mb": {
+            "QtWebEngineProc": 163.2,
+            "reyos-browser": 315.7
+          },
+          "idle_cpu_seconds": 0.0,
+          "idle_window": 30.0,
+          "exit_code": 0,
+          "clean_exit_seconds": 0.21,
+          "leftover_processes": 0
+        },
+        {
+          "ready_seconds": 18.17,
+          "pss_mb": 480.2,
+          "rss_mb": 854.1,
+          "processes": 6,
+          "webengine_processes": 5,
+          "pss_by_name_mb": {
+            "QtWebEngineProc": 163.1,
+            "reyos-browser": 317.1
+          },
+          "idle_cpu_seconds": 0.0,
+          "idle_window": 30.0,
+          "exit_code": 0,
+          "clean_exit_seconds": 0.57,
+          "leftover_processes": 0
+        }
+      ]
+    },
+    "churn": {
+      "summary": {
+        "ready_seconds": {
+          "median": 2.08,
+          "min": 1.98,
+          "max": 4.87,
+          "n": 3
+        },
+        "clean_exit_seconds": {
+          "median": 0.21,
+          "min": 0.21,
+          "max": 0.42,
+          "n": 3
+        },
+        "before_pss_mb": {
+          "median": 406.1,
+          "min": 405.9,
+          "max": 406.1,
+          "n": 3
+        },
+        "after_pss_mb": {
+          "median": 439.3,
+          "min": 436.5,
+          "max": 445.3,
+          "n": 3
+        },
+        "delta_pss_mb": {
+          "median": 33.4,
+          "min": 30.4,
+          "max": 39.2,
+          "n": 3
+        },
+        "leftover_processes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "n": 3
+        }
+      },
+      "runs": [
+        {
+          "ready_seconds": 2.08,
+          "cycles": 30,
+          "before_pss_mb": 405.9,
+          "after_pss_mb": 439.3,
+          "delta_pss_mb": 33.4,
+          "pages_left": 1,
+          "webengine_processes_after": 3,
+          "exit_code": 0,
+          "clean_exit_seconds": 0.42,
+          "leftover_processes": 0
+        },
+        {
+          "ready_seconds": 4.87,
+          "cycles": 30,
+          "before_pss_mb": 406.1,
+          "after_pss_mb": 436.5,
+          "delta_pss_mb": 30.4,
+          "pages_left": 1,
+          "webengine_processes_after": 3,
+          "exit_code": 0,
+          "clean_exit_seconds": 0.21,
+          "leftover_processes": 0
+        },
+        {
+          "ready_seconds": 1.98,
+          "cycles": 30,
+          "before_pss_mb": 406.1,
+          "after_pss_mb": 445.3,
+          "delta_pss_mb": 39.2,
+          "pages_left": 1,
+          "webengine_processes_after": 3,
+          "exit_code": 0,
+          "clean_exit_seconds": 0.21,
+          "leftover_processes": 0
+        }
+      ]
+    }
+  }
+}

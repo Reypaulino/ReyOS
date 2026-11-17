@@ -67,6 +67,13 @@
   </requires>
 
   <releases>
+    <release version="0.1.13" date="2026-11-16">
+      <description>
+        <p>New Tab search finds your open tabs, bookmarks and web apps; Ctrl+Shift+A searches open tabs; tabs can sit on the side and fold to icons; a toolbar button opens your web apps.</p>
+        <p>A guided welcome tour for new profiles, with bookmark and password import. Reopening tabs after a crash is available, off by default.</p>
+        <p>Fixed: site permission requests (camera, microphone, location) were never answered; routers and local servers wouldn't open because of forced HTTPS; pages loaded slowly after updating the Shields filter list; web-app launchers on Ubuntu with " or $ in the name, or % in the address.</p>
+      </description>
+    </release>
     <release version="0.1.12" date="2026-11-05">
       <description>
         <p>Reyva starts again after the KDE runtime update to Qt 6.11.3 (it closed right away on launch).</p>
