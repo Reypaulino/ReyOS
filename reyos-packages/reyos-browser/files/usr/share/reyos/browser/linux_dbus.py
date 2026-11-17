@@ -196,12 +196,16 @@ def uninstall_launcher(desktop_file_id: str) -> None:
     _portal_call(_bus(), "Uninstall", "sa{sv}", (desktop_file_id, {}))
 
 
-def launcher_exists(desktop_file_id: str) -> bool:
+def launcher_entry(desktop_file_id: str) -> str | None:
+    """The desktop entry the portal stored for a launcher, or None if it's gone."""
     try:
-        _portal_call(_bus(), "GetDesktopEntry", "s", (desktop_file_id,))
-    except DBusErrorResponse:
-        return False
-    return True
+        return str(_portal_call(_bus(), "GetDesktopEntry", "s", (desktop_file_id,))[0])
+    except (DBusErrorResponse, OSError, IndexError):
+        return None
+
+
+def launcher_exists(desktop_file_id: str) -> bool:
+    return launcher_entry(desktop_file_id) is not None
 
 
 __all__ = [
@@ -211,6 +215,7 @@ __all__ = [
     "dynamic_launcher_version",
     "get_default_collection",
     "install_launcher",
+    "launcher_entry",
     "launcher_exists",
     "notify",
     "uninstall_launcher",

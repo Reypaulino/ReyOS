@@ -18,7 +18,7 @@ from pathlib import Path
 
 # Reyva's own version, shown in Settings. Bump it with every release (and the
 # Flatpak metainfo <release>); the .deb/Windows package numbers are separate.
-APP_VERSION = "0.1.12"
+APP_VERSION = "0.1.13"
 
 IS_WINDOWS = sys.platform == "win32"
 IS_FLATPAK = os.path.exists("/.flatpak-info")
@@ -27,6 +27,8 @@ try:
     import secretstorage
 except ModuleNotFoundError:
     secretstorage = None
+
+import reyva_core
 
 try:
     import linux_dbus
@@ -141,10 +143,25 @@ class BookmarkImportParser(HTMLParser):
         self._pending_is_root = False
         self._in_h3 = False
 
+    def _flush_link(self) -> None:
+        # A link whose </A> never came (hand-edited or damaged files) is
+        # kept when the next entry starts instead of being dropped.
+        if self._href:
+            parts = [part for part in self._folder_stack if part]
+            self.entries.append((self._href, "".join(self._text).strip(), "/".join(parts)))
+        self._href = ""
+        self._text = []
+
+    def close(self) -> None:
+        super().close()
+        self._flush_link()
+
     def handle_starttag(self, tag, attrs) -> None:
         tag = tag.lower()
+        if tag in ("a", "dt", "h3", "dl") and self._href:
+            self._flush_link()
         if tag == "a":
-            self._href = dict(attrs).get("href", "")
+            self._href = dict(attrs).get("href", "") or ""
             self._text = []
         elif tag == "h3":
             self._in_h3 = True
@@ -217,6 +234,11 @@ class ShieldsInterceptor(QWebEngineUrlRequestInterceptor):
         self.blocked_domains = blocked_domains
         self.enabled = True
         self._disabled_first_party_hosts: set[str] = set()
+        # Sites the user chose to open over plain HTTP this session (their
+        # HTTPS didn't answer), and main-frame hosts Reyva upgraded, so the
+        # page can offer that choice when an upgraded load fails.
+        self.http_allowed_hosts: set[str] = set()
+        self.upgraded_hosts: set[str] = set()
 
     def site_enabled(self, host: str) -> bool:
         return host not in self._disabled_first_party_hosts
@@ -234,17 +256,22 @@ class ShieldsInterceptor(QWebEngineUrlRequestInterceptor):
 
         request_url = info.requestUrl()
         host = request_url.host().lower().rstrip(".")
-        if any(host == domain or host.endswith("." + domain) for domain in self.blocked_domains):
+        if reyva_core.host_blocked(host, self.blocked_domains):
             info.block(True)
             self.blocked.emit(first_party)
             return
 
         target_url = request_url
-        if target_url.scheme() == "http" and target_url.host():
+        main_frame = info.resourceType() == QWebEngineUrlRequestInfo.ResourceType.ResourceTypeMainFrame
+        # Not for routers, printers, local servers or IP addresses: they
+        # rarely have HTTPS, and upgrading made them unreachable.
+        if target_url.scheme() == "http" and reyva_core.should_upgrade_to_https(host, self.http_allowed_hosts):
             target_url = QUrl(target_url)
             target_url.setScheme("https")
+            if main_frame:
+                self.upgraded_hosts.add(host)
 
-        if info.resourceType() == QWebEngineUrlRequestInfo.ResourceType.ResourceTypeMainFrame:
+        if main_frame:
             stripped = _strip_tracking_params(target_url)
             if stripped is not None:
                 target_url = stripped
@@ -498,6 +525,15 @@ def _browser_launch_command() -> list[str]:
     return ["reyos-browser"]
 
 
+def _self_launch_command() -> list[str]:
+    """Starts another Reyva process the way this one was started: the
+    installed exe on Windows, else this Python with this main.py (inside the
+    Flatpak or the .deb's venv, with the environment its launcher set)."""
+    if getattr(sys, "frozen", False):
+        return [sys.executable]
+    return [sys.executable, str(Path(__file__).resolve())]
+
+
 def _load_webapp_index() -> list[dict]:
     try:
         data = json.loads(WEBAPPS_INDEX_PATH.read_text(encoding="utf-8"))
@@ -532,9 +568,7 @@ def _create_windows_shortcut(link_path: Path, target: str, arguments: str, icon:
     )
 
 
-def _quote_desktop_exec_arg(value: str) -> str:
-    escaped = value.replace("\\", "\\\\").replace('"', '\\"').replace("`", "\\`").replace("$", "\\$")
-    return f'"{escaped}"'
+_quote_desktop_exec_arg = reyva_core.quote_desktop_exec_arg
 
 
 def _dimmed_icon(icon: QIcon) -> QIcon:
@@ -628,6 +662,9 @@ class BrowserBackend(QObject):
     passwordImportFinished = Signal(int, str)
     shieldsUpdateFinished = Signal(bool, str)
     shieldsListInfoChanged = Signal()
+    crashRecoveryChanged = Signal()
+    onboardingChanged = Signal()
+    tabLayoutChanged = Signal()
 
     def __init__(
         self,
@@ -662,6 +699,22 @@ class BrowserBackend(QObject):
         self._web_apps_supported = not IS_FLATPAK or (linux_dbus is not None and linux_dbus.dynamic_launcher_version() >= 1)
         self._pending_portal_installs = {}
         self.portalInstallFinished.connect(self._finish_portal_install)
+        self._blocked_by_site: dict[str, int] = {}
+        # installedWebApps is read by several QML bindings; reading it used to
+        # scan ~/.local/share/applications (or ask the portal over D-Bus once
+        # per app) every time. Cached until an install/uninstall or refresh.
+        self._web_apps_cache = None
+        self.installedWebAppsChanged.connect(self._drop_web_apps_cache)
+        # Opt-in crash recovery (off by default): see reyva_core.RecoveryStore.
+        self._crash_recovery = load_setting("crashRecovery", False)
+        self._recovery = reyva_core.RecoveryStore(BROWSER_STATE_DIR / "recovery")
+        self._pending_recovery = None
+        self._tab_layout = load_setting("tabLayout", "horizontal", {"horizontal", "vertical"})
+        self._onboarding_completed = load_setting("onboardingCompleted", False)
+        if not self._onboarding_completed and existing_user_data():
+            # People who already use Reyva aren't sent through the welcome.
+            self._onboarding_completed = True
+            save_setting("onboardingCompleted", True)
 
     @Property(QObject, constant=True)
     def passwordBridge(self) -> QObject:
@@ -904,6 +957,7 @@ class BrowserBackend(QObject):
                 raise ValueError("The bookmark file is too large.")
             parser = BookmarkImportParser()
             parser.feed(bookmark_file.read_text(encoding="utf-8", errors="replace"))
+            parser.close()
             by_url = {item.get("url"): item for item in self._bookmarks}
             added = 0
             updated = 0
@@ -1129,7 +1183,34 @@ class BrowserBackend(QObject):
     @Slot(str)
     def _record_blocked(self, first_party: str) -> None:
         self._blocked_request_count += 1
+        self._blocked_by_site[first_party] = self._blocked_by_site.get(first_party, 0) + 1
         self.blockedRequestCountChanged.emit()
+
+    @Property(int, notify=blockedRequestCountChanged)
+    def currentSiteBlockedCount(self) -> int:
+        return self._blocked_by_site.get(self._current_site, 0)
+
+    # HTTPS upgrade fallback. Reyva asks for https:// whenever a page is
+    # requested over http://; a site with no working HTTPS then failed with a
+    # bare connection error. The page now says so and offers HTTP.
+    @Slot(str, result=bool)
+    def httpsUpgradeFailed(self, url: str) -> bool:
+        parsed = QUrl(url)
+        host = parsed.host().lower().rstrip(".")
+        return (parsed.scheme() == "https" and host in self._interceptor.upgraded_hosts
+                and host not in self._interceptor.http_allowed_hosts)
+
+    @Slot(str, result=str)
+    def allowInsecureSite(self, url: str) -> str:
+        """Opens this site over plain HTTP for the rest of the session; returns
+        the http:// address to load."""
+        parsed = QUrl(url)
+        host = parsed.host().lower().rstrip(".")
+        if parsed.scheme() not in {"http", "https"} or not host:
+            return ""
+        self._interceptor.http_allowed_hosts.add(host)
+        parsed.setScheme("http")
+        return parsed.toString()
 
     @Slot()
     def persistShieldsStats(self) -> None:
@@ -1174,6 +1255,80 @@ class BrowserBackend(QObject):
     @Property(str, constant=True)
     def appVersion(self) -> str:
         return APP_VERSION
+
+    # New Tab dashboard: local matches only (open tabs come from QML's own
+    # tab list; nothing typed here is sent anywhere until Enter searches).
+    @Slot(str, "QVariantList", str, result="QVariantList")
+    def dashboardResults(self, query: str, tabs, kind: str) -> list:
+        return reyva_core.dashboard_results(query, tabs or [], self._bookmarks,
+                                            self.installedWebApps if self._web_apps_supported else [], kind or "all")
+
+    # ---- Opt-in crash recovery (Settings > Restore tabs after a crash).
+    @Property(bool, notify=crashRecoveryChanged)
+    def crashRecovery(self) -> bool:
+        return self._crash_recovery
+
+    @Slot()
+    def toggleCrashRecovery(self) -> None:
+        self._crash_recovery = not self._crash_recovery
+        save_setting("crashRecovery", self._crash_recovery)
+        if not self._crash_recovery:
+            # Off means nothing is kept, including leftovers of a crash.
+            self._recovery.discard_all()
+            self._pending_recovery = None
+        self.crashRecoveryChanged.emit()
+
+    def check_unclean_shutdown(self) -> None:
+        """At start-up: tabs of an earlier Reyva that crashed, if recovery is on."""
+        if self._crash_recovery:
+            self._pending_recovery = self._recovery.unclean_sessions()
+        else:
+            # Recovery off: never keep or offer anything.
+            self._recovery.discard_unclean()
+
+    @Slot(result="QVariantMap")
+    def pendingRecovery(self) -> dict:
+        return self._pending_recovery or {}
+
+    @Slot()
+    def finishRecovery(self) -> None:
+        """After Restore or Discard: the earlier session's file is deleted."""
+        self._pending_recovery = None
+        self._recovery.discard_unclean()
+
+    @Slot("QVariantList", int)
+    def saveSession(self, tabs, current: int) -> None:
+        if self._crash_recovery:
+            self._recovery.save(tabs or [], current)
+
+    @Slot()
+    def endSession(self) -> None:
+        """Clean exit: this session's recovery file is removed."""
+        self._recovery.stop()
+
+    # ---- First-run welcome.
+    @Property(bool, notify=onboardingChanged)
+    def onboardingCompleted(self) -> bool:
+        return self._onboarding_completed
+
+    @Slot(bool)
+    def setOnboardingCompleted(self, done: bool) -> None:
+        if done != self._onboarding_completed:
+            self._onboarding_completed = done
+            save_setting("onboardingCompleted", done)
+            self.onboardingChanged.emit()
+
+    # ---- Tabs along the top (default) or in a sidebar.
+    @Property(str, notify=tabLayoutChanged)
+    def tabLayout(self) -> str:
+        return self._tab_layout
+
+    @Slot(str)
+    def setTabLayout(self, layout: str) -> None:
+        if layout in {"horizontal", "vertical"} and layout != self._tab_layout:
+            self._tab_layout = layout
+            save_setting("tabLayout", layout)
+            self.tabLayoutChanged.emit()
 
     @Property(str, constant=True)
     def installKind(self) -> str:
@@ -1685,6 +1840,7 @@ class BrowserBackend(QObject):
                 "icon": str(ico_path),
                 "comment": f"Installed from {origin} with Reyva",
                 "shortcut": str(link_path),
+                "url": url,
             })
             _save_webapp_index(apps)
         except (OSError, subprocess.SubprocessError) as error:
@@ -1742,6 +1898,7 @@ class BrowserBackend(QObject):
             "launcher": launcher_id,
             "icon": png_icon,
             "comment": f"Installed from {origin} with Reyva",
+            "url": url,
         }
         threading.Thread(target=worker, daemon=True).start()
         return True
@@ -1787,35 +1944,108 @@ class BrowserBackend(QObject):
                 return line[len(prefix):]
         return ""
 
+    @Slot()
+    def _drop_web_apps_cache(self) -> None:
+        self._web_apps_cache = None
+
+    @Slot()
+    def refreshWebApps(self) -> None:
+        """Re-reads the installed apps (e.g. when the list is opened, in case
+        a launcher was removed from the desktop side)."""
+        self.installedWebAppsChanged.emit()
+
+    def _scan_web_apps(self) -> list[dict]:
+        if IS_WINDOWS:
+            entries = [dict(entry) for entry in _load_webapp_index()]
+        elif IS_FLATPAK:
+            entries = []
+            for entry in _load_webapp_index():
+                # Launchers removed from the desktop side (e.g. GNOME's app
+                # grid) drop out of the list too.
+                desktop = linux_dbus.launcher_entry(f"{entry.get('launcher', '')}.desktop") if linux_dbus else None
+                if desktop is None:
+                    continue
+                entry = dict(entry)
+                launch = reyva_core.parse_webapp_launch(reyva_core.desktop_entry_value(desktop, "Exec"))
+                if launch:
+                    entry["url"] = launch["url"]
+                entries.append(entry)
+        else:
+            entries = []
+            if WEBAPPS_DESKTOP_DIR.is_dir():
+                for desktop_path in sorted(WEBAPPS_DESKTOP_DIR.glob("reyos-webapp-*.desktop")):
+                    try:
+                        text = desktop_path.read_text(encoding="utf-8")
+                    except OSError:
+                        continue
+                    launch = reyva_core.parse_webapp_launch(reyva_core.desktop_entry_value(text, "Exec"))
+                    entries.append({
+                        "id": desktop_path.stem,
+                        "name": reyva_core.desktop_entry_value(text, "Name") or desktop_path.stem,
+                        "icon": reyva_core.desktop_entry_value(text, "Icon"),
+                        "comment": reyva_core.desktop_entry_value(text, "Comment"),
+                        "url": launch["url"] if launch else "",
+                    })
+        for entry in entries:
+            icon = str(entry.get("icon") or "")
+            # A real file URL (spaces, #, non-ASCII) instead of "file://" + path.
+            entry["iconUrl"] = QUrl.fromLocalFile(icon).toString() if icon and Path(icon).is_file() else ""
+        return entries
+
+    def _web_app_entries(self) -> list[dict]:
+        if self._web_apps_cache is None:
+            self._web_apps_cache = self._scan_web_apps()
+        return self._web_apps_cache
+
     @Property("QVariantList", notify=installedWebAppsChanged)
     def installedWebApps(self):
+        return [{key: entry.get(key, "") for key in ("id", "name", "icon", "iconUrl", "comment")}
+                for entry in self._web_app_entries()]
+
+    @Slot(str, result=bool)
+    def launchInstalledWebApp(self, app_id: str) -> bool:
+        """Opens an installed web app in its own window, with its own saved
+        sign-in, exactly as its launcher does. Only ids from the installed
+        list are accepted, and only the address/title/icon are taken from the
+        launcher, never its command."""
+        if not reyva_core.valid_webapp_id(app_id):
+            return False
+        entry = next((item for item in self._web_app_entries() if item.get("id") == app_id), None)
+        if entry is None:
+            self.installedWebAppsChanged.emit()
+            self.notify("Can't open the app", "It isn't installed anymore.")
+            return False
         if IS_WINDOWS:
-            return [{key: entry.get(key, "") for key in ("id", "name", "icon", "comment")} for entry in _load_webapp_index()]
-        if IS_FLATPAK:
-            # Launchers removed from the desktop side (e.g. GNOME's app grid)
-            # drop out of the list too.
-            return [
-                {key: entry.get(key, "") for key in ("id", "name", "icon", "comment")}
-                for entry in _load_webapp_index()
-                if linux_dbus is not None and linux_dbus.launcher_exists(f"{entry.get('launcher', '')}.desktop")
-            ]
-        apps = []
-        if not WEBAPPS_DESKTOP_DIR.is_dir():
-            return apps
-        for desktop_path in sorted(WEBAPPS_DESKTOP_DIR.glob("reyos-webapp-*.desktop")):
+            shortcut = Path(entry.get("shortcut") or "")
+            if shortcut.is_file() and shortcut.parent == WEBAPPS_SHORTCUT_DIR:
+                try:
+                    os.startfile(str(shortcut))  # noqa: the Start menu shortcut Reyva made
+                    return True
+                except OSError:
+                    pass
+        url, title, icon = entry.get("url") or "", entry.get("name") or "", entry.get("icon") or ""
+        if not IS_WINDOWS and not IS_FLATPAK:
             try:
-                text = desktop_path.read_text(encoding="utf-8")
+                text = (WEBAPPS_DESKTOP_DIR / f"{app_id}.desktop").read_text(encoding="utf-8")
+                launch = reyva_core.parse_webapp_launch(reyva_core.desktop_entry_value(text, "Exec"))
             except OSError:
-                continue
-            apps.append(
-                {
-                    "id": desktop_path.stem,
-                    "name": self._read_desktop_field(text, "Name") or desktop_path.stem,
-                    "icon": self._read_desktop_field(text, "Icon"),
-                    "comment": self._read_desktop_field(text, "Comment"),
-                }
-            )
-        return apps
+                launch = None
+            if launch:
+                url, title, icon = launch["url"], launch["title"] or title, launch["icon"] or icon
+        if not reyva_core.parse_webapp_launch(f'"--app-url={url}"'):
+            self.installedWebAppsChanged.emit()
+            self.notify("Can't open the app", "Its launcher is missing or damaged. Remove it in Web Apps and install the site again.")
+            return False
+        command = [*_self_launch_command(), f"--app-url={url}", f"--app-title={title}"]
+        if icon and Path(icon).is_file():
+            command.append(f"--app-icon={icon}")
+        try:
+            subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                             start_new_session=not IS_WINDOWS)
+        except OSError as error:
+            self.notify("Can't open the app", str(error))
+            return False
+        return True
 
     @Slot(str, result=bool)
     def uninstallWebApp(self, app_id: str) -> bool:
@@ -2188,6 +2418,16 @@ def save_setting(key: str, value) -> None:
         pass
 
 
+def existing_user_data() -> bool:
+    """True when this profile was used before: Reyva has saved anything at all
+    (settings, bookmarks, shortcuts, Shields stats, web apps...). The welcome
+    is only for brand-new profiles, so upgrades never show it."""
+    try:
+        return any(entry.name != "recovery" for entry in BROWSER_STATE_DIR.iterdir())
+    except OSError:
+        return False
+
+
 def load_low_memory_mode() -> bool:
     """Shared default across the main browser and every installed-app process --
     each runs as its own OS process with its own BrowserBackend, so this file is
@@ -2413,6 +2653,8 @@ def main():
     if IS_WINDOWS:
         _set_windows_app_id("ReyApps.Reyva")
     app.aboutToQuit.connect(backend.persistShieldsStats)
+    app.aboutToQuit.connect(backend.endSession)
+    backend.check_unclean_shutdown()
     engine.rootContext().setContextProperty("passwordBridge", backend.passwordBridge)
     engine.load(QUrl.fromLocalFile(str(APP_DIR / "qml" / "Main.qml")))
     if not engine.rootObjects():
