@@ -1133,6 +1133,15 @@ ApplicationWindow {
                     onClicked: siteSafetyDialog.visible ? siteSafetyDialog.close() : siteSafetyDialog.open()
                 }
                 IconButton {
+                    id: webAppsButton
+                    visible: browserBackend.webAppsSupported
+                    iconSource: Qt.resolvedUrl("../icons/reyos-webapp.svg")
+                    hoverColor: accentSurfaceHover
+                    active: webAppsPopup.visible
+                    tip: "Your web apps"
+                    onClicked: webAppsPopup.visible ? webAppsPopup.close() : webAppsPopup.open()
+                }
+                IconButton {
                     id: downloadsButton
                     visible: !window.compactToolbar || window.activeDownloadCount > 0
                     iconSource: Qt.resolvedUrl("../icons/reyos-download.svg")
@@ -2083,9 +2092,10 @@ ApplicationWindow {
             width: parent.width
             spacing: 12
             Label {
-                text: currentView && String(currentView.url).indexOf("https:") === 0 ? "Connection: Secure HTTPS" : "Connection: Not secure — this page does not use HTTPS"
+                text: window.currentIsHome ? "New Tab page: nothing here is loaded from the web."
+                      : (currentView && String(currentView.url).indexOf("https:") === 0 ? "Connection: Secure HTTPS" : "Connection: Not secure — this page does not use HTTPS")
                 wrapMode: Text.Wrap
-                color: currentView && String(currentView.url).indexOf("https:") === 0 ? "#9AD8AE" : accentGlow
+                color: window.currentIsHome ? "#D7C1AA" : (currentView && String(currentView.url).indexOf("https:") === 0 ? "#9AD8AE" : accentGlow)
                 Layout.fillWidth: true
             }
             Rectangle { Layout.fillWidth: true; height: 1; color: accentBorder }
@@ -2382,6 +2392,130 @@ ApplicationWindow {
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+
+    // Toolbar › Web Apps: every installed web app as a tile, one click to open
+    // it in its own window.
+    Popup {
+        id: webAppsPopup
+        parent: window.contentItem
+        y: 4
+        // Under its button, right edges lined up (mapToItem isn't a live binding).
+        onAboutToShow: x = Math.max(8, Math.min(window.contentItem.width - width - 8,
+                                                 webAppsButton.mapToItem(window.contentItem, 0, 0).x + webAppsButton.width - width))
+        width: 360
+        height: Math.min(webAppsColumn.implicitHeight + 24, window.contentItem.height - 16)
+        padding: 12
+        modal: false
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        onOpened: browserBackend.refreshWebApps()
+        background: Rectangle { color: accentSurfaceRaised; border.color: accentBorder; border.width: 1; radius: 14 }
+        contentItem: Flickable {
+            clip: true
+            contentHeight: webAppsColumn.implicitHeight
+            boundsBehavior: Flickable.StopAtBounds
+            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+            ColumnLayout {
+                id: webAppsColumn
+                width: parent.width
+                spacing: 10
+                RowLayout {
+                    Layout.fillWidth: true
+                    Label { text: "Web apps"; color: "#FFF3E6"; font.bold: true; font.pixelSize: 16; Layout.fillWidth: true }
+                    Label {
+                        text: browserBackend.installedWebApps.length + (browserBackend.installedWebApps.length === 1 ? " app" : " apps")
+                        color: "#BBA896"; font.pixelSize: 12
+                    }
+                }
+                Label {
+                    visible: browserBackend.installedWebApps.length === 0
+                    text: "No web apps yet. On a site you use often, click the app button at the end of the address bar: it gets its own window and stays signed in."
+                    color: "#D7C1AA"
+                    font.pixelSize: 12
+                    wrapMode: Text.Wrap
+                    Layout.fillWidth: true
+                }
+                GridLayout {
+                    visible: browserBackend.installedWebApps.length > 0
+                    Layout.fillWidth: true
+                    columns: 4
+                    rowSpacing: 6
+                    columnSpacing: 6
+                    Repeater {
+                        model: browserBackend.installedWebApps
+                        delegate: AbstractButton {
+                            id: appTile
+                            required property var modelData
+                            // Four equal columns, whatever the names' lengths.
+                            Layout.preferredWidth: (webAppsColumn.width - 18) / 4
+                            Layout.maximumWidth: (webAppsColumn.width - 18) / 4
+                            implicitHeight: 84
+                            hoverEnabled: true
+                            focusPolicy: Qt.NoFocus
+                            onClicked: {
+                                webAppsPopup.close()
+                                browserBackend.launchInstalledWebApp(modelData.id)
+                            }
+                            ToolTip.visible: hovered
+                            ToolTip.delay: 500
+                            ToolTip.text: modelData.name + " — opens in its own window"
+                            Accessible.name: "Open " + modelData.name
+                            background: Rectangle { radius: 10; color: appTile.hovered ? accentSurfaceHover : "transparent" }
+                            contentItem: ColumnLayout {
+                                spacing: 6
+                                Rectangle {
+                                    Layout.alignment: Qt.AlignHCenter
+                                    Layout.topMargin: 6
+                                    Layout.preferredWidth: 44
+                                    Layout.preferredHeight: 44
+                                    radius: 12
+                                    color: accentSurfaceBase
+                                    border.color: Qt.rgba(accentBorder.r, accentBorder.g, accentBorder.b, 0.7)
+                                    Image {
+                                        id: appTileIcon
+                                        anchors.centerIn: parent
+                                        source: appTile.modelData.iconUrl || ""
+                                        sourceSize.width: 32
+                                        sourceSize.height: 32
+                                        asynchronous: true
+                                        visible: status === Image.Ready
+                                    }
+                                    Label {
+                                        anchors.centerIn: parent
+                                        visible: !appTileIcon.visible
+                                        text: (appTile.modelData.name || "?").charAt(0).toUpperCase()
+                                        color: accentGlow
+                                        font.bold: true
+                                        font.pixelSize: 18
+                                    }
+                                }
+                                Label {
+                                    text: appTile.modelData.name
+                                    color: "#FFF3E6"
+                                    font.pixelSize: 12
+                                    elide: Text.ElideRight
+                                    horizontalAlignment: Text.AlignHCenter
+                                    Layout.fillWidth: true
+                                    Layout.leftMargin: 4
+                                    Layout.rightMargin: 4
+                                }
+                            }
+                        }
+                    }
+                }
+                Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Qt.rgba(accentBorder.r, accentBorder.g, accentBorder.b, 0.6) }
+                RowLayout {
+                    Layout.fillWidth: true
+                    ThemedButton {
+                        text: "Install this site"
+                        enabled: !window.currentIsHome && currentView && /^https?:/.test(String(currentView.url))
+                        onClicked: { webAppsPopup.close(); window.installCurrentAsApp() }
+                    }
+                    Item { Layout.fillWidth: true }
+                    ThemedButton { text: "Manage…"; onClicked: { webAppsPopup.close(); manageAppsDialog.open() } }
                 }
             }
         }
@@ -3778,6 +3912,8 @@ ApplicationWindow {
     // Created only while it's shown.
     Loader {
         id: welcome
+        // The whole window, toolbar and tab strip included (the tour lights them up).
+        parent: Overlay.overlay
         anchors.fill: parent
         z: 60
         active: false
@@ -3788,6 +3924,36 @@ ApplicationWindow {
         sourceComponent: WelcomeWizard {
             theme: window.reyvaTheme
             onClosed: welcome.active = false
+            steps: {
+                var list = [
+                    { target: null, title: "Welcome to Reyva", extra: "",
+                      body: "Reyva is <b>private by default</b>: history, cookies and site data stay in memory and are cleared when Reyva closes. "
+                          + "No account and no telemetry. Want a quick look around? It takes under a minute, and you can bring your bookmarks along the way." },
+                    { target: newTabPage.visible ? newTabPage.searchBoxItem : null, title: "One box for everything", extra: "",
+                      body: "Type here to find a tab you already have open, a bookmark or one of your web apps; pick one with ↑ ↓ and Enter. "
+                          + "Press Enter on plain text to search the web: only what you typed is sent." },
+                    { target: addressFrame, title: "Address bar and search", extra: "search",
+                      body: "Type an address or a search. The lock shows a secure connection; the app button at the end installs the site as an app. Pick your search engine:" },
+                    { target: tabStrip, title: "Your tabs", extra: "",
+                      body: "Tabs you haven't used for a few minutes go to sleep (❄) to save memory, and wake when you click them. "
+                          + "Pin a tab to keep it running (music, calls). <b>Ctrl+Shift+A</b> or the magnifier searches your open tabs." },
+                    { target: shieldsButton, title: "Shields", extra: "",
+                      body: "Blocks known ads and trackers on every site. Open it to see what was blocked, turn it off for a site that looks broken, "
+                          + "and see or reset what a site may use (camera, location…)." }
+                ]
+                if (browserBackend.webAppsSupported) {
+                    list.push({ target: webAppsButton, title: "Web apps", extra: "",
+                                body: "Sites you install as apps open from here, each in its own window and signed in like a normal app. "
+                                    + "They also appear in your app launcher." })
+                }
+                list.push({ target: browserMenuButton, title: "Bring your bookmarks and passwords", extra: "import",
+                            body: "Bookmarks, passwords, downloads, history and Settings are in this menu. Reyva can't read another browser's data directly, "
+                                + "so export it there, then choose the file here." })
+                list.push({ target: null, title: "You're all set", extra: "",
+                            body: "Settings has more: tabs on the side, Low Memory Mode, and an opt-in to reopen your tabs after a crash. "
+                                + "You can take this tour again from Settings › Welcome tour." })
+                return list
+            }
         }
     }
 

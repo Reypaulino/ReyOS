@@ -79,15 +79,14 @@ def check_welcome(args, server, out: Path) -> None:
     try:
         time.sleep(4)
         run.screenshot(str(out / "welcome-step1.png"))
-        keys(run, "Return", pause=0.8)
-        run.screenshot(str(out / "welcome-step2.png"))
-        keys(run, "Return", "Return", "Return", pause=0.8)
-        run.screenshot(str(out / "welcome-step5.png"))
+        for step in range(2, 9):
+            keys(run, "Return", pause=0.8)
+            run.screenshot(str(out / f"welcome-step{step}.png"))
         keys(run, "Return", pause=0.8)
         settings = json.loads((data_dir(run.home) / "settings.json").read_text())
         errors = log_errors(run)
         ok = settings.get("onboardingCompleted") is True and not errors
-        record("welcome: fresh profile shows it, finishing marks it done", "PASS" if ok else "FAIL",
+        record("welcome tour: fresh profile shows it, all 8 steps, finishing marks it done", "PASS" if ok else "FAIL",
                f"settings={settings} qml_errors={errors[:3]}")
     finally:
         run.stop()

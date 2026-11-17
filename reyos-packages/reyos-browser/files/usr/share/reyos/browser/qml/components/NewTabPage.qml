@@ -15,6 +15,7 @@ Rectangle {
     property bool appsAvailable: false
     property string kind: "all"
     property int highlighted: 0
+    readonly property Item searchBoxItem: searchBox  // for the guided tour
     readonly property string query: searchField.text.trim()
     readonly property bool showingResults: query.length > 0 || kind !== "all"
     readonly property bool hasWebRow: query.length > 0
