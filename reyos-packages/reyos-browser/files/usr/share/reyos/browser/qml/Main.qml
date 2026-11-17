@@ -1077,6 +1077,20 @@ ApplicationWindow {
                             }
                             Accessible.name: "Address and search bar"
                         }
+                        IconButton {
+                            id: installAppButton
+                            // Install this site as an app, from the end of the address bar.
+                            visible: browserBackend.webAppsSupported && !window.currentIsHome && currentView
+                                     && /^https?:/.test(String(currentView.url)) && !address.activeFocus
+                            implicitWidth: 30
+                            implicitHeight: 30
+                            iconSize: 17
+                            hoverColor: accentSurfaceHover
+                            iconSource: Qt.resolvedUrl("../icons/reyos-webapp.svg")
+                            tint: "#D7C1AA"
+                            tip: "Install this site as an app"
+                            onClicked: window.installCurrentAsApp()
+                        }
                     }
                 }
 
