@@ -7,16 +7,61 @@ Rectangle {
     property var theme
     property var shortcuts: []
     property int maxShortcuts: 12
+    // Dashboard: what the owner found for the text and kind below (see
+    // reyva_core.dashboard_results). Local only; the web is searched only
+    // when the "Search the web" row is chosen.
+    property var results: []
+    property string searchEngine: "DuckDuckGo"
+    property bool appsAvailable: false
+    property string kind: "all"
+    property int highlighted: 0
+    readonly property string query: searchField.text.trim()
+    readonly property bool showingResults: query.length > 0 || kind !== "all"
+    readonly property bool hasWebRow: query.length > 0
+    readonly property int rowCount: (hasWebRow ? 1 : 0) + results.length
 
     signal searchRequested(string text)
     signal shortcutOpened(string url)
     signal addShortcutRequested()
     signal editShortcutRequested(int index)
     signal removeShortcutRequested(int index)
+    signal resultsWanted(string text, string kind)
+    signal tabActivated(int index)
+    signal bookmarkOpened(string url)
+    signal appLaunched(string appId)
 
     function focusSearch() {
         searchField.text = ""
+        kind = "all"
         searchField.forceActiveFocus()
+    }
+
+    function refreshResults() {
+        highlighted = 0
+        resultsWanted(query, kind)
+    }
+
+    onKindChanged: refreshResults()
+
+    function activate(row) {
+        if (hasWebRow && row === 0) {
+            page.searchRequested(searchField.text)
+            searchField.text = ""
+            return
+        }
+        var entry = results[row - (hasWebRow ? 1 : 0)]
+        if (!entry) {
+            return
+        }
+        searchField.text = ""
+        kind = "all"
+        if (entry.kind === "tab") page.tabActivated(entry.index)
+        else if (entry.kind === "app") page.appLaunched(entry.id)
+        else if (entry.kind === "bookmark") page.bookmarkOpened(entry.url)
+    }
+
+    function sectionTitle(entryKind) {
+        return entryKind === "tab" ? "Open tabs" : (entryKind === "app" ? "Web apps" : "Bookmarks")
     }
 
     readonly property bool compact: height < 780
@@ -144,17 +189,24 @@ Rectangle {
                         cursorDelegate: Rectangle { width: 2; color: "#F0A96A"; visible: searchField.cursorVisible }
                         background: null
                         color: "#FFF3E6"
-                        placeholderText: "Search the web privately…"
+                        placeholderText: "Search the web, your tabs and bookmarks…"
                         placeholderTextColor: "#9F8873"
                         font.pixelSize: 16
                         selectByMouse: true
+                        onTextChanged: page.refreshResults()
                         onAccepted: {
-                            if (text.trim().length) {
-                                page.searchRequested(text)
-                                text = ""
+                            if (page.rowCount > 0) {
+                                page.activate(page.highlighted)
                             }
                         }
-                        Accessible.name: "Search the web privately"
+                        Keys.onDownPressed: page.highlighted = Math.min(page.rowCount - 1, page.highlighted + 1)
+                        Keys.onUpPressed: page.highlighted = Math.max(0, page.highlighted - 1)
+                        Keys.onEscapePressed: {
+                            text = ""
+                            page.kind = "all"
+                        }
+                        Accessible.name: "Search the web, your open tabs, bookmarks and apps"
+                        Accessible.description: "Up and Down pick a result, Enter opens it"
                     }
                     Button {
                         id: searchButton
@@ -170,14 +222,145 @@ Rectangle {
                             color: searchButton.down ? Qt.darker(page.theme.accent, 1.15)
                                  : (searchButton.hovered ? Qt.lighter(page.theme.accent, 1.08) : page.theme.accent)
                         }
-                        onClicked: searchField.accepted()
-                        Accessible.name: "Search"
+                        onClicked: {
+                            if (searchField.text.trim().length) {
+                                page.searchRequested(searchField.text)
+                                searchField.text = ""
+                            }
+                        }
+                        Accessible.name: "Search the web"
+                    }
+                }
+            }
+
+            Row {
+                id: kindChips
+                Layout.alignment: Qt.AlignHCenter
+                Layout.topMargin: 12
+                spacing: 6
+                Repeater {
+                    model: [
+                        { kind: "all", label: "All" },
+                        { kind: "tab", label: "Open tabs" },
+                        { kind: "bookmark", label: "Bookmarks" },
+                        { kind: "app", label: "Web apps" }
+                    ]
+                    delegate: Button {
+                        id: chip
+                        required property var modelData
+                        visible: modelData.kind !== "app" || page.appsAvailable
+                        checkable: false
+                        focusPolicy: Qt.NoFocus
+                        implicitHeight: 30
+                        leftPadding: 14
+                        rightPadding: 14
+                        readonly property bool selected: page.kind === modelData.kind
+                        onClicked: {
+                            page.kind = selected && modelData.kind !== "all" ? "all" : modelData.kind
+                            searchField.forceActiveFocus()
+                        }
+                        contentItem: Text {
+                            text: chip.modelData.label
+                            color: chip.selected ? "#FFFFFF" : "#D7C1AA"
+                            font.pixelSize: 12
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                        background: Rectangle {
+                            radius: 15
+                            color: chip.selected ? page.theme.accent : (chip.hovered ? page.theme.hover : Qt.rgba(page.theme.raised.r, page.theme.raised.g, page.theme.raised.b, 0.72))
+                            border.color: Qt.rgba(page.theme.border.r, page.theme.border.g, page.theme.border.b, 0.6)
+                        }
+                        Accessible.name: "Show " + modelData.label
+                        Accessible.role: Accessible.RadioButton
+                        Accessible.checked: selected
+                    }
+                }
+            }
+
+            // Results: replaces the shortcuts while you type or pick a kind.
+            Rectangle {
+                id: resultsBox
+                visible: page.showingResults
+                Layout.alignment: Qt.AlignHCenter
+                Layout.topMargin: 12
+                Layout.preferredWidth: Math.min(column.width, 760)
+                implicitHeight: resultsColumn.implicitHeight + 12
+                radius: 14
+                color: Qt.rgba(page.theme.raised.r, page.theme.raised.g, page.theme.raised.b, 0.92)
+                border.color: Qt.rgba(page.theme.border.r, page.theme.border.g, page.theme.border.b, 0.6)
+
+                ColumnLayout {
+                    id: resultsColumn
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.margins: 6
+                    spacing: 2
+
+                    ResultRow {
+                        visible: page.hasWebRow
+                        Layout.fillWidth: true
+                        theme: page.theme
+                        kind: "web"
+                        title: "Search " + page.searchEngine + " for “" + page.query + "”"
+                        detail: "Only this goes to the search engine, not your tabs or bookmarks"
+                        current: page.highlighted === 0
+                        onClicked: page.activate(0)
+                    }
+
+                    Repeater {
+                        model: page.results
+                        delegate: ColumnLayout {
+                            id: resultEntry
+                            required property var modelData
+                            required property int index
+                            readonly property int row: index + (page.hasWebRow ? 1 : 0)
+                            Layout.fillWidth: true
+                            spacing: 2
+                            Label {
+                                visible: resultEntry.index === 0 || page.results[resultEntry.index - 1].kind !== resultEntry.modelData.kind
+                                text: page.sectionTitle(resultEntry.modelData.kind).toUpperCase()
+                                color: "#BBA896"
+                                font.pixelSize: 10
+                                font.bold: true
+                                font.letterSpacing: 1
+                                Layout.leftMargin: 10
+                                Layout.topMargin: 6
+                            }
+                            ResultRow {
+                                Layout.fillWidth: true
+                                theme: page.theme
+                                kind: resultEntry.modelData.kind
+                                title: resultEntry.modelData.title
+                                detail: resultEntry.modelData.detail || ""
+                                iconUrl: resultEntry.modelData.icon || ""
+                                sleepState: resultEntry.modelData.state || ""
+                                alreadyOpen: resultEntry.modelData.open === true
+                                current: page.highlighted === resultEntry.row
+                                onClicked: page.activate(resultEntry.row)
+                            }
+                        }
+                    }
+
+                    Label {
+                        visible: page.results.length === 0
+                        text: page.kind === "tab" ? "No other open tabs" + (page.query.length ? " match" : "")
+                            : page.kind === "bookmark" ? (page.query.length ? "No bookmarks match" : "No bookmarks yet. Add some with the star in the address bar, or import them from Settings.")
+                            : page.kind === "app" ? (page.query.length ? "No web apps match" : "No web apps yet. On any site, open the menu and choose Install This Site as an App.")
+                            : "No open tabs, bookmarks or apps match. Press Enter to search the web."
+                        color: "#9F8873"
+                        font.pixelSize: 12
+                        wrapMode: Text.Wrap
+                        Layout.fillWidth: true
+                        Layout.margins: 10
                     }
                 }
             }
 
             Flow {
                 id: shortcutFlow
+                visible: !page.showingResults
                 Layout.alignment: Qt.AlignHCenter
                 Layout.topMargin: page.compact ? 20 : 30
                 readonly property int tileWidth: 112
@@ -208,7 +391,7 @@ Rectangle {
             }
 
             Label {
-                visible: page.shortcuts.length === 0
+                visible: page.shortcuts.length === 0 && !page.showingResults
                 Layout.alignment: Qt.AlignHCenter
                 Layout.topMargin: 10
                 text: "Add the sites you visit most. Shortcuts open in a normal private tab."
@@ -221,6 +404,7 @@ Rectangle {
 
             Rectangle {
                 id: cards
+                visible: !page.showingResults
                 Layout.fillWidth: true
                 Layout.topMargin: page.compact ? 24 : 44
                 implicitHeight: cardGrid.implicitHeight + 8

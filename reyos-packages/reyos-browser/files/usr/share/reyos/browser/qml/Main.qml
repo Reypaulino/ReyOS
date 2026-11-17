@@ -91,6 +91,10 @@ ApplicationWindow {
     palette.disabled.windowText: "#8C7867"
     palette.disabled.text: "#8C7867"
 
+    // For components created inside a Component/delegate, where a plain
+    // `theme: theme` would bind the component's own property to itself.
+    readonly property QtObject reyvaTheme: theme
+
     QtObject {
         id: theme
         readonly property color accent: window.accentColor
@@ -106,9 +110,12 @@ ApplicationWindow {
 
     readonly property bool currentIsHome: currentView ? isHomeUrl(currentView.url.toString()) : true
     readonly property bool currentIsHttps: currentView ? String(currentView.url).indexOf("https:") === 0 : false
-    readonly property real tabWidth: Math.max(112, Math.min(224, (tabStrip.width - brandRow.width - newTabButton.width - 48) / Math.max(1, tabs.count)))
+    readonly property real tabWidth: Math.max(112, Math.min(224, (tabStrip.width - brandRow.width - newTabButton.width - tabSearchButton.width - 54) / Math.max(1, tabs.count)))
     readonly property bool compactToolbar: width < 900
     property int activeDownloadCount: 0
+    // Tabs along the top (default) or in a sidebar (Settings > Tabs).
+    readonly property bool verticalTabs: browserBackend.tabLayout === "vertical"
+    readonly property int sideTabsWidth: verticalTabs && !pageFullScreen ? 248 : 0
 
     ListModel { id: tabs }
     ListModel { id: downloads }
@@ -336,10 +343,70 @@ ApplicationWindow {
         Qt.openUrlExternally("file://" + path.split("/").map(encodeURIComponent).join("/"))
     }
 
-    function requestPermission(request) {
-        permissionDialog.permissionRequest = request
+    // Site permission requests. Each names the site that asked (not the tab
+    // you happen to be looking at) and what it wants; more than one waits
+    // its turn. WebEnginePermission has grant()/deny() (6.8+): the old code
+    // called reject(), which doesn't exist, so Block threw an error and the
+    // request was never answered.
+    property var permissionQueue: []
+
+    function permissionLabel(type) {
+        switch (type) {
+        case WebEnginePermission.PermissionType.Geolocation: return "know your location"
+        case WebEnginePermission.PermissionType.MediaAudioCapture: return "use your microphone"
+        case WebEnginePermission.PermissionType.MediaVideoCapture: return "use your camera"
+        case WebEnginePermission.PermissionType.MediaAudioVideoCapture: return "use your camera and microphone"
+        case WebEnginePermission.PermissionType.DesktopVideoCapture: return "see your screen"
+        case WebEnginePermission.PermissionType.DesktopAudioVideoCapture: return "see your screen and hear its sound"
+        case WebEnginePermission.PermissionType.Notifications: return "show notifications"
+        case WebEnginePermission.PermissionType.ClipboardReadWrite: return "read and change your clipboard"
+        case WebEnginePermission.PermissionType.MouseLock: return "hide and lock your mouse pointer"
+        case WebEnginePermission.PermissionType.LocalFontsAccess: return "see the fonts installed on this computer"
+        default: return "use a protected feature"
+        }
+    }
+
+    function permissionShortLabel(type) {
+        switch (type) {
+        case WebEnginePermission.PermissionType.Geolocation: return "Location"
+        case WebEnginePermission.PermissionType.MediaAudioCapture: return "Microphone"
+        case WebEnginePermission.PermissionType.MediaVideoCapture: return "Camera"
+        case WebEnginePermission.PermissionType.MediaAudioVideoCapture: return "Camera and microphone"
+        case WebEnginePermission.PermissionType.DesktopVideoCapture: return "Screen"
+        case WebEnginePermission.PermissionType.DesktopAudioVideoCapture: return "Screen and sound"
+        case WebEnginePermission.PermissionType.Notifications: return "Notifications"
+        case WebEnginePermission.PermissionType.ClipboardReadWrite: return "Clipboard"
+        case WebEnginePermission.PermissionType.MouseLock: return "Mouse lock"
+        case WebEnginePermission.PermissionType.LocalFontsAccess: return "Fonts"
+        default: return "Other"
+        }
+    }
+
+    function requestPermission(permission) {
+        if (permission.permissionType === WebEnginePermission.PermissionType.Unsupported) {
+            permission.deny()
+            return
+        }
+        var queue = permissionQueue.slice()
+        queue.push(permission)
+        permissionQueue = queue
+        if (!permissionDialog.visible) {
+            showNextPermission()
+        }
+    }
+
+    function showNextPermission() {
+        if (permissionQueue.length === 0) {
+            return
+        }
+        var queue = permissionQueue.slice()
+        var next = queue.shift()
+        permissionQueue = queue
+        permissionDialog.permissionRequest = next
         permissionDialog.answered = false
-        permissionDialog.site = currentView ? currentView.url.host : "this website"
+        var host = String(next.origin).replace(/^[a-z]+:\/\//, "").replace(/\/.*$/, "")
+        permissionDialog.site = host.length ? host : "This website"
+        permissionDialog.what = permissionLabel(next.permissionType)
         permissionDialog.open()
     }
 
@@ -496,14 +563,25 @@ ApplicationWindow {
         })
     }
 
+    property bool startedWithUrls: false
+
     function initializeFirstTab(startUrls) {
         if (startUrls && startUrls.length > 0) {
+            startedWithUrls = true
             for (var i = 0; i < startUrls.length; ++i) {
                 openInNewTab(startUrls[i])
             }
             tabBar.currentIndex = tabs.count - 1
         } else if (tabs.count === 0) {
             addTab()
+        }
+        var pending = browserBackend.pendingRecovery()
+        if (pending && pending.tabs && pending.tabs.length > 0) {
+            recoveryBar.pending = pending
+        } else if (!browserBackend.onboardingCompleted && !startedWithUrls) {
+            // A link opened from another app goes straight to its page; the
+            // welcome waits for a normal start.
+            welcome.open()
         }
     }
 
@@ -513,11 +591,123 @@ ApplicationWindow {
         Qt.callLater(newTabPage.focusSearch)
     }
 
-    function openInNewTab(pageUrl) {
+    // Opens in the background (links, "Open all"), or in front with select.
+    function openInNewTab(pageUrl, select) {
         if (!pageUrl) {
             return
         }
         tabs.append({ pageUrl: String(pageUrl), pageTitle: "Loading…", readerOriginalUrl: "", keepAlive: false })
+        if (select) {
+            tabBar.currentIndex = tabs.count - 1
+        }
+    }
+
+    function lifecycleName(view) {
+        if (!view) return ""
+        if (view.lifecycleState === WebEngineView.LifecycleState.Discarded) return "discarded"
+        if (view.lifecycleState === WebEngineView.LifecycleState.Frozen) return "frozen"
+        return ""
+    }
+
+    // The open tabs as plain data for the dashboard and tab search. Reads
+    // only the tab list and each view's state: a sleeping tab isn't woken.
+    function tabSnapshot() {
+        var list = []
+        for (var i = 0; i < tabs.count; ++i) {
+            var tab = tabs.get(i)
+            var url = tab.readerOriginalUrl.length ? tab.readerOriginalUrl : tab.pageUrl
+            list.push({ index: i, title: tab.pageTitle, url: url, home: isHomeUrl(tab.pageUrl) || i === tabBar.currentIndex,
+                        state: lifecycleName(pages.itemAt(i)) })
+        }
+        return list
+    }
+
+    // Switches to an existing tab. If you came from an empty New Tab (no
+    // page in it yet), that tab is closed, as "Switch to tab" does in other
+    // browsers, instead of being left behind.
+    function activateTab(index) {
+        if (index < 0 || index >= tabs.count) {
+            return
+        }
+        var from = tabBar.currentIndex
+        var fromView = pages.itemAt(from)
+        var dropFrom = from !== index && tabs.count > 1 && fromView && isHomeUrl(fromView.url.toString()) && !fromView.canGoBack
+        tabBar.currentIndex = index
+        if (dropFrom) {
+            tabs.remove(from)
+            tabBar.currentIndex = from < index ? index - 1 : index
+        }
+    }
+
+    function refreshDashboard() {
+        if (newTabPage.visible && newTabPage.showingResults) {
+            newTabPage.refreshResults()
+        }
+        if (tabSearch.visible) {
+            tabSearch.refresh()
+        }
+    }
+
+    Connections {
+        target: tabs
+        function onCountChanged() { window.refreshDashboard(); window.scheduleSessionSave() }
+        function onDataChanged() { window.refreshDashboard(); window.scheduleSessionSave() }
+    }
+
+    // ---- Opt-in crash recovery: addresses and titles of the open tabs are
+    // written a moment after they change (never page contents or form data);
+    // a clean quit deletes the file (main.py).
+    Timer {
+        id: sessionSaveTimer
+        interval: 1500
+        repeat: false
+        onTriggered: window.saveSessionNow()
+    }
+
+    function scheduleSessionSave() {
+        if (browserBackend.crashRecovery) {
+            sessionSaveTimer.restart()
+        }
+    }
+
+    function saveSessionNow() {
+        if (!browserBackend.crashRecovery) {
+            return
+        }
+        var list = []
+        var current = 0
+        for (var i = 0; i < tabs.count; ++i) {
+            var tab = tabs.get(i)
+            var url = tab.readerOriginalUrl.length ? tab.readerOriginalUrl : tab.pageUrl
+            if (isHomeUrl(url) || !/^https?:/.test(url)) continue
+            if (i === tabBar.currentIndex) current = list.length
+            list.push({ url: url, title: tab.pageTitle })
+        }
+        browserBackend.saveSession(list, current)
+    }
+
+    Connections {
+        target: browserBackend
+        function onCrashRecoveryChanged() { window.scheduleSessionSave() }
+    }
+
+    function restoreSession(data) {
+        if (!data || !data.tabs || data.tabs.length === 0) {
+            return
+        }
+        // The empty New Tab shown at start is replaced, not kept beside them.
+        var replaceBlank = tabs.count === 1 && currentView && isHomeUrl(currentView.url.toString()) && !currentView.canGoBack
+        var first = tabs.count
+        for (var i = 0; i < data.tabs.length; ++i) {
+            tabs.append({ pageUrl: data.tabs[i].url, pageTitle: data.tabs[i].title || "Loading…", readerOriginalUrl: "", keepAlive: false })
+        }
+        var target = first + Math.min(data.current || 0, data.tabs.length - 1)
+        tabBar.currentIndex = target
+        if (replaceBlank) {
+            tabs.remove(0)
+            // Absolute, not relative: TabBar may already have shifted it.
+            tabBar.currentIndex = target - 1
+        }
     }
 
     function openShortcutDialog(index) {
@@ -570,6 +760,7 @@ ApplicationWindow {
     }
 
     Shortcut { sequence: "Ctrl+T"; onActivated: window.addTab() }
+    Shortcut { sequence: "Ctrl+Shift+A"; onActivated: tabSearch.visible ? tabSearch.close() : tabSearch.open() }
     Shortcut { sequence: "Ctrl+W"; onActivated: window.closeCurrentTab() }
     Shortcut { sequence: "Ctrl+Shift+T"; onActivated: window.reopenClosedTab() }
     Shortcut { sequence: "Ctrl+L"; onActivated: { address.forceActiveFocus(); address.selectAll() } }
@@ -635,12 +826,15 @@ ApplicationWindow {
 
                 TabBar {
                     id: tabBar
+                    // With tabs on the side this strip is hidden, but it still
+                    // holds which tab is selected (tabBar.currentIndex).
+                    visible: !window.verticalTabs
                     currentIndex: 0
                     spacing: 4
                     Layout.preferredHeight: 38
                     Layout.alignment: Qt.AlignBottom
                     Layout.preferredWidth: tabs.count * (window.tabWidth + spacing)
-                    Layout.maximumWidth: tabStrip.width - brandRow.width - newTabButton.width - 48
+                    Layout.maximumWidth: tabStrip.width - brandRow.width - newTabButton.width - tabSearchButton.width - 54
                     onCurrentIndexChanged: {
                         address.focus = false
                         Qt.callLater(window.syncCurrentSite)
@@ -774,6 +968,18 @@ ApplicationWindow {
                     hoverColor: accentSurfaceHover
                     tip: "New tab (Ctrl+T)"
                     onClicked: window.addTab()
+                }
+
+                IconButton {
+                    id: tabSearchButton
+                    iconSource: Qt.resolvedUrl("../icons/reyos-search.svg")
+                    iconSize: 16
+                    implicitWidth: 34
+                    implicitHeight: 34
+                    hoverColor: accentSurfaceHover
+                    active: tabSearch.visible
+                    tip: "Search your open tabs (Ctrl+Shift+A)"
+                    onClicked: tabSearch.visible ? tabSearch.close() : tabSearch.open()
                 }
 
                 Item { Layout.fillWidth: true }
@@ -1796,7 +2002,8 @@ ApplicationWindow {
         parent: window.contentItem
         modal: false
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-        width: Math.min(400, window.width - 24)
+        width: Math.min(420, window.width - 24)
+        height: Math.min(implicitHeight, window.contentItem.height - 16)
         x: Math.max(12, window.contentItem.width - width - 60)
         y: 4
         padding: 20
@@ -1807,7 +2014,40 @@ ApplicationWindow {
             subtitle: browserBackend.currentSite.length ? browserBackend.currentSite : "New Tab"
             onCloseClicked: siteSafetyDialog.close()
         }
-        contentItem: ColumnLayout {
+
+        property var sitePermissions: []
+        property string updateMessage: ""
+        readonly property string siteOrigin: currentView && /^https?:/.test(String(currentView.url))
+                                              ? String(currentView.url).replace(/^([a-z]+:\/\/[^\/?#]+).*$/i, "$1") : ""
+        function refreshPermissions() {
+            var list = []
+            if (siteOrigin.length) {
+                var all = privateProfile.listPermissionsForOrigin(siteOrigin)
+                for (var i = 0; i < all.length; ++i) {
+                    var state = all[i].state
+                    if (state === WebEnginePermission.State.Granted || state === WebEnginePermission.State.Denied) {
+                        list.push(all[i])
+                    }
+                }
+            }
+            sitePermissions = list
+        }
+        onAboutToShow: refreshPermissions()
+
+        Connections {
+            target: browserBackend
+            function onShieldsUpdateFinished(ok, message) { siteSafetyDialog.updateMessage = message }
+        }
+
+        contentItem: Flickable {
+            implicitHeight: safetyColumn.implicitHeight
+            contentHeight: safetyColumn.implicitHeight
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
+            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+        ColumnLayout {
+            id: safetyColumn
+            width: parent.width
             spacing: 12
             Label {
                 text: currentView && String(currentView.url).indexOf("https:") === 0 ? "Connection: Secure HTTPS" : "Connection: Not secure — this page does not use HTTPS"
@@ -1815,37 +2055,124 @@ ApplicationWindow {
                 color: currentView && String(currentView.url).indexOf("https:") === 0 ? "#9AD8AE" : accentGlow
                 Layout.fillWidth: true
             }
-            Label {
-                text: "Permissions always ask first. Any approval lasts only for this private browser session."
-                wrapMode: Text.Wrap
-                color: "#D7C1AA"
-                Layout.fillWidth: true
-            }
             Rectangle { Layout.fillWidth: true; height: 1; color: accentBorder }
             Label {
-                text: "ReyOS Shields: " + (browserBackend.shieldsEnabled ? "On" : "Off") + " · " + browserBackend.blockedRequestCount + " requests blocked this session"
+                text: "ReyOS Shields: " + (!browserBackend.shieldsEnabled ? "Off everywhere"
+                      : (browserBackend.currentSite.length && !browserBackend.currentSiteShieldsEnabled ? "Off for this site" : "On"))
+                font.bold: true
+                color: "#FFF3E6"
+                Layout.fillWidth: true
+            }
+            Label {
+                text: (browserBackend.currentSite.length ? browserBackend.currentSiteBlockedCount + " requests blocked on this site · " : "")
+                      + browserBackend.blockedRequestCount + " this session"
                 wrapMode: Text.Wrap
                 color: "#F4D5A8"
+                Layout.fillWidth: true
+            }
+            Label {
+                text: "Shields stops pages from loading anything from " + browserBackend.shieldsDomainCount
+                      + " known ad and tracker domains, and switches http:// addresses to https:// where it can. "
+                      + "It can't remove ads a site serves from its own domain."
+                wrapMode: Text.Wrap
+                color: "#D7C1AA"
+                font.pixelSize: 12
                 Layout.fillWidth: true
             }
             RowLayout {
                 Layout.fillWidth: true
                 ThemedButton {
                     text: browserBackend.shieldsEnabled ? "Turn Shields Off" : "Turn Shields On"
-                    onClicked: browserBackend.toggleShields()
+                    onClicked: {
+                        browserBackend.toggleShields()
+                        if (currentView && !window.currentIsHome) currentView.reload()
+                    }
                 }
                 ThemedButton {
-                    visible: browserBackend.currentSite.length > 0
-                    text: browserBackend.currentSiteShieldsEnabled ? "Disable for this site" : "Enable for this site"
-                    onClicked: browserBackend.toggleCurrentSiteShields()
+                    visible: browserBackend.currentSite.length > 0 && browserBackend.shieldsEnabled
+                    text: browserBackend.currentSiteShieldsEnabled ? "Off for this site" : "On for this site"
+                    onClicked: {
+                        browserBackend.toggleCurrentSiteShields()
+                        // The change only applies to what loads next.
+                        if (currentView) currentView.reload()
+                    }
+                }
+            }
+            Label {
+                visible: browserBackend.currentSite.length > 0 && browserBackend.shieldsEnabled && browserBackend.currentSiteShieldsEnabled
+                text: "Page looks broken (missing video, login, comments)? Turn Shields off for this site: the page reloads without blocking. It stays off until Reyva closes."
+                wrapMode: Text.Wrap
+                color: "#BBA896"
+                font.pixelSize: 12
+                Layout.fillWidth: true
+            }
+            Rectangle { Layout.fillWidth: true; height: 1; color: accentBorder }
+            RowLayout {
+                Layout.fillWidth: true
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 2
+                    Label { text: "Filter list"; color: "#FFF3E6"; font.bold: true }
+                    Label {
+                        text: browserBackend.shieldsDomainCount + " domains · updated " + browserBackend.shieldsLastUpdated
+                        color: "#D7C1AA"; font.pixelSize: 12; wrapMode: Text.Wrap; Layout.fillWidth: true
+                    }
+                    Label {
+                        visible: siteSafetyDialog.updateMessage.length > 0
+                        text: siteSafetyDialog.updateMessage
+                        color: "#F4D5A8"; font.pixelSize: 12; wrapMode: Text.Wrap; Layout.fillWidth: true
+                    }
+                }
+                ThemedButton {
+                    text: browserBackend.shieldsUpdating ? "Updating…" : "Update"
+                    enabled: !browserBackend.shieldsUpdating
+                    onClicked: { siteSafetyDialog.updateMessage = ""; browserBackend.updateShieldsFilterList() }
+                }
+            }
+            Rectangle { Layout.fillWidth: true; height: 1; color: accentBorder }
+            Label { text: "Permissions for this site"; color: "#FFF3E6"; font.bold: true }
+            Label {
+                visible: siteSafetyDialog.sitePermissions.length === 0
+                text: siteSafetyDialog.siteOrigin.length ? "None asked for yet. Sites always ask first; answers last until Reyva closes."
+                                                          : "Open a site to see its permissions."
+                wrapMode: Text.Wrap
+                color: "#D7C1AA"
+                font.pixelSize: 12
+                Layout.fillWidth: true
+            }
+            Repeater {
+                model: siteSafetyDialog.sitePermissions
+                delegate: RowLayout {
+                    required property var modelData
+                    Layout.fillWidth: true
+                    Label {
+                        text: window.permissionShortLabel(modelData.permissionType)
+                        color: "#FFF3E6"
+                        Layout.fillWidth: true
+                    }
+                    Label {
+                        text: modelData.state === WebEnginePermission.State.Granted ? "Allowed" : "Blocked"
+                        color: modelData.state === WebEnginePermission.State.Granted ? "#9AD8AE" : accentGlow
+                    }
+                    ThemedButton {
+                        text: "Reset"
+                        onClicked: {
+                            modelData.reset()
+                            siteSafetyDialog.refreshPermissions()
+                        }
+                        ToolTip.visible: hovered
+                        ToolTip.text: "Forget this answer: the site has to ask again"
+                    }
                 }
             }
             Label {
                 text: "Browsing data is in memory and clears when Reyva closes."
                 wrapMode: Text.Wrap
                 color: "#D7C1AA"
+                font.pixelSize: 12
                 Layout.fillWidth: true
             }
+        }
         }
     }
 
@@ -1898,6 +2225,7 @@ ApplicationWindow {
     Dialog {
         id: manageAppsDialog
         modal: true
+        onAboutToShow: browserBackend.refreshWebApps()
         parent: Overlay.overlay
         width: Math.min(520, window.width - 48)
         height: Math.min(Math.max(220, browserBackend.installedWebApps.length * 66 + 112), window.height - 72)
@@ -1988,7 +2316,7 @@ ApplicationWindow {
                                         color: accentSurfaceHover
                                         Image {
                                             anchors.centerIn: parent
-                                            source: webAppEntry.modelData.icon ? Qt.resolvedUrl("file://" + webAppEntry.modelData.icon) : Qt.resolvedUrl("../assets/reyos-browser-logo.png")
+                                            source: webAppEntry.modelData.iconUrl ? webAppEntry.modelData.iconUrl : Qt.resolvedUrl("../assets/reyos-browser-logo.png")
                                             sourceSize.width: 32
                                             sourceSize.height: 32
                                         }
@@ -1998,6 +2326,12 @@ ApplicationWindow {
                                         spacing: 2
                                         Label { text: webAppEntry.modelData.name; color: "#FFF3E6"; font.pixelSize: 14; elide: Text.ElideRight; Layout.fillWidth: true }
                                         Label { text: webAppEntry.modelData.comment; color: "#D7C1AA"; font.pixelSize: 12; elide: Text.ElideRight; Layout.fillWidth: true }
+                                    }
+                                    ThemedButton {
+                                        text: "Open"
+                                        onClicked: { manageAppsDialog.close(); browserBackend.launchInstalledWebApp(webAppEntry.modelData.id) }
+                                        ToolTip.visible: hovered
+                                        ToolTip.text: "Opens in its own window, signed in as before"
                                     }
                                     ThemedButton { text: "Remove"; onClicked: browserBackend.uninstallWebApp(webAppEntry.modelData.id) }
                                 }
@@ -2279,40 +2613,57 @@ ApplicationWindow {
     Dialog {
         id: permissionDialog
         property var permissionRequest: null
-        property string site: "this website"
+        property string site: "This website"
+        property string what: ""
         property bool answered: false
-        title: "Permission request"
         modal: true
-        width: 410
+        width: Math.min(440, window.width - 32)
         anchors.centerIn: parent
-        padding: 18
-        onClosed: {
-            if (!answered && permissionRequest) {
-                permissionRequest.reject()
+        padding: 20
+        topPadding: 14
+        closePolicy: Popup.CloseOnEscape
+        background: Rectangle { color: accentSurfaceRaised; border.color: accentBorder; border.width: 1; radius: 14 }
+        header: DialogHeader {
+            title: "Permission request"
+            subtitle: permissionDialog.site
+            onCloseClicked: permissionDialog.close()
+        }
+        function answer(allow) {
+            answered = true
+            if (permissionRequest) {
+                if (allow) permissionRequest.grant()
+                else permissionRequest.deny()
             }
+            close()
+        }
+        onClosed: {
+            // Closed without an answer (Esc, ✕): the site is told no.
+            if (!answered && permissionRequest) {
+                permissionRequest.deny()
+            }
+            permissionRequest = null
+            Qt.callLater(window.showNextPermission)
         }
         contentItem: ColumnLayout {
             spacing: 12
-            Label { text: permissionDialog.site + " wants access to a protected feature."; wrapMode: Text.Wrap; color: "#FFF3E6"; Layout.fillWidth: true }
-            Label { text: "Allow only for this private browser session?"; wrapMode: Text.Wrap; color: "#D7C1AA"; Layout.fillWidth: true }
+            Label {
+                text: "<b>" + permissionDialog.site + "</b> wants to " + permissionDialog.what + "."
+                textFormat: Text.StyledText
+                wrapMode: Text.Wrap
+                color: "#FFF3E6"
+                Layout.fillWidth: true
+            }
+            Label {
+                text: "Allowing lasts until Reyva closes. You can take it back in Privacy & Shields."
+                wrapMode: Text.Wrap
+                color: "#D7C1AA"
+                Layout.fillWidth: true
+            }
             RowLayout {
-                Layout.alignment: Qt.AlignRight
-                Button {
-                    text: "Block"
-                    onClicked: {
-                        permissionDialog.answered = true
-                        permissionDialog.permissionRequest.reject()
-                        permissionDialog.close()
-                    }
-                }
-                Button {
-                    text: "Allow this session"
-                    onClicked: {
-                        permissionDialog.answered = true
-                        permissionDialog.permissionRequest.grant()
-                        permissionDialog.close()
-                    }
-                }
+                Layout.fillWidth: true
+                Item { Layout.fillWidth: true }
+                ThemedButton { text: "Block"; onClicked: permissionDialog.answer(false) }
+                ThemedButton { text: "Allow this session"; onClicked: permissionDialog.answer(true) }
             }
         }
     }
@@ -2667,6 +3018,33 @@ ApplicationWindow {
                 }
 
                 SettingsSection {
+                    title: "Tabs"
+                    SettingRow {
+                        first: true
+                        label: "Tabs on the side"
+                        description: "Show tabs in a list on the left instead of along the top. Ctrl+Shift+A searches your open tabs either way."
+                        ThemedSwitch {
+                            checked: window.verticalTabs
+                            onToggled: browserBackend.setTabLayout(checked ? "vertical" : "horizontal")
+                        }
+                    }
+                    SettingRow {
+                        label: "Restore tabs after a crash"
+                        description: browserBackend.crashRecovery
+                            ? "On: while Reyva runs, the addresses and titles of your open tabs are kept in a file on this computer (never page contents, cookies, form data or passwords). It's deleted when Reyva closes normally. After a crash you're asked whether to reopen them."
+                            : "Off: nothing about your tabs is written anywhere. Reyva is private by default."
+                        ThemedSwitch {
+                            checked: browserBackend.crashRecovery
+                            onToggled: {
+                                if (checked !== browserBackend.crashRecovery) {
+                                    browserBackend.toggleCrashRecovery()
+                                }
+                            }
+                        }
+                    }
+                }
+
+                SettingsSection {
                     title: "Performance"
                     SettingRow {
                         first: true
@@ -2708,11 +3086,16 @@ ApplicationWindow {
                         first: true
                         label: "Reyva " + browserBackend.appVersion
                         description: browserBackend.engineVersion
-                        ThemedButton { text: "What's new"; onClicked: { settingsDialog.close(); window.openInNewTab("https://reyos.reyapps.com/#browser") } }
+                        ThemedButton { text: "What's new"; onClicked: { settingsDialog.close(); window.openInNewTab("https://reyos.reyapps.com/#browser", true) } }
+                    }
+                    SettingRow {
+                        label: "Welcome tour"
+                        description: "Import bookmarks or passwords and pick a search engine again."
+                        ThemedButton { text: "Show again"; onClicked: { settingsDialog.close(); welcome.open() } }
                     }
                     SettingRow {
                         label: "Something not working?"
-                        ThemedButton { text: "Report a problem"; onClicked: { settingsDialog.close(); window.openInNewTab("https://github.com/Reypaulino/ReyOS/issues") } }
+                        ThemedButton { text: "Report a problem"; onClicked: { settingsDialog.close(); window.openInNewTab("https://github.com/Reypaulino/ReyOS/issues", true) } }
                     }
                 }
             }
@@ -2878,6 +3261,7 @@ ApplicationWindow {
 
     StackLayout {
         anchors.fill: parent
+        anchors.leftMargin: window.sideTabsWidth
         currentIndex: tabBar.currentIndex
 
         Repeater {
@@ -2892,6 +3276,8 @@ ApplicationWindow {
 
                 id: browserView
                 property bool selected: index === tabBar.currentIndex
+                // Set when Reyva asked for https:// and the site didn't answer.
+                property string insecureOfferUrl: ""
 
                 function updateLifecycle() {
                     if (selected || keepAlive || !browserBackend.lowMemoryMode) {
@@ -2935,6 +3321,42 @@ ApplicationWindow {
                         } else if (browserView.lifecycleState === WebEngineView.LifecycleState.Frozen && browserView.recommendedState === WebEngineView.LifecycleState.Discarded) {
                             browserView.lifecycleState = WebEngineView.LifecycleState.Discarded
                         }
+                    }
+                }
+
+                // HTTPS didn't work for this site: offer plain HTTP, for this
+                // site and this session only.
+                Rectangle {
+                    visible: browserView.insecureOfferUrl.length > 0
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    implicitHeight: insecureRow.implicitHeight + 20
+                    color: accentSurfaceRaised
+                    border.color: accentBorder
+                    z: 5
+                    RowLayout {
+                        id: insecureRow
+                        anchors.fill: parent
+                        anchors.margins: 10
+                        anchors.leftMargin: 16
+                        spacing: 10
+                        Image { source: Qt.resolvedUrl("../icons/reyos-warning.svg"); sourceSize.width: 20; sourceSize.height: 20 }
+                        Label {
+                            text: "This site didn't answer over a secure (HTTPS) connection. You can open it over HTTP, which isn't encrypted: others on your network could see or change what you send."
+                            color: "#FFF3E6"
+                            wrapMode: Text.Wrap
+                            Layout.fillWidth: true
+                        }
+                        Button {
+                            text: "Open over HTTP"
+                            onClicked: {
+                                var target = browserBackend.allowInsecureSite(browserView.insecureOfferUrl)
+                                browserView.insecureOfferUrl = ""
+                                if (target.length) browserView.url = target
+                            }
+                        }
+                        Button { text: "Dismiss"; onClicked: browserView.insecureOfferUrl = "" }
                     }
                 }
 
@@ -2983,8 +3405,8 @@ ApplicationWindow {
                     request.accept()
                     window.setPageFullScreen(request.toggleOn)
                 }
-                onPermissionRequested: function(request) {
-                    window.requestPermission(request)
+                onPermissionRequested: function(permission) {
+                    window.requestPermission(permission)
                 }
                 // window.print() from the page, or the PDF viewer's print button.
                 onPrintRequested: window.printPage(browserView, "print")
@@ -3008,6 +3430,13 @@ ApplicationWindow {
                     window.updateHistoryTitle(url.toString(), title)
                 }
                 onLoadingChanged: function(loadRequest) {
+                    if (loadRequest.status === WebEngineLoadingInfo.LoadFailedStatus
+                            && browserBackend.httpsUpgradeFailed(loadRequest.url.toString())) {
+                        insecureOfferUrl = loadRequest.url.toString()
+                    } else if (loadRequest.status === WebEngineLoadingInfo.LoadStartedStatus
+                               && insecureOfferUrl.length && loadRequest.url.toString() !== insecureOfferUrl) {
+                        insecureOfferUrl = ""
+                    }
                     // A start URL that doesn't redirect never sends another
                     // urlChanged once its tab is current, so the address bar
                     // stayed on the placeholder (e.g. "https://example.com/a%20b?x=1").
@@ -3021,6 +3450,263 @@ ApplicationWindow {
             }
         }
     }
+    // Tabs on the side (Settings > Tabs). Same tab list and actions as the
+    // strip on top; no extra pages are created for it.
+    Rectangle {
+        id: sideTabs
+        visible: window.sideTabsWidth > 0
+        x: 0
+        y: 0
+        width: window.sideTabsWidth
+        height: parent.height
+        color: accentSurfaceWindow
+        z: 2
+        Rectangle { anchors.right: parent.right; width: 1; height: parent.height; color: accentSurfaceBase }
+
+        Loader {
+            anchors.fill: parent
+            anchors.margins: 8
+            anchors.rightMargin: 9
+            active: sideTabs.visible
+            sourceComponent: sideTabListComponent
+        }
+    }
+
+    Component {
+        id: sideTabListComponent
+        ListView {
+            id: sideTabList
+            clip: true
+            spacing: 3
+            model: tabs
+            currentIndex: tabBar.currentIndex
+            keyNavigationEnabled: false
+            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+            Accessible.name: "Open tabs"
+            Accessible.role: Accessible.PageTabList
+            delegate: ItemDelegate {
+                id: sideTab
+                required property int index
+                required property string pageTitle
+                required property bool keepAlive
+                readonly property bool isCurrent: index === tabBar.currentIndex
+                readonly property var view: pages.itemAt(index)
+                readonly property string sleep: window.lifecycleName(view)
+                width: ListView.view.width
+                implicitHeight: 40
+                hoverEnabled: true
+                focusPolicy: Qt.NoFocus
+                padding: 0
+                onClicked: tabBar.currentIndex = index
+                Accessible.name: pageTitle + (sleep === "frozen" ? ", sleeping" : (sleep === "discarded" ? ", unloaded" : ""))
+                Accessible.role: Accessible.PageTab
+                Accessible.selected: isCurrent
+                background: Rectangle {
+                    radius: 9
+                    color: sideTab.isCurrent ? accentSurfaceToolbar : (sideTab.hovered ? accentSurfaceBase : "transparent")
+                    border.width: sideTab.isCurrent ? 1 : 0
+                    border.color: Qt.rgba(accentColor.r, accentColor.g, accentColor.b, 0.5)
+                }
+                contentItem: RowLayout {
+                    spacing: 6
+                    Item {
+                        Layout.leftMargin: 8
+                        Layout.preferredWidth: 16
+                        Layout.preferredHeight: 16
+                        Image {
+                            id: sideFavicon
+                            anchors.fill: parent
+                            source: sideTab.view && !window.isHomeUrl(sideTab.view.url.toString()) ? sideTab.view.icon : ""
+                            sourceSize.width: 16
+                            sourceSize.height: 16
+                            visible: status === Image.Ready
+                        }
+                        Image {
+                            anchors.fill: parent
+                            visible: sideFavicon.status !== Image.Ready
+                            source: sideTab.view && window.isHomeUrl(sideTab.view.url.toString()) ? Qt.resolvedUrl("../assets/reyos-browser-logo.png") : Qt.resolvedUrl("../icons/reyos-globe.svg")
+                            sourceSize.width: 16
+                            sourceSize.height: 16
+                            opacity: 0.85
+                        }
+                    }
+                    Label {
+                        text: sideTab.pageTitle
+                        color: sideTab.isCurrent ? "#FFF3E6" : "#C9B6A3"
+                        font.pixelSize: 13
+                        elide: Text.ElideRight
+                        Layout.fillWidth: true
+                    }
+                    Label {
+                        visible: sideTab.sleep.length > 0
+                        text: sideTab.sleep === "discarded" ? "◌" : "❄"
+                        color: "#F4D5A8"
+                        font.pixelSize: 14
+                        ToolTip.visible: sideSleepHover.hovered
+                        ToolTip.text: sideTab.sleep === "discarded" ? "Unloaded to save memory — reloads when selected" : "Paused to save memory"
+                        HoverHandler { id: sideSleepHover }
+                    }
+                    ToolButton {
+                        visible: sideTab.keepAlive || sideTab.hovered
+                        focusPolicy: Qt.NoFocus
+                        icon.source: Qt.resolvedUrl("../icons/reyos-pin.svg")
+                        icon.width: 14
+                        icon.height: 14
+                        icon.color: sideTab.keepAlive ? accentGlow : "#C9B6A3"
+                        implicitWidth: 22
+                        implicitHeight: 22
+                        padding: 0
+                        background: Rectangle { radius: 6; color: parent.hovered ? accentHoverStrong : "transparent" }
+                        onClicked: tabs.setProperty(sideTab.index, "keepAlive", !sideTab.keepAlive)
+                        ToolTip.visible: hovered
+                        ToolTip.text: sideTab.keepAlive ? "Keep running: On" : "Keep this tab running in the background"
+                        Accessible.name: "Keep tab running in background"
+                    }
+                    ToolButton {
+                        focusPolicy: Qt.NoFocus
+                        icon.source: Qt.resolvedUrl("../icons/reyos-close.svg")
+                        icon.width: 12
+                        icon.height: 12
+                        icon.color: sideTab.isCurrent || hovered ? "#FFF3E6" : "#C9B6A3"
+                        implicitWidth: 22
+                        implicitHeight: 22
+                        padding: 0
+                        Layout.rightMargin: 4
+                        background: Rectangle { radius: 6; color: parent.hovered ? accentHoverStrong : "transparent" }
+                        onClicked: window.closeTab(sideTab.index)
+                        Accessible.name: "Close tab"
+                    }
+                }
+            }
+        }
+    }
+
+    // After a crash, with "Restore tabs after a crash" on.
+    Rectangle {
+        id: recoveryBar
+        property var pending: null
+        visible: pending !== null
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.leftMargin: window.sideTabsWidth
+        implicitHeight: recoveryRow.implicitHeight + 20
+        color: accentSurfaceRaised
+        border.color: accentBorder
+        z: 40
+        function finish(restore) {
+            var data = pending
+            pending = null
+            if (restore) window.restoreSession(data)
+            browserBackend.finishRecovery()
+        }
+        RowLayout {
+            id: recoveryRow
+            anchors.fill: parent
+            anchors.margins: 10
+            anchors.leftMargin: 16
+            spacing: 10
+            Label {
+                text: recoveryBar.pending ? "Reyva didn't close properly. Reopen the " + recoveryBar.pending.tabs.length
+                                            + (recoveryBar.pending.tabs.length === 1 ? " tab" : " tabs") + " you had open?" : ""
+                color: "#FFF3E6"
+                wrapMode: Text.Wrap
+                Layout.fillWidth: true
+            }
+            Button { text: "Restore"; onClicked: recoveryBar.finish(true) }
+            Button { text: "Discard"; onClicked: recoveryBar.finish(false) }
+        }
+    }
+
+    // Ctrl+Shift+A: find an open tab by its title or address and go to it.
+    Popup {
+        id: tabSearch
+        parent: window.contentItem
+        x: (parent.width - width) / 2
+        y: 8
+        width: Math.min(560, parent.width - 32)
+        height: Math.min(tabSearchColumn.implicitHeight + 24, parent.height - 24)
+        padding: 12
+        modal: false
+        focus: true
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        property var results: []
+        property int highlighted: 0
+        background: Rectangle { color: accentSurfaceRaised; border.color: accentBorder; border.width: 1; radius: 14 }
+        function refresh() {
+            results = browserBackend.dashboardResults(tabSearchField.text.trim(), window.tabSnapshot(), "tab")
+            highlighted = Math.min(highlighted, Math.max(0, results.length - 1))
+        }
+        function activate(row) {
+            var entry = results[row]
+            if (!entry) return
+            close()
+            tabBar.currentIndex = entry.index
+        }
+        onAboutToShow: {
+            tabSearchField.text = ""
+            highlighted = 0
+            refresh()
+        }
+        onOpened: tabSearchField.forceActiveFocus()
+        contentItem: ColumnLayout {
+            id: tabSearchColumn
+            spacing: 6
+            ThemedField {
+                id: tabSearchField
+                Layout.fillWidth: true
+                placeholderText: "Search open tabs"
+                onTextChanged: { tabSearch.highlighted = 0; tabSearch.refresh() }
+                onAccepted: tabSearch.activate(tabSearch.highlighted)
+                Keys.onDownPressed: tabSearch.highlighted = Math.min(tabSearch.results.length - 1, tabSearch.highlighted + 1)
+                Keys.onUpPressed: tabSearch.highlighted = Math.max(0, tabSearch.highlighted - 1)
+                Accessible.name: "Search open tabs"
+            }
+            Label {
+                visible: tabSearch.results.length === 0
+                text: tabSearchField.text.trim().length ? "No other open tab matches" : "No other open tabs"
+                color: "#9F8873"
+                font.pixelSize: 12
+                Layout.margins: 6
+            }
+            ListView {
+                Layout.fillWidth: true
+                Layout.preferredHeight: Math.min(contentHeight, 420)
+                clip: true
+                spacing: 2
+                model: tabSearch.results
+                delegate: ResultRow {
+                    required property var modelData
+                    required property int index
+                    width: ListView.view.width
+                    theme: window.reyvaTheme
+                    kind: "tab"
+                    title: modelData.title
+                    detail: modelData.detail
+                    sleepState: modelData.state || ""
+                    current: index === tabSearch.highlighted
+                    onClicked: tabSearch.activate(index)
+                }
+            }
+        }
+    }
+
+    // Created only while it's shown.
+    Loader {
+        id: welcome
+        anchors.fill: parent
+        z: 60
+        active: false
+        function open() {
+            active = true
+            item.open()
+        }
+        sourceComponent: WelcomeWizard {
+            theme: window.reyvaTheme
+            onClosed: welcome.active = false
+        }
+    }
+
     PrintPreview {
         id: printPreview
         anchors.fill: parent
@@ -3030,9 +3716,18 @@ ApplicationWindow {
     NewTabPage {
         id: newTabPage
         anchors.fill: parent
+        anchors.leftMargin: window.sideTabsWidth
         visible: window.currentIsHome && !window.readerIsActive()
         theme: theme
         shortcuts: browserBackend.shortcuts
+        searchEngine: browserBackend.searchEngine
+        appsAvailable: browserBackend.webAppsSupported
+        onResultsWanted: function(text, kind) {
+            results = text.length || kind !== "all" ? browserBackend.dashboardResults(text, window.tabSnapshot(), kind) : []
+        }
+        onTabActivated: function(index) { window.activateTab(index) }
+        onBookmarkOpened: function(url) { window.openBookmarkUrl(url) }
+        onAppLaunched: function(appId) { browserBackend.launchInstalledWebApp(appId) }
         onSearchRequested: function(text) { window.openAddress(text) }
         onShortcutOpened: function(url) { window.openBookmarkUrl(url) }
         onAddShortcutRequested: window.openShortcutDialog(-1)
