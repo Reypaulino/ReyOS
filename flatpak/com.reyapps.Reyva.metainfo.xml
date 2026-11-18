@@ -67,6 +67,12 @@
   </requires>
 
   <releases>
+    <release version="0.1.14" date="2026-11-17">
+      <description>
+        <p>The Shields filter list downloads on first start and updates itself once a week, so new installs no longer run on the small built-in list. It can be turned off in Settings.</p>
+        <p>Install as App works on Ubuntu 24.04, where the desktop refused launchers from Flatpak apps.</p>
+      </description>
+    </release>
     <release version="0.1.13" date="2026-11-16">
       <description>
         <p>New Tab search finds your open tabs, bookmarks and web apps; Ctrl+Shift+A searches open tabs; tabs can sit on the side and fold to icons; a toolbar button opens your web apps.</p>

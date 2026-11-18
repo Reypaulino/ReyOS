@@ -232,5 +232,28 @@ class WebAppLaunch(unittest.TestCase):
         self.assertEqual(core.desktop_entry_value(text, "Icon"), "")
 
 
+
+class ShieldsUpdateDue(unittest.TestCase):
+    NOW = 1_800_000_000.0  # fixed clock
+
+    def iso(self, seconds_ago):
+        from datetime import datetime, timezone
+        return datetime.fromtimestamp(self.NOW - seconds_ago, timezone.utc).isoformat(timespec="seconds")
+
+    def test_never_downloaded_or_unreadable(self):
+        for value in (None, "", "yesterday", 5):
+            self.assertTrue(core.shields_update_due(value, self.NOW), value)
+
+    def test_week_boundary(self):
+        self.assertFalse(core.shields_update_due(self.iso(3600), self.NOW))
+        self.assertFalse(core.shields_update_due(self.iso(7 * 86400 - 60), self.NOW))
+        self.assertTrue(core.shields_update_due(self.iso(7 * 86400), self.NOW))
+
+    def test_future_date_and_naive_date(self):
+        self.assertTrue(core.shields_update_due(self.iso(-86400), self.NOW))
+        naive = self.iso(3600).replace("+00:00", "")
+        self.assertFalse(core.shields_update_due(naive, self.NOW))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -225,5 +225,124 @@ class Backend(unittest.TestCase):
         self.assertFalse(main.reyva_core.should_upgrade_to_https("old.example.org", interceptor.http_allowed_hosts))
 
 
+    # ---- Shields automatic update (0.1.14)
+    def test_shields_auto_update_on_by_default_and_only_when_due(self):
+        self.assertTrue(self.backend.shieldsAutoUpdate)
+        calls = []
+        self.backend.updateShieldsFilterList = lambda: calls.append(1)
+        # New install: no downloaded list yet.
+        self.backend._check_shields_auto_update()
+        self.assertEqual(len(calls), 1)
+        # A list downloaded an hour ago: nothing to do.
+        main.SHIELDS_CACHE_PATH.write_text("ads.example\n")
+        from datetime import datetime, timedelta, timezone
+        self.backend._shields_meta = {"lastUpdated": (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()}
+        self.backend._check_shields_auto_update()
+        self.assertEqual(len(calls), 1)
+        # Eight days old: refresh.
+        self.backend._shields_meta = {"lastUpdated": (datetime.now(timezone.utc) - timedelta(days=8)).isoformat()}
+        self.backend._check_shields_auto_update()
+        self.assertEqual(len(calls), 2)
+        # Turned off: never, and the choice is saved.
+        self.backend.toggleShieldsAutoUpdate()
+        self.assertFalse(self.backend.shieldsAutoUpdate)
+        self.backend._check_shields_auto_update()
+        self.assertEqual(len(calls), 2)
+        self.assertFalse(main.load_setting("shieldsAutoUpdate", True))
+
+    def test_shields_update_uses_worker_domains(self):
+        worker = main.ShieldsUpdateWorker()
+        worker.domains = {"a.example", "b.example"}
+        self.backend._shields_update_worker = worker
+        self.backend._shields_updating = True
+        self.backend._on_shields_update_finished(True, "ok", 2)
+        self.assertEqual(self.backend._interceptor.blocked_domains, {"a.example", "b.example"})
+        self.assertFalse(self.backend.shieldsUpdating)
+
+    # ---- Flatpak launcher written by Reyva when the portal refuses (0.1.14)
+    def flatpak_layout(self):
+        state = main.BROWSER_STATE_DIR / "webapps"
+        patches = [
+            mock.patch.object(main, "IS_FLATPAK", True),
+            mock.patch.object(main, "WEBAPPS_ICON_DIR", state),
+            mock.patch.object(main, "WEBAPPS_INDEX_PATH", state / "index.json", create=True),
+        ]
+        for patch in patches:
+            patch.start()
+            self.addCleanup(patch.stop)
+        state.mkdir(parents=True, exist_ok=True)
+        return state
+
+    def test_flatpak_file_launcher_round_trip(self):
+        state = self.flatpak_layout()
+        icon = state / "reyos-webapp-mail-1234abcd.png"
+        icon.write_bytes(b"png")
+        notes = []
+        self.backend.notify = lambda title, message: notes.append(title)
+        url = "https://mail.example.com/a%20b?x=$y"
+        self.assertTrue(self.backend._install_flatpak_file_webapp("reyos-webapp-mail-1234abcd", url, 'My "Mail"', "https://mail.example.com", str(icon)))
+        desktop = main.WEBAPPS_DESKTOP_DIR / "com.reyapps.Reyva.reyos_webapp_mail_1234abcd.desktop"
+        text = desktop.read_text()
+        self.assertIn(f"Icon={icon}\n", text)
+        self.assertIn("StartupWMClass=com.reyapps.Reyva.reyos_webapp_mail_1234abcd\n", text)
+        launch = main.reyva_core.parse_webapp_launch(main.reyva_core.desktop_entry_value(text, "Exec"))
+        self.assertEqual(launch, {"url": url, "title": 'My "Mail"', "icon": str(icon)})
+        self.assertTrue(main.reyva_core.desktop_entry_value(text, "Exec").startswith('"flatpak" "run" "com.reyapps.Reyva" '))
+        apps = self.backend.installedWebApps
+        self.assertEqual([a["id"] for a in apps], ["reyos-webapp-mail-1234abcd"])
+        # Removed from the desktop side: drops out of the list.
+        desktop.unlink()
+        self.backend.refreshWebApps()
+        self.assertEqual(self.backend.installedWebApps, [])
+        # Install again, then remove through Reyva: launcher and icon go.
+        self.backend._install_flatpak_file_webapp("reyos-webapp-mail-1234abcd", url, "Mail", "https://mail.example.com", str(icon))
+        self.assertTrue(self.backend.uninstallWebApp("reyos-webapp-mail-1234abcd"))
+        self.assertFalse(desktop.exists())
+        self.assertFalse(icon.exists())
+        self.assertEqual(self.backend.installedWebApps, [])
+        self.assertEqual(notes, ["App installed", "App installed", "App removed"])
+
+    def test_flatpak_bundled_logo_uses_exported_icon_name(self):
+        self.flatpak_layout()
+        self.backend.notify = lambda title, message: None
+        logo = str(main.APP_DIR / "assets" / "reyos-browser-logo.png")
+        self.backend._install_flatpak_file_webapp("reyos-webapp-x-11111111", "https://x.example/", "X", "https://x.example", logo)
+        text = (main.WEBAPPS_DESKTOP_DIR / "com.reyapps.Reyva.reyos_webapp_x_11111111.desktop").read_text()
+        self.assertIn("Icon=com.reyapps.Reyva\n", text)
+
+    def test_portal_icon_refusal_falls_back_to_file(self):
+        state = self.flatpak_layout()
+        notes = []
+        self.backend.notify = lambda title, message: notes.append(title)
+        icon = state / "reyos-webapp-y-22222222.png"
+        icon.write_bytes(b"png")
+        self.backend._pending_portal_installs["reyos-webapp-y-22222222"] = {
+            "launcher": "com.reyapps.Reyva.reyos_webapp_y_22222222", "icon": str(icon),
+            "comment": "c", "url": "https://y.example/"}
+        self.backend._pending_portal_fallback["reyos-webapp-y-22222222"] = ("Y", "https://y.example")
+        self.backend._finish_portal_install("reyos-webapp-y-22222222", "", "Dynamic launcher icon failed validation")
+        self.assertTrue((main.WEBAPPS_DESKTOP_DIR / "com.reyapps.Reyva.reyos_webapp_y_22222222.desktop").is_file())
+        self.assertTrue(icon.exists())
+        self.assertEqual(notes, ["App installed"])
+        # A portal that never answers (locked up) falls back too.
+        self.backend._pending_portal_installs["reyos-webapp-w-44444444"] = {
+            "launcher": "com.reyapps.Reyva.reyos_webapp_w_44444444", "icon": "", "comment": "c", "url": "https://w.example/"}
+        self.backend._pending_portal_fallback["reyos-webapp-w-44444444"] = ("W", "https://w.example")
+        self.backend._finish_portal_install("reyos-webapp-w-44444444", "", "TimeoutError")
+        self.assertTrue((main.WEBAPPS_DESKTOP_DIR / "com.reyapps.Reyva.reyos_webapp_w_44444444.desktop").is_file())
+        # A cancelled portal dialog writes nothing.
+        self.backend._pending_portal_installs["reyos-webapp-z-33333333"] = {
+            "launcher": "com.reyapps.Reyva.reyos_webapp_z_33333333", "icon": "", "comment": "c", "url": "https://z.example/"}
+        self.backend._pending_portal_fallback["reyos-webapp-z-33333333"] = ("Z", "https://z.example")
+        self.backend._finish_portal_install("reyos-webapp-z-33333333", "", "cancelled")
+        self.assertFalse((main.WEBAPPS_DESKTOP_DIR / "com.reyapps.Reyva.reyos_webapp_z_33333333.desktop").exists())
+
+
+    def test_hosts_lines_with_trailing_comments(self):
+        text = ("# header\n0.0.0.0 a.example #[tracking]\n0.0.0.0 b.example\t# note\n"
+                "127.0.0.1 localhost\n0.0.0.0 c.example\nplain.example\n0.0.0.0 x y z\n")
+        self.assertEqual(main._parse_domain_lines(text), {"a.example", "b.example", "c.example", "plain.example"})
+
+
 if __name__ == "__main__":
     unittest.main()

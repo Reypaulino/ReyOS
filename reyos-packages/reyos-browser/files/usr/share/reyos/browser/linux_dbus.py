@@ -146,18 +146,23 @@ LAUNCHER_TYPE_WEBAPP = 2
 INSTALL_DIALOG_TIMEOUT = 600
 
 
-def _portal_call(connection, method: str, signature: str, body: tuple):
+# A locked-up portal never answers (xdg-desktop-portal 1.22.1 on ReyOS,
+# 2026-11-17); without a limit Reyva waited forever, at start-up too.
+PORTAL_CALL_TIMEOUT = 20
+
+
+def _portal_call(connection, method: str, signature: str, body: tuple, timeout: float = PORTAL_CALL_TIMEOUT):
     address = DBusAddress(PORTAL_PATH, bus_name=PORTAL_BUS, interface=DYNAMIC_LAUNCHER)
-    return unwrap_msg(connection.send_and_get_reply(new_method_call(address, method, signature, body)))
+    return unwrap_msg(connection.send_and_get_reply(new_method_call(address, method, signature, body), timeout=timeout))
 
 
 def dynamic_launcher_version() -> int:
     """Version of the DynamicLauncher portal, 0 if the desktop doesn't offer it."""
     address = DBusAddress(PORTAL_PATH, bus_name=PORTAL_BUS, interface=PROPS)
     try:
-        reply = _bus().send_and_get_reply(new_method_call(address, "Get", "ss", (DYNAMIC_LAUNCHER, "version")))
+        reply = _bus().send_and_get_reply(new_method_call(address, "Get", "ss", (DYNAMIC_LAUNCHER, "version")), timeout=5)
         return int(unwrap_msg(reply)[0][1])
-    except (DBusErrorResponse, OSError, ValueError, TypeError, IndexError):
+    except (DBusErrorResponse, OSError, ValueError, TypeError, IndexError, TimeoutError):
         return 0
 
 
@@ -199,8 +204,8 @@ def uninstall_launcher(desktop_file_id: str) -> None:
 def launcher_entry(desktop_file_id: str) -> str | None:
     """The desktop entry the portal stored for a launcher, or None if it's gone."""
     try:
-        return str(_portal_call(_bus(), "GetDesktopEntry", "s", (desktop_file_id,))[0])
-    except (DBusErrorResponse, OSError, IndexError):
+        return str(_portal_call(_bus(), "GetDesktopEntry", "s", (desktop_file_id,), timeout=5)[0])
+    except (DBusErrorResponse, OSError, IndexError, TimeoutError):
         return None
 
 

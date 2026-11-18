@@ -15,10 +15,13 @@ Sandbox differences from the Arch/.deb builds (`browserBackend.sandboxed`):
   portal (since 0.1.1): the desktop shows its own confirmation, then writes the
   launcher to `~/.local/share/xdg-desktop-portal/applications/`. Reyva keeps its
   list in `webapps/index.json` in its data dir. Hidden if the desktop has no such
-  portal. Tested on KDE Plasma. **Fails on stock Ubuntu 24.04**: its AppArmor
-  default (`kernel.apparmor_restrict_unprivileged_userns=1`) stops the portal's
-  bwrap-sandboxed icon check ("Dynamic launcher icon failed validation") for every
-  Flatpak; Reyva says so and points to the `.deb`.
+  portal. Tested on KDE Plasma. On stock Ubuntu 24.04 the portal refuses every
+  Flatpak launcher: its AppArmor default (`kernel.apparmor_restrict_unprivileged_userns=1`)
+  stops the portal's bwrap-sandboxed icon check ("Dynamic launcher icon failed
+  validation"). Since 0.1.14 Reyva then writes the launcher itself into
+  `~/.local/share/applications/` (`--filesystem=xdg-data/applications:create`), the
+  same when the portal fails any other way except Cancel (it locked up once on
+  ReyOS with xdg-desktop-portal 1.22.1). Index entries made that way have `"file": true`.
 - "System Password Manager" button is hidden (can't start host apps).
 - Notifications go over D-Bus directly (`notify-send` isn't in the runtime).
 - State lives in `~/.var/app/com.reyapps.Reyva/data/reyos-browser/`

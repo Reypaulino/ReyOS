@@ -416,3 +416,24 @@ def desktop_entry_value(text: str, field: str) -> str:
         if in_main and line.startswith(field + "="):
             return line[len(field) + 1:]
     return ""
+
+
+SHIELDS_UPDATE_INTERVAL_DAYS = 7
+
+
+def shields_update_due(last_updated: str | None, now: float | None = None,
+                       days: int = SHIELDS_UPDATE_INTERVAL_DAYS) -> bool:
+    """True when the downloaded Shields filter list should be refreshed: never
+    downloaded (a new install still on the small built-in list), older than
+    `days`, an unreadable date, or a date in the future (clock was wrong)."""
+    if not last_updated or not isinstance(last_updated, str):
+        return True
+    from datetime import datetime, timezone
+    try:
+        when = datetime.fromisoformat(last_updated)
+    except ValueError:
+        return True
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    age = (time.time() if now is None else now) - when.timestamp()
+    return age < 0 or age >= days * 86400

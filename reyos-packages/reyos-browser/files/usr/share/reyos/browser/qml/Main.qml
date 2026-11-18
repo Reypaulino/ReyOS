@@ -3208,6 +3208,18 @@ ApplicationWindow {
                                      + browserBackend.shieldsDomainCount + " domains · updated " + browserBackend.shieldsLastUpdated
                         ThemedButton { text: browserBackend.shieldsUpdating ? "Updating…" : "Update"; enabled: !browserBackend.shieldsUpdating; onClicked: browserBackend.updateShieldsFilterList() }
                     }
+                    SettingRow {
+                        label: "Update the filter list automatically"
+                        description: browserBackend.shieldsAutoUpdate ? "Downloads the latest list once a week." : "Off: the list only changes when you press Update."
+                        ThemedSwitch {
+                            checked: browserBackend.shieldsAutoUpdate
+                            onToggled: {
+                                if (checked !== browserBackend.shieldsAutoUpdate) {
+                                    browserBackend.toggleShieldsAutoUpdate()
+                                }
+                            }
+                        }
+                    }
                     Item { visible: false; Label { id: shieldsUpdateStatus } }
                     Connections {
                         target: browserBackend

@@ -18,7 +18,7 @@ from pathlib import Path
 
 # Reyva's own version, shown in Settings. Bump it with every release (and the
 # Flatpak metainfo <release>); the .deb/Windows package numbers are separate.
-APP_VERSION = "0.1.13"
+APP_VERSION = "0.1.14"
 
 IS_WINDOWS = sys.platform == "win32"
 IS_FLATPAK = os.path.exists("/.flatpak-info")
@@ -75,9 +75,10 @@ FINGERPRINT_PROTECTION_SCRIPT_PATH = APP_DIR / "fingerprint-protection.js"
 WEBAPPS_DESKTOP_DIR = Path.home() / ".local" / "share" / "applications"
 WEBAPPS_ICON_DIR = Path.home() / ".local" / "share" / "icons" / "hicolor" / "256x256" / "apps"
 if IS_WINDOWS or IS_FLATPAK:
-    # No writable launcher dir here: Windows uses Start menu shortcuts, the
-    # Flatpak asks the DynamicLauncher portal. Either way Reyva keeps its own
-    # list of what it installed.
+    # Windows uses Start menu shortcuts; the Flatpak asks the DynamicLauncher
+    # portal, and only writes WEBAPPS_DESKTOP_DIR itself when the portal
+    # refuses (see _install_flatpak_file_webapp). Either way Reyva keeps its
+    # own list of what it installed.
     WEBAPPS_ICON_DIR = BROWSER_STATE_DIR / "webapps"
     WEBAPPS_INDEX_PATH = WEBAPPS_ICON_DIR / "index.json"
 if IS_WINDOWS:
@@ -110,6 +111,8 @@ SHIELDS_LIST_URLS = [
 SHIELDS_STATE_DIR = BROWSER_STATE_DIR
 SHIELDS_CACHE_PATH = SHIELDS_STATE_DIR / "shields-blocklist-cache.txt"
 SHIELDS_META_PATH = SHIELDS_STATE_DIR / "shields-meta.json"
+SHIELDS_FIRST_CHECK_DELAY_MS = 5_000
+SHIELDS_RECHECK_INTERVAL_MS = 6 * 60 * 60 * 1000
 # Lifetime blocked-request total, persisted once per session (on quit, not
 # per-block -- writing a file on every single ad/tracker hit would be real
 # I/O overhead for no benefit) so something outside this one running
@@ -497,6 +500,24 @@ def _desktop_exec_safe(value: str) -> str:
     return re.sub(r'[\\"`$]', "", value).replace("%", "%%")
 
 
+def _flatpak_launcher_dir_writable() -> bool:
+    """The Flatpak's fallback for desktops whose DynamicLauncher portal can't
+    add launchers (stock Ubuntu 24.04: AppArmor stops the portal's icon check)
+    or have none: the manifest grants xdg-data/applications:create. False if
+    that permission was taken away (e.g. with Flatseal)."""
+    if not IS_FLATPAK:
+        return False
+    try:
+        WEBAPPS_DESKTOP_DIR.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return False
+    return os.access(WEBAPPS_DESKTOP_DIR, os.W_OK)
+
+
+def _flatpak_file_launcher_path(launcher_id: str) -> Path:
+    return WEBAPPS_DESKTOP_DIR / f"{launcher_id}.desktop"
+
+
 def _square_png_bytes(image: QImage, size: int = 256) -> bytes:
     """PNG bytes of an image centred on a transparent square, as the portal
     only accepts square icons of at most 512 px."""
@@ -696,8 +717,15 @@ class BrowserBackend(QObject):
         self._shields_update_worker = None
         self._shields_updating = False
         self._shields_meta = load_shields_meta()
-        self._web_apps_supported = not IS_FLATPAK or (linux_dbus is not None and linux_dbus.dynamic_launcher_version() >= 1)
+        # On by default (owner, 2026-11-17): a new install downloads the full
+        # list right away instead of running on the small built-in one, then
+        # refreshes it weekly. Settings › Privacy & Shields turns it off.
+        self._shields_auto_update = load_setting("shieldsAutoUpdate", True)
+        self._shields_auto_timer = None
+        self._portal_launcher_version = linux_dbus.dynamic_launcher_version() if IS_FLATPAK and linux_dbus is not None else 0
+        self._web_apps_supported = not IS_FLATPAK or self._portal_launcher_version >= 1 or _flatpak_launcher_dir_writable()
         self._pending_portal_installs = {}
+        self._pending_portal_fallback = {}
         self.portalInstallFinished.connect(self._finish_portal_install)
         self._blocked_by_site: dict[str, int] = {}
         # installedWebApps is read by several QML bindings; reading it used to
@@ -749,6 +777,38 @@ class BrowserBackend(QObject):
         count = self._shields_meta.get("domainCount")
         return count if isinstance(count, int) else len(self._interceptor.blocked_domains)
 
+    @Property(bool, notify=shieldsListInfoChanged)
+    def shieldsAutoUpdate(self) -> bool:
+        return self._shields_auto_update
+
+    @Slot()
+    def toggleShieldsAutoUpdate(self) -> None:
+        self._shields_auto_update = not self._shields_auto_update
+        save_setting("shieldsAutoUpdate", self._shields_auto_update)
+        self.shieldsListInfoChanged.emit()
+        if self._shields_auto_update:
+            self._check_shields_auto_update()
+
+    def start_shields_auto_update(self) -> None:
+        """Main window only (web-app windows use whatever list was saved):
+        check a few seconds after start, then every few hours for long
+        sessions. Downloads only when the list is missing or a week old."""
+        QTimer.singleShot(SHIELDS_FIRST_CHECK_DELAY_MS, self._check_shields_auto_update)
+        self._shields_auto_timer = QTimer(self)
+        self._shields_auto_timer.setInterval(SHIELDS_RECHECK_INTERVAL_MS)
+        self._shields_auto_timer.timeout.connect(self._check_shields_auto_update)
+        self._shields_auto_timer.start()
+
+    @Slot()
+    def _check_shields_auto_update(self) -> None:
+        if not self._shields_auto_update or self._shields_updating:
+            return
+        # The cache file is what load_blocked_domains() uses; without it the
+        # meta date means nothing (e.g. a deleted cache).
+        last = self._shields_meta.get("lastUpdated") if SHIELDS_CACHE_PATH.exists() else None
+        if reyva_core.shields_update_due(last):
+            self.updateShieldsFilterList()
+
     @Slot()
     def updateShieldsFilterList(self) -> None:
         if self._shields_updating:
@@ -763,7 +823,10 @@ class BrowserBackend(QObject):
     def _on_shields_update_finished(self, ok: bool, message: str, domain_count: int) -> None:
         self._shields_updating = False
         if ok:
-            self._interceptor.blocked_domains = _parse_domain_lines(
+            worker = self._shields_update_worker
+            # The worker already parsed the list; re-reading the saved file
+            # here would parse ~150k lines again on the UI thread.
+            self._interceptor.blocked_domains = worker.domains if worker is not None and worker.domains else _parse_domain_lines(
                 SHIELDS_CACHE_PATH.read_text(encoding="utf-8")
             )
             self._shields_meta = load_shields_meta()
@@ -1862,6 +1925,63 @@ class BrowserBackend(QObject):
         self.installedWebAppsChanged.emit()
         return True
 
+    def _install_flatpak_file_webapp(self, app_id: str, url: str, title: str, origin: str, png_icon: str) -> bool:
+        """The Flatpak writes the launcher itself, in the same form the
+        DynamicLauncher portal would, when the portal can't do it."""
+        launcher_id = _portal_launcher_id(app_id)
+        # The bundled logo lives in /app, which the host can't see; the
+        # Flatpak's exported icon name works there instead.
+        icon_path = Path(png_icon)
+        host_icon = str(icon_path) if icon_path.parent == WEBAPPS_ICON_DIR and icon_path.is_file() else "com.reyapps.Reyva"
+        exec_value = " ".join(
+            _quote_desktop_exec_arg(part)
+            for part in (
+                "flatpak", "run", "com.reyapps.Reyva",
+                f"--app-url={url}",
+                f"--app-title={title}",
+                f"--app-icon={png_icon}",
+            )
+        )
+        safe_name = re.sub(r"[\r\n]+", " ", title)
+        entry = (
+            "[Desktop Entry]\n"
+            "Version=1.0\n"
+            "Type=Application\n"
+            f"Name={safe_name}\n"
+            f"Comment=Installed from {origin} with Reyva\n"
+            f"Exec={exec_value}\n"
+            f"Icon={host_icon}\n"
+            "Terminal=false\n"
+            "Categories=Network;WebBrowser;\n"
+            "StartupNotify=true\n"
+            f"StartupWMClass={launcher_id}\n"
+            "X-Reyva-WebApp=true\n"
+        )
+        desktop_path = _flatpak_file_launcher_path(launcher_id)
+        try:
+            WEBAPPS_DESKTOP_DIR.mkdir(parents=True, exist_ok=True)
+            temp_path = desktop_path.with_suffix(".tmp")
+            temp_path.write_text(entry, encoding="utf-8")
+            os.replace(temp_path, desktop_path)
+            os.chmod(desktop_path, 0o644)
+            apps = [item for item in _load_webapp_index() if item.get("id") != app_id]
+            apps.append({
+                "id": app_id,
+                "name": title,
+                "launcher": launcher_id,
+                "icon": png_icon,
+                "comment": f"Installed from {origin} with Reyva",
+                "url": url,
+                "file": True,
+            })
+            _save_webapp_index(apps)
+        except OSError as error:
+            self.notify("Couldn't install app", f"{title}: {error}")
+            return False
+        self.notify("App installed", f"{title} was added to your app launcher.")
+        self.installedWebAppsChanged.emit()
+        return True
+
     def _install_portal_webapp(self, app_id: str, url: str, title: str, origin: str, png_icon: str) -> bool:
         if not self._web_apps_supported:
             self.notify("Can't install app", "This desktop doesn't support adding apps from Flatpak apps.")
@@ -1872,6 +1992,8 @@ class BrowserBackend(QObject):
         # QML hands over a display URL (%20 shown as a space); the launcher
         # needs the exact encoded form.
         url = QUrl(url).toString(QUrl.ComponentFormattingOption.FullyEncoded)
+        if self._portal_launcher_version < 1:
+            return self._install_flatpak_file_webapp(app_id, url, title, origin, png_icon)
         icon = _square_png_bytes(QImage(png_icon))
         exec_value = " ".join(
             f'"{_desktop_exec_safe(part)}"'
@@ -1912,29 +2034,38 @@ class BrowserBackend(QObject):
             "comment": f"Installed from {origin} with Reyva",
             "url": url,
         }
+        self._pending_portal_fallback[app_id] = (title, origin)
         threading.Thread(target=worker, daemon=True).start()
         return True
 
     @Slot(str, str, str)
     def _finish_portal_install(self, app_id: str, name: str, error: str) -> None:
         pending = self._pending_portal_installs.pop(app_id, None)
+        fallback = self._pending_portal_fallback.pop(app_id, None)
         if pending is None:
             return
         if error:
+            portal_refused = "icon failed validation" in error.lower()
+            if error != "cancelled" and fallback is not None and _flatpak_launcher_dir_writable():
+                # The portal failed without the person saying no. Seen: Ubuntu
+                # 24.04's AppArmor default stops the portal's sandboxed icon
+                # check (every Flatpak launcher refused); xdg-desktop-portal
+                # 1.22.1 on ReyOS locked up after an icon check (no dialog,
+                # no answer). The person already confirmed in Reyva's dialog.
+                self._install_flatpak_file_webapp(app_id, pending["url"], fallback[0], fallback[1], pending["icon"])
+                return
             icon_path = Path(pending["icon"])
             if icon_path.parent == WEBAPPS_ICON_DIR and icon_path.is_file():
                 try:
                     icon_path.unlink()
                 except OSError:
                     pass
-            if "icon failed validation" in error.lower():
-                # Ubuntu 24.04's AppArmor default stops xdg-desktop-portal's
-                # sandboxed icon check, so every Flatpak launcher is refused.
+            if portal_refused:
                 self.notify(
                     "Couldn't install app",
-                    "Your system's app launcher service couldn't check the icon. This is a known "
-                    "Ubuntu 24.04 issue that affects all Flatpak apps. On Ubuntu, use the Reyva .deb "
-                    "to install sites as apps.",
+                    "Your system's app launcher service couldn't check the icon (a known Ubuntu 24.04 "
+                    "issue), and Reyva isn't allowed to add the launcher itself. Allow Reyva access to "
+                    "~/.local/share/applications (e.g. in Flatseal), or use the Reyva .deb.",
                 )
             elif error != "cancelled":
                 self.notify("Couldn't install app", error)
@@ -1974,7 +2105,15 @@ class BrowserBackend(QObject):
             for entry in _load_webapp_index():
                 # Launchers removed from the desktop side (e.g. GNOME's app
                 # grid) drop out of the list too.
-                desktop = linux_dbus.launcher_entry(f"{entry.get('launcher', '')}.desktop") if linux_dbus else None
+                if entry.get("file"):
+                    try:
+                        if not reyva_core.valid_webapp_id(entry.get("id")):
+                            raise OSError("bad id")
+                        desktop = _flatpak_file_launcher_path(_portal_launcher_id(entry["id"])).read_text(encoding="utf-8")
+                    except OSError:
+                        desktop = None
+                else:
+                    desktop = linux_dbus.launcher_entry(f"{entry.get('launcher', '')}.desktop") if linux_dbus else None
                 if desktop is None:
                     continue
                 entry = dict(entry)
@@ -2084,13 +2223,21 @@ class BrowserBackend(QObject):
             for entry in apps:
                 if entry.get("id") != app_id:
                     continue
-                try:
-                    linux_dbus.uninstall_launcher(f"{entry.get('launcher', '')}.desktop")
-                except linux_dbus.DBusErrorResponse:
-                    pass  # already gone on the desktop side
-                except OSError as error:
-                    self.notify("Couldn't remove app", str(error))
-                    return False
+                if entry.get("file"):
+                    launcher_path = _flatpak_file_launcher_path(_portal_launcher_id(app_id))
+                    try:
+                        launcher_path.unlink(missing_ok=True)
+                    except OSError as error:
+                        self.notify("Couldn't remove app", str(error))
+                        return False
+                else:
+                    try:
+                        linux_dbus.uninstall_launcher(f"{entry.get('launcher', '')}.desktop")
+                    except linux_dbus.DBusErrorResponse:
+                        pass  # already gone on the desktop side
+                    except OSError as error:
+                        self.notify("Couldn't remove app", str(error))
+                        return False
                 icon_path = Path(entry.get("icon") or "")
                 if icon_path.parent == WEBAPPS_ICON_DIR and icon_path.is_file():
                     try:
@@ -2168,13 +2315,15 @@ class BrowserBackend(QObject):
 def _parse_domain_lines(text: str) -> set[str]:
     domains = set()
     for line in text.splitlines():
-        line = line.strip()
-        if not line or line.startswith("#"):
+        # Hosts files put comments after the entry too ("0.0.0.0 a.com # note");
+        # kept whole, such a line never matched any request.
+        line = line.split("#", 1)[0].strip()
+        if not line:
             continue
         hosts_match = _HOSTS_LINE_RE.match(line)
         domain = hosts_match.group(1) if hosts_match else line
         domain = domain.lower().rstrip(".")
-        if domain and domain not in ("localhost", "localhost.localdomain", "local", "broadcasthost"):
+        if domain and " " not in domain and "\t" not in domain and domain not in ("localhost", "localhost.localdomain", "local", "broadcasthost"):
             domains.add(domain)
     return domains
 
@@ -2484,6 +2633,10 @@ def load_fingerprint_protection_script_source(session_key: str) -> str:
 class ShieldsUpdateWorker(QThread):
     finished_ok = Signal(bool, str, int)
 
+    def __init__(self) -> None:
+        super().__init__()
+        self.domains: set[str] = set()
+
     def run(self) -> None:
         domains: set[str] = set()
         fetched_sources = []
@@ -2530,6 +2683,7 @@ class ShieldsUpdateWorker(QThread):
             self.finished_ok.emit(False, f"Downloaded the list but could not save it: {error}", 0)
             return
 
+        self.domains = domains
         skipped = len(SHIELDS_LIST_URLS) - len(fetched_sources)
         note = (
             f" ({skipped} source{'s' if skipped != 1 else ''} unreachable, merged the rest)"
@@ -2666,6 +2820,7 @@ def main():
         _set_windows_app_id("ReyApps.Reyva")
     app.aboutToQuit.connect(backend.persistShieldsStats)
     app.aboutToQuit.connect(backend.endSession)
+    backend.start_shields_auto_update()
     backend.check_unclean_shutdown()
     engine.rootContext().setContextProperty("passwordBridge", backend.passwordBridge)
     engine.load(QUrl.fromLocalFile(str(APP_DIR / "qml" / "Main.qml")))

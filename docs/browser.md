@@ -2,7 +2,7 @@
 
 Reyva is ReyOS's private-by-default web browser: a native PySide6 / Qt Quick application on Qt WebEngine (Chromium). It is not a Firefox wrapper. The package and source folder are still called `reyos-browser` (renamed to Reyva on 2026-10-04).
 
-Current version: **0.1.12** published; **0.1.13** is the candidate on branch `feature/reyva-lightweight-dashboard-qa` (not released, see `docs/reyva-audit.md`). `APP_VERSION` in `main.py` is shown in Settings; bump it with every release.
+Current version: **0.1.14** (2026-11-17). `APP_VERSION` in `main.py` is shown in Settings; bump it with every release.
 
 ## Where it runs
 
@@ -18,7 +18,7 @@ Only the newest GitHub Release of each build is kept.
 ## Features
 
 - **Private by default:** off-the-record profile, no persistent history; browsing data is cleared at exit, settings are kept (`settings.json`).
-- **Shields:** refreshable ad/tracker domain blocklist with per-site on/off (reloads the page), per-site blocked count, HTTPS upgrade (not for IP addresses, one-word or local-network names; a site with no working HTTPS can be opened over HTTP for the session), tracking-parameter stripping, canvas/WebGL/audio fingerprint noise.
+- **Shields:** ad/tracker domain blocklist (StevenBlack hosts + someonewhocares; downloaded on first start and refreshed weekly since 0.1.14, `shieldsAutoUpdate` in Settings › Privacy & Shields, off = only the Update button; the bundled ~150-domain list is only used until the first download) with per-site on/off (reloads the page), per-site blocked count, HTTPS upgrade (not for IP addresses, one-word or local-network names; a site with no working HTTPS can be opened over HTTP for the session), tracking-parameter stripping, canvas/WebGL/audio fingerprint noise.
 - **New Tab dashboard (0.1.13):** one search box finds open tabs (switches to them), bookmarks and installed web apps (opens their own window); Enter on plain text searches the web. Ctrl+Shift+A searches open tabs; Settings › Tabs on the side.
 - **Welcome tour (0.1.13)** on a new profile only (bookmark/password import, search engine); **Restore tabs after a crash** (0.1.13, opt-in, addresses and titles only, deleted on clean quit).
 - **Permissions:** the dialog names the site and what it wants; Privacy & Shields lists this session's answers with Reset (0.1.13; before that, requests were never answered).
@@ -27,7 +27,8 @@ Only the newest GitHub Release of each build is kept.
 - **Downloads** list with progress, notifications, Open, and Show in Folder (file manager's `org.freedesktop.FileManager1`, file selected; Explorer `/select` on Windows). Optional "Ask where to save each file": the dialog comes before `accept()` and the download goes straight into the picked folder when Reyva can write there (`canDownloadInto`; the Flatpak has `--filesystem=/run/media` and `/media` for USB sticks and other drives); only a folder the sandbox can't reach falls back to Downloads-then-move. The portal's `/run/user/<uid>/doc/...` path is mapped to the real one with the document portal's `GetHostPaths`; `safe_file_name()` replaces characters exFAT/FAT/NTFS refuse. Clear button and per-row ✕ remove finished downloads from the list (files stay).
 - **Colors follow the ReyOS Look:** `look_palette()` reads the accent from `kdeglobals` (only on ReyOS) and derives the shades with `looks.py`'s HSL targets scaled by the accent's own saturation relative to copper's (so Graphite stays grey); copper everywhere else.
 - **Printing:** print preview (printer, pages, copies, layout, paper, color, two-sided) and Save as PDF.
-- **Install a site as an app:** its own window and launcher, persistent sign-in for that app (DynamicLauncher portal in the Flatpak).
+- **Install a site as an app:** its own window and launcher, persistent sign-in for that app (DynamicLauncher portal in the Flatpak). When the portal fails without the person cancelling (stock Ubuntu 24.04 refuses every Flatpak launcher's icon; xdg-desktop-portal 1.22.1 locked up on ReyOS), the Flatpak writes `~/.local/share/applications/com.reyapps.Reyva.<app>.desktop` itself (`--filesystem=xdg-data/applications:create`, 0.1.14). Portal calls time out (5–20 s) instead of waiting forever.
+- **Video codecs:** the Flatpak (Flathub's QtWebEngine) plays H.264/AAC. The `.deb` and Windows builds use PySide6's pip wheels, which have no proprietary codecs: H.264/AAC sites (e.g. anime/JW Player streams, `JW Player Error 102630`) don't play there; VP9/AV1/Opus do. Use the Flatpak on Ubuntu for those sites.
 - Reader Mode, Find in Page, Low Memory Mode (freezes and later discards background tabs; pin a tab to keep it running), video fullscreen, CPU video decoding on Linux (`--disable-accelerated-video-decode`, GPU frames failed on Intel graphics).
 
 ## Source

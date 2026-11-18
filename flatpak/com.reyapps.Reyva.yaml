@@ -19,6 +19,10 @@ finish-args:
   # (udisks mounts on ReyOS/Arch, /media on Ubuntu)
   - --filesystem=/run/media
   - --filesystem=/media
+  # Install as App when the DynamicLauncher portal refuses it: stock Ubuntu
+  # 24.04's AppArmor default stops the portal's icon check for every Flatpak.
+  # Reyva then writes com.reyapps.Reyva.<app>.desktop there itself.
+  - --filesystem=xdg-data/applications:create
   - --talk-name=org.freedesktop.Notifications
   - --talk-name=org.freedesktop.secrets
   # "Show in Folder": the file manager opens the folder with the file selected
