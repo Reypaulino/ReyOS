@@ -2,6 +2,15 @@
 
 Real bugs found and fixed, with root cause. Newest first. See `bugs.md` for what's still open. Entries up to 2026-10-28 are in `fixes-old.md`.
 
+## 2026-11-23 — Failed updates say why (control-center-gui 1.0.0-149)
+
+Laptop report: an update in Control Center "failed and did not give me an error message". `/var/log/reyos-update.log` on the laptop (read from Ubuntu, partition mounted read-only): `failed retrieving file 'linux-7.3.5…' from archive.archlinux.org : Connection timed out`, `failed to commit transaction (download library error)`, `no packages were upgraded`. archive.archlinux.org was down (also from Ubuntu, and the 11-21/11-22 stable checks failed the same way); nothing on the laptop changed except reyos-update-channel 11.14 → 11.20. Control Center only said "Update failed." / "Full update failed." at the bottom of the log.
+
+- **New `update_errors.py`**: `explain(output, what)` names the cause from pacman's output: server not answering (names Arch's archive or the ReyOS server), disk full, database locked, signature, damaged download, dependency problem, file conflict, sudo refused, else the last `error:` line; adds "Nothing was changed." when pacman says so or the sync failed. Used by Update everything, System only, ReyOS apps only, channel switch and the "Updates are ready" dialog (`_run_kept` keeps the last 200 lines).
+- **Updates page**: a red message above the buttons with the reason and **Show log**, until the next action starts.
+- **Tested:** `tests/test_update_errors.py` (13, incl. the laptop's real log). Built in an Arch container (`archlinux:latest`, promote.sh's recipe); real `UpdatesPage.qml` loaded there with Arch's PySide6 6.12/Kirigami 6.32 against a fake backend replaying the laptop log: message box shows "Full update failed: couldn't download from Arch's package archive (archive.archlinux.org)… Nothing was changed." **Not tested:** on ReyOS itself. The Dev VM is gone (libvirt definition and `/var/lib/libvirt/images` emptied 2026-11-20 09:58, reason not recorded), so the laptop is the first real test.
+- PR #23 (ReyOS Scan) must use CC 150 now.
+
 ## 2026-11-17 — Reyva 0.1.14: Shields list downloads on first start and weekly; Flatpak Install as App works when the portal fails (Flatpak 0.1.14, .deb 0.1.0-130ubuntu1, Windows 0.1.0.116)
 
 Owner reports on the Ubuntu host: Install as App in the Flatpak failed ("something about flatpak"), and the Shields list was small after installing the .deb.

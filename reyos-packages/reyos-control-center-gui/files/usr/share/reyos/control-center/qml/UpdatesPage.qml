@@ -10,6 +10,8 @@ Kirigami.ScrollablePage {
     // Reopening the page mid-update must keep the buttons locked.
     property bool running: backend.pkgActionRunning()
     property string logText: running ? "A package operation started earlier is still running...\n" : ""
+    // Why the last update failed, shown above the log so it isn't lost in pacman's output.
+    property string pkgError: ""
 
     function appendLog(line) {
         logText += line + "\n"
@@ -25,6 +27,7 @@ Kirigami.ScrollablePage {
             channelInfo = backend.updateChannel()
             kernelInfo = backend.kernelRestart()
             appendLog(ok ? "\n✓ " + message : "\n✗ " + message)
+            pkgError = ok ? "" : message
         }
         function onOrphansListed(list) {
             orphansLabel.text = list.length > 0
@@ -193,6 +196,20 @@ Kirigami.ScrollablePage {
                     icon.name: "system-reboot"
                     enabled: !running
                     onTriggered: backend.restartNow()
+                }
+            ]
+        }
+
+        Kirigami.InlineMessage {
+            Layout.fillWidth: true
+            visible: pkgError !== "" && !running
+            type: Kirigami.MessageType.Error
+            text: pkgError
+            actions: [
+                Kirigami.Action {
+                    text: "Show log"
+                    icon.name: "view-list-text"
+                    onTriggered: logDialog.open()
                 }
             ]
         }

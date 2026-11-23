@@ -40,6 +40,7 @@ import security_scan  # Qt-free: ReyOS Scan (ClamAV), reports and quarantine
 import flatpak_updates  # Qt-free: pending Flatpak updates, readable update errors
 import app_updates  # Qt-free: ReyOS + Flatpak updates for the "Updates are ready" dialog
 import kernel_status  # Qt-free: restart needed after a kernel update
+import update_errors  # Qt-free: plain-words reason for a failed system update
 from emulation import EMU_SYSTEMS, GAMES_DIR, RETROARCH_REYOS_CFG
 
 
@@ -241,6 +242,19 @@ def _run(cmd, progress_emit=None):
         if progress_emit:
             progress_emit(line.rstrip())
     return proc.wait()
+
+
+def _run_kept(cmd, progress_emit=None, keep=200):
+    """_run, also returning the output's last `keep` lines (for update_errors)."""
+    lines = []
+
+    def emit(line):
+        lines.append(line)
+        del lines[:-keep]
+        if progress_emit:
+            progress_emit(line)
+
+    return _run(cmd, emit), lines
 
 
 def _flatpak_update(emit):
@@ -597,10 +611,11 @@ class PkgWorker(_Worker):
             return True, "ReyOS apps are already up to date."
         emit("Updating " + ", ".join(to_install) + " with the system's other waiting updates...")
         _wait_for_pacman_lock(emit)
-        rc = _run(["sudo", "-n", REYOS_ADMIN, "install-reyos"] + to_install, emit)
+        rc, out = _run_kept(["sudo", "-n", REYOS_ADMIN, "install-reyos"] + to_install, emit)
         if rc == 0:
             _record_successful_update(emit)
-        return rc == 0, (f"Updated {len(to_install)} ReyOS app(s) and the rest of the system." if rc == 0 else "Update failed.")
+        return rc == 0, (f"Updated {len(to_install)} ReyOS app(s) and the rest of the system." if rc == 0
+                         else update_errors.explain(out))
 
     def _run_action(self):
         try:
@@ -633,16 +648,16 @@ class PkgWorker(_Worker):
             elif self.action == "upgrade":
                 _wait_for_pacman_lock(emit)
                 emit("$ sudo " + " ".join(_upgrade_cmd()))
-                rc = _run(["sudo", "-n"] + _upgrade_cmd(), emit)
+                rc, out = _run_kept(["sudo", "-n"] + _upgrade_cmd(), emit)
                 if rc == 0:
                     _record_successful_update(emit)
-                self.finished_ok.emit(rc == 0, "Updates installed." if rc == 0 else "Update failed.")
+                self.finished_ok.emit(rc == 0, "Updates installed." if rc == 0 else update_errors.explain(out))
             elif self.action == "full":
                 _wait_for_pacman_lock(emit)
                 emit("[1/3] Syncing + upgrading...")
-                rc = _run(["sudo", "-n"] + _upgrade_cmd(), emit)
+                rc, out = _run_kept(["sudo", "-n"] + _upgrade_cmd(), emit)
                 if rc != 0:
-                    self.finished_ok.emit(False, "Full update failed.")
+                    self.finished_ok.emit(False, update_errors.explain(out, "Full update"))
                     return
                 _record_successful_update(emit)
                 # The system itself is updated now; the clean-up steps below
@@ -677,7 +692,8 @@ class PkgWorker(_Worker):
                 # apps, then Flatpak apps (Reyva, emulators).
                 _wait_for_pacman_lock(emit)
                 emit("$ sudo " + " ".join(_upgrade_cmd()))
-                system_ok = _run(["sudo", "-n"] + _upgrade_cmd(), emit) == 0
+                rc, out = _run_kept(["sudo", "-n"] + _upgrade_cmd(), emit)
+                system_ok = rc == 0
                 if system_ok:
                     _record_successful_update(emit)
                     repo = app_updates.repo_versions()
@@ -693,18 +709,20 @@ class PkgWorker(_Worker):
                 elif system_ok:
                     self.finished_ok.emit(False, "The system is up to date, but " + flatpak_message[0].lower() + flatpak_message[1:])
                 elif flatpak_ok:
-                    self.finished_ok.emit(False, "Flatpak apps are up to date, but the system update failed — see Updates for the log.")
+                    self.finished_ok.emit(False, "Flatpak apps are up to date, but the "
+                                          + update_errors.explain(out, "system update"))
                 else:
-                    self.finished_ok.emit(False, "The system update failed — see Updates for the log. " + flatpak_message)
+                    self.finished_ok.emit(False, "The " + update_errors.explain(out, "system update") + " " + flatpak_message)
             elif self.action in ("channel-stable", "channel-rolling"):
                 target = self.action.split("-", 1)[1]
                 _wait_for_pacman_lock(emit)
                 emit(f"$ sudo {REYOS_CHANNEL} {target} --yes")
-                rc = _run(["sudo", "-n", REYOS_CHANNEL, target, "--yes"], emit)
+                rc, out = _run_kept(["sudo", "-n", REYOS_CHANNEL, target, "--yes"], emit)
                 if rc == 0:
                     _record_successful_update(emit)
                 label = "Stable" if target == "stable" else "Rolling"
-                self.finished_ok.emit(rc == 0, f"Switched to the {label} channel." if rc == 0 else f"Switching to the {label} channel failed.")
+                self.finished_ok.emit(rc == 0, f"Switched to the {label} channel." if rc == 0
+                                      else update_errors.explain(out, f"Switching to the {label} channel"))
             elif self.action == "clean":
                 # Says what happened, like System Tools' "Remove old packages":
                 # a cache holding only the installed versions frees nothing,
