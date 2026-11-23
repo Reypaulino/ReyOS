@@ -13,6 +13,10 @@ ReyOS.
 What it can say: a signature scan finds *known* malware. "clean" means no
 known threats in the files that were checked, never "safe"; errors, files
 too big to check or missing definitions make a scan "not_verified".
+ClamAV's extra checks (possibly unwanted software, encrypted archives and
+documents, damaged programs, Office macros) give "suspicious" findings: a
+reason to look closer, not a threat. Only suspicious findings make a scan
+"suspicious"; any threat makes it "found".
 
 Quarantine only on request, per file: copied into a private folder (0700),
 stored read-only and not executable, SHA-256 checked, the original removed
@@ -31,7 +35,7 @@ import tempfile
 import time
 from pathlib import Path
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 SCHEMA = 1
 DATA = Path(os.environ.get("REYOS_SCAN_DATA", Path.home() / ".local" / "share" / "reyos" / "security"))
 REPORTS = DATA / "scans"
@@ -49,6 +53,17 @@ PROGRAM_EXTS = {".exe", ".dll", ".msi", ".bat", ".cmd", ".ps1", ".vbs", ".scr", 
 LIMITS = ["--max-filesize=500M", "--max-scansize=500M", "--max-recursion=16", "--max-files=20000",
           "--alert-exceeds-max=yes"]
 LIMIT_SIGNATURE = "Heuristics.Limits.Exceeded"
+# ClamAV's checks beyond known-malware signatures. What they find is
+# reported as "suspicious" (severity()), never as a threat: PUA also flags
+# legitimate tools, and an encrypted zip is only "couldn't look inside".
+EXTRA_CHECKS = ["--detect-pua=yes", "--alert-encrypted=yes", "--alert-broken=yes", "--alert-macros=yes"]
+_SUSPICIOUS_REASONS = (
+    ("PUA.", "possibly unwanted software (adware, bundled extras or a hacking/cheat tool)"),
+    ("Heuristics.Encrypted", "encrypted or password-protected, so its contents couldn't be checked"),
+    ("Heuristics.Broken", "a damaged or malformed program"),
+    ("Heuristics.OLE2.ContainsMacros", "an Office document with macros"),
+    ("Heuristics.", "matched one of ClamAV's suspicious-file rules"),
+)
 # Quick scan leaves disc images out (game ISOs/CHDs: gigabytes each, always
 # over the limits above, so they'd only make every quick scan "not
 # verified"). They're listed apart in the report; a folder or home scan
@@ -60,6 +75,23 @@ _ERROR_RE = re.compile(r"^(.*): (.+) ERROR$")
 # denied" comes without ERROR), except these.
 _RESULT_RE = re.compile(r"^(/.*): (.+)$")
 _NOT_PROBLEMS = {"OK", "Empty file", "Symbolic link", "Excluded"}
+
+
+def severity(signature):
+    """("threat" | "suspicious", plain-words reason) for a ClamAV result."""
+    for prefix, reason in _SUSPICIOUS_REASONS:
+        if signature.startswith(prefix):
+            return "suspicious", reason
+    return "threat", "known malware"
+
+
+def threats(report):
+    """The findings that are threats (reports before 0.2.0 have no severity: all threats)."""
+    return [f for f in report.get("findings", []) if f.get("severity", "threat") == "threat"]
+
+
+def suspicious(report):
+    return [f for f in report.get("findings", []) if f.get("severity") == "suspicious"]
 
 
 def _ext_regex(exts):
@@ -188,7 +220,7 @@ class Scan:
         # / and to other drives), never into the quarantine.
         cmd = ["clamscan", "--recursive", "--verbose", "--stdout", "--no-summary", "--cross-fs=no",
                "--follow-dir-symlinks=0", "--follow-file-symlinks=0",
-               f"--exclude-dir=^{re.escape(str(QUARANTINE))}", *LIMITS]
+               f"--exclude-dir=^{re.escape(str(QUARANTINE))}", *LIMITS, *EXTRA_CHECKS]
         if self.leave_out:
             cmd.append(f"--exclude={_ext_regex(self.leave_out)}")
         listfile = None
@@ -229,9 +261,18 @@ class Scan:
                 os.unlink(listfile.name)
         if self.cancelled:
             return self._finish(report, "cancelled", "Scan stopped before the end: not everything was checked.", save)
-        if report["findings"]:
-            n = len(report["findings"])
-            return self._finish(report, "found", f"{n} threat{'s' if n > 1 else ''} found.", save)
+        bad, odd = threats(report), suspicious(report)
+        also = f" {len(odd)} more file{'s' if len(odd) > 1 else ''} look{'' if len(odd) > 1 else 's'} suspicious." if odd else ""
+        if bad:
+            n = len(bad)
+            return self._finish(report, "found", f"{n} threat{'s' if n > 1 else ''} found." + also, save)
+        incomplete = bool(report["errors"] or report["skipped"] or rc not in (0, 1))
+        if odd:
+            n = len(odd)
+            return self._finish(report, "suspicious", f"No known threats, but {n} file{'s' if n > 1 else ''} "
+                                f"look{'' if n > 1 else 's'} suspicious: look closer before you open or run "
+                                f"{'them' if n > 1 else 'it'}." + (" Not everything could be checked." if incomplete
+                                                                     else ""), save)
         if rc == 0 and not report["errors"] and not report["skipped"]:
             left = len(report["left_out"])
             return self._finish(report, "clean", f"No known threats found in {report['files']} files."
@@ -259,7 +300,9 @@ class Scan:
                 digest, size = sha256(path), os.lstat(path).st_size
             except OSError:
                 digest, size = "", 0
-            report["findings"].append({"path": path, "signature": signature, "sha256": digest, "size": size})
+            level, reason = severity(signature)
+            report["findings"].append({"path": path, "signature": signature, "sha256": digest, "size": size,
+                                       "severity": level, "reason": reason})
         elif (m := _ERROR_RE.match(line)):
             # Follows every detection, limits included: not a read error.
             if m.group(2) != "Virus(es) detected":
@@ -307,7 +350,7 @@ def check_program(target, progress=None):
     """Checks an installer/.exe and the programs next to it before anything
     runs. A file already found clean with the same definitions (same
     SHA-256) isn't scanned again; any changed file is. Returns a report
-    (status clean / found / not_verified / cancelled)."""
+    (status clean / found / suspicious / not_verified / cancelled)."""
     files = program_files(target)
     defs = definitions()
     cache = _load_cache()
@@ -324,14 +367,14 @@ def check_program(target, progress=None):
     # Saved below, once the summary says what the cache skipped.
     report = scan.run(save=False)
     report["checked_before"] = len(files) - len(todo)
-    if report["status"] == "clean" and defs["version"]:
+    if report["status"] in ("clean", "suspicious") and defs["version"]:
         bad = {f["path"] for f in report["findings"]}
         for path, h in hashes.items():
             if path not in bad:
                 cache[h] = defs["version"]
         DATA.mkdir(parents=True, exist_ok=True)
         CACHE.write_text(json.dumps(cache))
-        if report["checked_before"]:
+        if report["checked_before"] and report["status"] == "clean":
             report["summary"] = (f"No known threats found ({len(todo)} files checked now, "
                                  f"{report['checked_before']} unchanged since an earlier check).")
     save_report(report)

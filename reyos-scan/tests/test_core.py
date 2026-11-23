@@ -173,6 +173,64 @@ class TestScan(FakeClam):
         self.assertEqual(len(core.history()), 2)
 
 
+class TestSuspicious(FakeClam):
+    """ClamAV's extra checks (PUA, encrypted, broken, macros): "suspicious", never a threat."""
+
+    def test_extra_checks_are_on(self):
+        self.clam([])
+        core.Scan([self.home], "home").run()
+        args = self.args.read_text().split("\n")
+        for opt in ("--detect-pua=yes", "--alert-encrypted=yes", "--alert-broken=yes", "--alert-macros=yes"):
+            self.assertIn(opt, args)
+
+    def test_severity(self):
+        self.assertEqual(core.severity("Win.Test.EICAR_HDB-1")[0], "threat")
+        self.assertEqual(core.severity("PUA.Win.Tool.CheatEngine-1")[0], "suspicious")
+        self.assertIn("encrypted", core.severity("Heuristics.Encrypted.Zip")[1])
+        self.assertIn("damaged", core.severity("Heuristics.Broken.Executable")[1])
+        self.assertIn("macros", core.severity("Heuristics.OLE2.ContainsMacros")[1])
+
+    def test_only_suspicious(self):
+        z = self.write("Downloads/mods.zip")
+        self.clam([f"Scanning {z}", f"{z}: Heuristics.Encrypted.Zip FOUND", f"{z}: Virus(es) detected ERROR"], rc=1)
+        r = core.Scan([z.parent], "folder").run()
+        self.assertEqual(r["status"], "suspicious")
+        self.assertEqual(r["findings"][0]["severity"], "suspicious")
+        self.assertIn("1 file looks suspicious", r["summary"])
+        self.assertNotIn("Not everything", r["summary"])
+        self.assertEqual(r["errors"], [])
+
+    def test_threat_wins_and_mentions_suspicious(self):
+        bad = self.write("Downloads/bad.exe", b"evil")
+        odd = self.write("Downloads/trainer.exe", b"x")
+        self.clam([f"{bad}: Win.Trojan.Agent-1 FOUND", f"{odd}: PUA.Win.Tool.Trainer-2 FOUND"], rc=1)
+        r = core.Scan([bad.parent], "folder").run()
+        self.assertEqual(r["status"], "found")
+        self.assertEqual(r["summary"], "1 threat found. 1 more file looks suspicious.")
+        self.assertEqual([f["path"] for f in core.threats(r)], [str(bad)])
+        self.assertEqual([f["path"] for f in core.suspicious(r)], [str(odd)])
+
+    def test_suspicious_and_incomplete(self):
+        odd = self.write("Downloads/doc.xls")
+        self.clam([f"{odd}: Heuristics.OLE2.ContainsMacros FOUND", f"{odd}.lock: Access denied ERROR"], rc=2)
+        r = core.Scan([odd.parent], "folder").run()
+        self.assertEqual(r["status"], "suspicious")
+        self.assertIn("Not everything could be checked.", r["summary"])
+
+    def test_old_reports_count_as_threats(self):
+        self.assertEqual(len(core.threats({"findings": [{"path": "/x", "signature": "Sig"}]})), 1)
+
+    def test_check_program_caches_only_unflagged_files(self):
+        exe = self.write("Games/X/game.exe", b"MZ1")
+        dll = self.write("Games/X/packed.dll", b"MZ2")
+        self.clam([f"Scanning {exe}", f"{exe}: OK", f"Scanning {dll}", f"{dll}: PUA.Win.Packer.Upx-1 FOUND"], rc=1)
+        self.assertEqual(core.check_program(exe)["status"], "suspicious")
+        cache = json.loads(core.CACHE.read_text())
+        self.assertIn(core.sha256(exe), cache)
+        self.assertNotIn(core.sha256(dll), cache)
+        self.assertEqual(core.check_program(exe)["checked_before"], 1)
+
+
 class TestProgramCheck(FakeClam):
     def test_program_files(self):
         exe = self.write("Games/X/setup.exe")
@@ -292,6 +350,14 @@ class TestCli(FakeClam):
         self.assertEqual(cli.main(["scan", "--json", "--quick"]), 0)
         self.clam([f"{f}: Access denied ERROR"], rc=2)
         self.assertEqual(cli.main(["check", "--json", str(f)]), 2)
+
+    def test_suspicious_exit_code_and_run_checked(self):
+        exe = self.write("Games/X/game.exe")
+        marker = self.tmp / "ran"
+        self.clam([f"Scanning {exe}", f"{exe}: PUA.Win.Tool.Trainer-1 FOUND"], rc=1)
+        self.assertEqual(cli.main(["scan", "--json", str(exe.parent)]), 4)
+        self.assertEqual(cli.main(["run-checked", str(exe), "--", "touch", str(marker)]), 4)
+        self.assertFalse(marker.exists())
 
     def test_delete_needs_yes(self):
         self.assertEqual(cli.main(["quarantine", "delete", "20261026-120000-0000abcd"]), 2)

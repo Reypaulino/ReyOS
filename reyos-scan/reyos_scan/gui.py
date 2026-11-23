@@ -15,6 +15,7 @@ ACCENT = "#C97932"
 STATUS = {
     "clean": ("No known threats found", "#2e9d57"),
     "found": ("Threat found", "#d9443a"),
+    "suspicious": ("Looks suspicious", "#c98a1e"),
     "not_verified": ("Not verified", "#c98a1e"),
     "cancelled": ("Stopped", "#888888"),
 }
@@ -185,7 +186,7 @@ class Window(W.QMainWindow):
         self.result.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         lay.addWidget(self.result)
         self.findings = W.QTableWidget(0, 3)
-        self.findings.setHorizontalHeaderLabels(["File", "Threat", "Size"])
+        self.findings.setHorizontalHeaderLabels(["File", "Found", "Size"])
         self.findings.horizontalHeader().setSectionResizeMode(0, W.QHeaderView.ResizeMode.Stretch)
         self.findings.horizontalHeader().setSectionResizeMode(1, W.QHeaderView.ResizeMode.ResizeToContents)
         self.findings.setSelectionBehavior(W.QAbstractItemView.SelectionBehavior.SelectRows)
@@ -279,7 +280,9 @@ class Window(W.QMainWindow):
         findings = report.get("findings", [])
         self.findings.setRowCount(len(findings))
         for i, f in enumerate(findings):
-            for col, text in enumerate((f["path"], f["signature"], human_size(f.get("size", 0)))):
+            found = (f"Suspicious: {f.get('reason', '')} ({f['signature']})" if f.get("severity") == "suspicious"
+                     else f"Threat: {f['signature']}")
+            for col, text in enumerate((f["path"], found, human_size(f.get("size", 0)))):
                 self.findings.setItem(i, col, W.QTableWidgetItem(text))
         self.findings.setVisible(bool(findings))
         self.quarantine_button.setVisible(bool(findings))
@@ -446,7 +449,8 @@ class Window(W.QMainWindow):
     def show_report(self, row, _col):
         r = self.hitems[row]
         lines = [r.get("summary", ""), "", "Scanned: " + ", ".join(r.get("scope", []))]
-        lines += [f"THREAT {f['path']} ({f['signature']}, sha256 {f.get('sha256', '')})" for f in r.get("findings", [])]
+        lines += [f"{'SUSPICIOUS' if f.get('severity') == 'suspicious' else 'THREAT'} {f['path']} "
+                  f"({f['signature']}, sha256 {f.get('sha256', '')})" for f in r.get("findings", [])]
         lines += [f"Not checked: {s['path']} ({s['reason']})" for s in r.get("skipped", [])]
         lines += [f"Couldn't read: {e}" for e in r.get("errors", [])[:50]]
         lines += [f"Left out (disc image): {p}" for p in r.get("left_out", [])]

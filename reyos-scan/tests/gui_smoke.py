@@ -23,6 +23,7 @@ EICAR = rb"X5O!P%@AP[4\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*"
 (tmp / "Desktop").mkdir()
 (tmp / "Downloads/eicar.com").write_bytes(EICAR)
 (tmp / "Downloads/readme.txt").write_text("hello\n")
+(tmp / "Downloads/trainer.exe").write_bytes(b"MZ fine")  # damaged program: suspicious, not a threat
 (tmp / "Desktop/Game (USA).iso").write_bytes(b"\0" * 4096)
 
 app = W.QApplication(sys.argv)
@@ -64,7 +65,8 @@ wait_job()
 r = win.report
 check(r["status"] == "found", f"EICAR found (status {r['status']}: {r['summary']})")
 check([Path(p).name for p in r["left_out"]] == ["Game (USA).iso"], f"disc image listed apart {r['left_out']}")
-check(win.findings.rowCount() == 1 and win.quarantine_button.isVisible(), "finding row + quarantine button")
+check(win.findings.rowCount() == 2 and win.quarantine_button.isVisible()
+      and "Suspicious:" in win.findings.item(1, 1).text(), "threat + suspicious rows, quarantine button")
 win.grab().save(str(SHOTS / "reyos-scan-2-found.png"))
 win.findings.selectRow(0)
 win.quarantine_selected()

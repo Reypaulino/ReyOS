@@ -9,7 +9,8 @@
 
 Exit codes for scan/check/run-checked: 0 no known threats, 1 threat found,
 2 not verified (scanner missing, no definitions, unreadable/too-big files),
-3 cancelled. --json prints the report instead of text.
+3 cancelled, 4 no known threats but suspicious files (possibly unwanted
+software, encrypted archives, damaged programs, Office macros). --json prints the report instead of text.
 
 run-checked is meant as a launcher wrapper, for example Lutris's
 per-game "Command prefix": `reyos-scan run-checked /path/to/game.exe --`.
@@ -23,7 +24,7 @@ import time
 
 from . import core
 
-EXIT = {"clean": 0, "found": 1, "not_verified": 2, "cancelled": 3}
+EXIT = {"clean": 0, "found": 1, "not_verified": 2, "cancelled": 3, "suspicious": 4}
 
 
 def _print_report(report, as_json):
@@ -32,7 +33,9 @@ def _print_report(report, as_json):
         return
     print(report["summary"])
     for f in report.get("findings", []):
-        print(f"  THREAT  {f['path']}  ({f['signature']}, sha256 {f['sha256'][:16]}…)")
+        label = "SUSPICIOUS" if f.get("severity") == "suspicious" else "THREAT"
+        why = f": {f['reason']}" if label == "SUSPICIOUS" and f.get("reason") else ""
+        print(f"  {label}  {f['path']}  ({f['signature']}{why}, sha256 {f['sha256'][:16]}…)")
     for s in report.get("skipped", []):
         print(f"  NOT CHECKED  {s['path']}  ({s['reason']})")
     for p in report.get("left_out", [])[:20]:
@@ -115,6 +118,8 @@ def cmd_run_checked(args):
         os.execvp(args.command[0], args.command)
     _print_report(report, False)
     print("Not started: " + ("a threat was found." if report["status"] == "found"
+                             else "some files look suspicious (run it yourself if you trust it)."
+                             if report["status"] == "suspicious"
                              else "the files couldn't be verified (run it yourself if you trust it)."), file=sys.stderr)
     return EXIT[report["status"]]
 

@@ -271,18 +271,24 @@ Kirigami.ScrollablePage {
                     text: "Checks your files for known viruses and other malware with ClamAV, only when you ask. Installing it takes about 300 MB, with virus definitions that update themselves every day."
                 }
 
-                // Threats from the last scan: one row each, quarantine on request.
+                // Threats and suspicious files from the last scan: one row each,
+                // quarantine on request.
                 Repeater {
-                    model: lastScan.status === "found" ? lastScan.findings : []
+                    model: lastScan.status === "found" || lastScan.status === "suspicious" ? lastScan.findings : []
                     delegate: RowLayout {
                         Layout.fillWidth: true
                         spacing: Kirigami.Units.largeSpacing
-                        Kirigami.Icon { source: "dialog-warning"; Layout.preferredWidth: Kirigami.Units.iconSizes.smallMedium; Layout.preferredHeight: Kirigami.Units.iconSizes.smallMedium }
+                        Kirigami.Icon { source: modelData.severity === "suspicious" ? "dialog-question" : "dialog-warning"; Layout.preferredWidth: Kirigami.Units.iconSizes.smallMedium; Layout.preferredHeight: Kirigami.Units.iconSizes.smallMedium }
                         ColumnLayout {
                             Layout.fillWidth: true
                             spacing: 0
                             Controls.Label { Layout.fillWidth: true; text: modelData.path; elide: Text.ElideMiddle; font.bold: true }
-                            Controls.Label { Layout.fillWidth: true; text: modelData.signature; opacity: 0.75; elide: Text.ElideRight }
+                            Controls.Label {
+                                Layout.fillWidth: true
+                                text: modelData.severity === "suspicious" ? "Suspicious: " + modelData.reason + " (" + modelData.signature + ")" : modelData.signature
+                                opacity: 0.75
+                                elide: Text.ElideRight
+                            }
                         }
                         Controls.Button {
                             text: "Move to quarantine"

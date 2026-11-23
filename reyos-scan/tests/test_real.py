@@ -152,8 +152,16 @@ class TestRealClamAV(TempHome):
         self.assertEqual(r["status"], "cancelled")
         self.assertLess(time.time() - t, 20)
 
+    def test_damaged_program_is_suspicious_not_a_threat(self):
+        exe = self.write("Games/Odd/game.exe", b"MZ fine")
+        r = core.check_program(exe)
+        self.assertEqual(r["status"], "suspicious")
+        self.assertEqual([(f["signature"], f["severity"]) for f in r["findings"]],
+                         [("Heuristics.Broken.Executable", "suspicious")])
+
     def test_game_check_quarantine_restore(self):
-        exe = self.write("Games/Bad/game.exe", b"MZ fine")
+        # Not "MZ…": a tiny fake Windows program is (rightly) Heuristics.Broken.Executable now.
+        exe = self.write("Games/Bad/game.exe", b"fine game data")
         self.write("Games/Bad/bin/hook.dll", EICAR)
         r = core.check_program(exe)
         self.assertEqual(r["status"], "found")

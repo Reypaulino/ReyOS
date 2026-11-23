@@ -152,6 +152,13 @@ class AddPcGameWorker(QThread):
                 self.blocked = ("Not added: a threat was found and left where it is "
                                 "(Control Center → Security → Malware scan).")
             return False
+        if report["status"] == "suspicious":
+            odd = "\n".join(f"{Path(f['path']).name}: {f.get('reason', f['signature'])}" for f in report["findings"][:10])
+            rc, _ = self._ask("--warningcontinuecancel", f"ReyOS Scan found no known threats, but these files look "
+                              f"suspicious:\n\n{odd}\n\nThat isn't proof of malware (game tools and mods are often "
+                              "flagged). Add the game only if you trust where it came from.",
+                              "--continue-label", "Add anyway")
+            return rc == 0
         rc, _ = self._ask("--warningcontinuecancel", f"Not verified: {report['summary']}\n\nAdd the game anyway?",
                           "--continue-label", "Add without checking")
         return rc == 0

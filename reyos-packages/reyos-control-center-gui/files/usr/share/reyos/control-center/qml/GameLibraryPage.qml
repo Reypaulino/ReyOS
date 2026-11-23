@@ -467,20 +467,23 @@ Kirigami.Page {
         id: scanDialog
         property var report: ({ findings: [] })
         title: report.status === "found" ? "Threat found"
+               : report.status === "suspicious" ? "Looks suspicious"
                : report.status === "clean" ? "No known threats found"
                : report.status === "no_scanner" ? "Malware scanner not set up"
                : "Not verified"
         subtitle: report.status === "no_scanner"
                   ? "Install it in Control Center → Security → Malware scan (about 300 MB), then scan again."
-                  : (report.summary || "") + (report.status === "found"
-                     ? "\n\n" + report.findings.map(function (f) { return f.path + "\n   " + f.signature }).join("\n")
+                  : (report.summary || "") + (report.status === "found" || report.status === "suspicious"
+                     ? "\n\n" + report.findings.map(function (f) {
+                           return f.path + "\n   " + (f.severity === "suspicious" ? "Suspicious: " + f.reason + " (" + f.signature + ")"
+                                                                               : f.signature) }).join("\n")
                      : report.status === "clean" ? "\nA scan finds known threats only: it isn't a guarantee." : "")
         standardButtons: Kirigami.Dialog.Close
         customFooterActions: [
             Kirigami.Action {
                 text: "Move to quarantine"
                 icon.name: "security-medium"
-                visible: scanDialog.report.status === "found"
+                visible: scanDialog.report.status === "found" || scanDialog.report.status === "suspicious"
                 onTriggered: {
                     var msgs = []
                     for (var i = 0; i < scanDialog.report.findings.length; i++) {
