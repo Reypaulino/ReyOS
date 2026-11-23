@@ -1151,6 +1151,30 @@ sudo apt install ./reyos-browser_0.1.0-130ubuntu1_amd64.deb</code></pre>
 
   <div class="section-divider"></div>
 
+  <!-- ReyOS Scan -->
+  <section id="scan">
+    <div class="section-inner">
+      <p class="section-label">ReyOS Scan</p>
+      <h2 class="section-title">Check downloads and game installers before they run</h2>
+      <p class="section-desc">An on-demand malware scanner built on ClamAV. It checks Downloads and Desktop, a folder, an external drive or your whole home folder, and checks a Windows game installer and the programs next to it before anything runs. It only runs when you ask: no background scanner. Built into ReyOS (Control Center → Security), and available on its own for Ubuntu.</p>
+      <ul style="max-width: 640px; margin: 18px 0 32px; padding-left: 20px; color: var(--muted); line-height: 1.8;">
+        <li><strong style="color:var(--text);">Threats and suspicious files, kept apart</strong>: known malware is a threat; possibly unwanted software (adware, cheat tools), encrypted files it can't look inside, damaged programs and Office macros are shown as "looks suspicious" with the reason, because some of them are harmless.</li>
+        <li><strong style="color:var(--text);">Quarantine you can undo</strong>: a file is moved somewhere it can't run and checked with SHA-256; restoring puts it back exactly as it was. Nothing is deleted unless you ask.</li>
+        <li><strong style="color:var(--text);">Honest results</strong>: "No known threats found" isn't a promise that a program is safe, and files too big to check are listed instead of counted as clean.</li>
+      </ul>
+      <div class="install-note">
+        <p style="color:var(--text); font-weight:700; margin-bottom:10px;">Ubuntu 24.04 / Debian</p>
+        <p><code>apt</code> installs ClamAV and its updater from Ubuntu too. Then open "ReyOS Scan" from your apps, or use <code>reyos-scan</code> in a terminal:</p>
+        <pre><code>cd /tmp
+wget https://github.com/Reypaulino/ReyOS/releases/download/reyos-scan-v0.2.0/reyos-scan_0.2.0_all.deb
+sudo apt install ./reyos-scan_0.2.0_all.deb</code></pre>
+        <a href="https://github.com/Reypaulino/ReyOS/releases/tag/reyos-scan-v0.2.0" class="btn btn-ghost">Download for Ubuntu/Debian (.deb)</a>
+      </div>
+    </div>
+  </section>
+
+  <div class="section-divider"></div>
+
   <!-- WSL -->
   <section id="wsl">
     <div class="section-inner">
