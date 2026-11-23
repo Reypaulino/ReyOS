@@ -4,13 +4,14 @@ On-demand malware scanner (ClamAV) for Ubuntu and ReyOS, sharing one core. It ru
 
 - `reyos_scan/core.py`: distro-neutral core. Scans, reports, quarantine, the pre-run check for game installers (SHA-256 + definitions cache), one scan at a time, disc images left out of Quick scan and listed apart. ReyOS Control Center uses an identical copy (`reyos_scan_core.py`, checked by `tests/test_core.py`) behind its `security_scan.py` adapter.
 - `reyos_scan/cli.py`: `reyos-scan status | scan --quick|--home|PATH… | check FILE | run-checked FILE -- CMD… | quarantine … | history`.
+- Besides known malware, ClamAV's extra checks (`--detect-pua`, `--alert-encrypted`, `--alert-broken`, `--alert-macros`, since 0.2.0) report possibly unwanted software (adware, cheat/hacking tools), encrypted or password-protected files, damaged programs and Office macros as **suspicious**: a reason to look closer, never a threat. A scan with only suspicious files has status `suspicious` (command-line exit code 4); any threat makes it `found`. These checks also flag legitimate files now and then (a `node_modules` JavaScript file as `PUA.Win.Trojan.Xored-1`, for one).
 - `reyos_scan/gui.py`: the window (Qt Widgets; PySide6 on ReyOS, PyQt6 on Ubuntu 24.04 via `qt.py`).
 
 ## Ubuntu package
 
 ```
-packaging/build-deb.sh            # -> dist/reyos-scan_0.1.0_all.deb (dpkg-deb only; same input = same file)
-sudo apt install ./dist/reyos-scan_0.1.0_all.deb
+packaging/build-deb.sh            # -> dist/reyos-scan_0.2.0_all.deb (dpkg-deb only; same input = same file)
+sudo apt install ./dist/reyos-scan_0.2.0_all.deb
 ```
 
 Depends on `python3`, `python3-pyqt6` (or `python3-pyside6`), `clamav`, `clamav-freshclam`. It installs `reyos-scan` and `reyos-scan-gui` in `/usr/bin`, the code in `/usr/lib/reyos-scan`, a "ReyOS Scan" launcher and icon. `sudo apt remove reyos-scan` removes all of that; your reports and quarantine stay in `~/.local/share/reyos/security`.

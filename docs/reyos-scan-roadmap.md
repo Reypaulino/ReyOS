@@ -4,7 +4,9 @@ Agreed with the owner on 2026-10-27: do all of these, after PR #23 (#21: Ubuntu 
 
 What it can't promise: no scanner detects every malicious file. New or custom malware is made to slip past scanners, so the plan pairs better detection (1–3) with limiting the damage (4–5).
 
-## 1. More detection from ClamAV (small)
+## 1. More detection from ClamAV (small): extra checks DONE in 0.2.0 (2026-11-23), community databases skipped for now
+- **Done (0.2.0, control-center-gui 150):** `--detect-pua`, `--alert-encrypted`, `--alert-broken`, `--alert-macros`; findings are "suspicious" with a plain reason, scan status `suspicious`, Add PC game asks instead of blocking.
+- **Skipped for now (owner, 2026-11-23):** community signature databases. Licences unclear (Sanesecurity's terms not found; abuse.ch free for commercial users only after six months of contributing), most Sanesecurity sets target e-mail spam/phishing, mirrors are informal, more false alarms. Revisit with YARA rules after 2.
 - Turn on ClamAV's extra checks: `--detect-pua=yes` (adware, bundled junk; maybe "suspicious" rather than "threat"), `--alert-encrypted=yes`, `--alert-broken=yes`, `--alert-macros=yes`.
 - Add community signature databases on top of ClamAV's own (e.g. Sanesecurity, URLhaus): check their licences, update them as part of the same update job (ReyOS: `reyos-admin malware-setup`; Ubuntu: alongside freshclam, never a second competing updater), and say in each report which databases were used.
 - YARA rules (e.g. YARA Forge's community set), run on Windows programs and installers. Expect some false alarms: report matches as "suspicious", not "threat".
