@@ -79,6 +79,10 @@ control-center-gui 1.0.0-147 built from this branch (not published), ClamAV 1.5.
 
 Owner approved publishing. Rebased onto main (CC 149's update errors kept). 0.2.0 adds ClamAV's extra checks as "suspicious" findings (see `fixes.md` 2026-11-23). Run: Scan tests 52 (12 real ClamAV), offscreen window smoke test, Arch container (fresh install of 150 + import check, real scan shown on the Security page), clean `ubuntu:24.04` (.deb install, CLI exit 1/4, window 20 s). The Dev VM no longer exists, so nothing ran on ReyOS itself.
 
+## 2026-11-23: real-file measurement of the extra checks (Ubuntu host)
+
+`clamscan` with 0.2.0's extra checks over Downloads, Desktop, ~/Games and the 35 GB ReyGames SD card: 12 findings, no threats. 10 were PUA *Packer* (plain Wine prefix `kernel32.dll` ×2; on the SD card's PC games: Batman `Galaxy.dll` + `unins000.exe`, NFS Most Wanted `speed.exe` (SafeDisc), `dinput8.dll` ×2 (mod + backup), uninstall `.dat` ×2 and `unins000.exe`), all gone with 0.2.1's `--exclude-pua=Packer`. Left as suspicious in 0.2.1: `UplayInstaller.exe` (Assassin's Creed 2, `Heuristics.Broken.Executable`) and `node_modules/imurmurhash/imurmurhash.min.js` (`PUA.Win.Trojan.Xored-1`, a known false alarm). The laptop's five Proton prefixes had none, with either version.
+
 ## PENDING (not run yet)
 
 - The owner clicking through the installed window on the Ubuntu desktop (it shows in the app grid as "ReyOS Scan").
