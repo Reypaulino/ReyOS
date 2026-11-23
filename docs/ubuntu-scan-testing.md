@@ -75,10 +75,14 @@ control-center-gui 1.0.0-147 built from this branch (not published), ClamAV 1.5.
 - Backend with real ClamAV: quick-type scan found EICAR and left a .chd out; Add PC game's check (now `check_program`) took 20.6 s the first time and 0.0 s the second (cache), and caught a DLL replaced by EICAR afterwards; quarantine + restore matched.
 - Control Center → Security, clicked: Quick scan over Downloads/Desktop/~/Games showed the EICAR threat with Move to quarantine, "Not checked: Pokemon - SoulSilver Version (USA).zip" (over the limits; v1 would have counted it clean without saying so) and "Left out (disc images): test-disc.iso"; Move to quarantine moved the file (SHA-256 275a021bbfb6…, EICAR's).
 
+## 2026-11-23: 0.2.0 published (control-center-gui 150, .deb 0.2.0)
+
+Owner approved publishing. Rebased onto main (CC 149's update errors kept). 0.2.0 adds ClamAV's extra checks as "suspicious" findings (see `fixes.md` 2026-11-23). Run: Scan tests 52 (12 real ClamAV), offscreen window smoke test, Arch container (fresh install of 150 + import check, real scan shown on the Security page), clean `ubuntu:24.04` (.deb install, CLI exit 1/4, window 20 s). The Dev VM no longer exists, so nothing ran on ReyOS itself.
+
 ## PENDING (not run yet)
 
 - The owner clicking through the installed window on the Ubuntu desktop (it shows in the app grid as "ReyOS Scan").
 - External drives (the owner, physically): a USB stick formatted NTFS and one formatted exFAT, mounted by GNOME under `/media/$USER/`; External drive…; unplugging a drive mid-scan (expected: not verified or cancelled, never clean, no crash).
 - A full home scan on this machine (time, CPU, RAM).
 - ReyOS on the laptop (HD 630 / 940MX): Add PC game with a real installer (check before it runs, cache on a second add), ReyOS Games right-click Scan for viruses, Security → Quick scan with the SD card's game folder, Steam/Lutris/PCSX2 unaffected.
-- Publishing: nothing is published. The ReyOS side ships as control-center-gui 147 only after the owner approves.
+- ReyOS itself (no Dev VM since 2026-11-20): Control Center 150 from the repo, Security → Quick scan, a suspicious file shown in orange.
