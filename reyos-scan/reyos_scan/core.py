@@ -35,7 +35,7 @@ import tempfile
 import time
 from pathlib import Path
 
-VERSION = "0.2.0"
+VERSION = "0.2.1"
 SCHEMA = 1
 DATA = Path(os.environ.get("REYOS_SCAN_DATA", Path.home() / ".local" / "share" / "reyos" / "security"))
 REPORTS = DATA / "scans"
@@ -56,7 +56,12 @@ LIMIT_SIGNATURE = "Heuristics.Limits.Exceeded"
 # ClamAV's checks beyond known-malware signatures. What they find is
 # reported as "suspicious" (severity()), never as a threat: PUA also flags
 # legitimate tools, and an encrypted zip is only "couldn't look inside".
-EXTRA_CHECKS = ["--detect-pua=yes", "--alert-encrypted=yes", "--alert-broken=yes", "--alert-macros=yes"]
+# PUA's "Packer" category is left out: Wine's own system DLLs (every
+# prefix's drive_c/windows/system32/kernel32.dll) are PUA.Win.Packer.Embedpe-3,
+# so every scan of a games folder came back "suspicious". Packed programs are
+# for the Windows program check (roadmap 2), which can judge them in context.
+EXTRA_CHECKS = ["--detect-pua=yes", "--exclude-pua=Packer", "--alert-encrypted=yes", "--alert-broken=yes",
+                "--alert-macros=yes"]
 _SUSPICIOUS_REASONS = (
     ("PUA.", "possibly unwanted software (adware, bundled extras or a hacking/cheat tool)"),
     ("Heuristics.Encrypted", "encrypted or password-protected, so its contents couldn't be checked"),

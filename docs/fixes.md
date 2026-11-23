@@ -2,6 +2,10 @@
 
 Real bugs found and fixed, with root cause. Newest first. See `bugs.md` for what's still open. Entries up to 2026-10-28 are in `fixes-old.md`.
 
+## 2026-11-23 — ReyOS Scan 0.2.1: Wine's own DLLs no longer "suspicious" (control-center-gui 1.0.0-151, reyos-scan 0.2.1 .deb)
+
+The real-file measurement of 0.2.0's extra checks on the Ubuntu host: a plain Wine prefix in Downloads had `drive_c/windows/system32/kernel32.dll` and `syswow64/kernel32.dll` flagged `PUA.Win.Packer.Embedpe-3`, so any scan of a folder with Wine prefixes would always end "suspicious". **Fix:** `--exclude-pua=Packer` (tested on that file: `Packer` skips it, `Packed`/`Embedpe` don't; the other PUA categories stay, e.g. the `node_modules` `PUA.Win.Trojan.Xored-1` false alarm is still reported as suspicious). Packed programs belong to roadmap item 2 (Windows program checks with context). The laptop's five Proton/umu prefixes (`~/Games/PC`, 1.5 GB, read from Ubuntu with the ReyOS partition mounted read-only) had no findings even with 0.2.0. Tests: Scan 41 + 12 real ClamAV, window smoke test, repo 119.
+
 ## 2026-11-23 — ReyOS Scan 0.2.0: shared core, Ubuntu app, suspicious findings (control-center-gui 1.0.0-150, reyos-scan 0.2.0 .deb)
 
 Owner approved publishing PR #23 (GitHub #21, parked 10-27) together with the first "catch more" step of `docs/reyos-scan-roadmap.md`.

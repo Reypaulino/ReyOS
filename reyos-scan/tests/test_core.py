@@ -180,7 +180,8 @@ class TestSuspicious(FakeClam):
         self.clam([])
         core.Scan([self.home], "home").run()
         args = self.args.read_text().split("\n")
-        for opt in ("--detect-pua=yes", "--alert-encrypted=yes", "--alert-broken=yes", "--alert-macros=yes"):
+        for opt in ("--detect-pua=yes", "--exclude-pua=Packer", "--alert-encrypted=yes", "--alert-broken=yes",
+                    "--alert-macros=yes"):
             self.assertIn(opt, args)
 
     def test_severity(self):

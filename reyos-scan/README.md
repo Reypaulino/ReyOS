@@ -10,8 +10,8 @@ On-demand malware scanner (ClamAV) for Ubuntu and ReyOS, sharing one core. It ru
 ## Ubuntu package
 
 ```
-packaging/build-deb.sh            # -> dist/reyos-scan_0.2.0_all.deb (dpkg-deb only; same input = same file)
-sudo apt install ./dist/reyos-scan_0.2.0_all.deb
+packaging/build-deb.sh            # -> dist/reyos-scan_0.2.1_all.deb (dpkg-deb only; same input = same file)
+sudo apt install ./dist/reyos-scan_0.2.1_all.deb
 ```
 
 Depends on `python3`, `python3-pyqt6` (or `python3-pyside6`), `clamav`, `clamav-freshclam`. It installs `reyos-scan` and `reyos-scan-gui` in `/usr/bin`, the code in `/usr/lib/reyos-scan`, a "ReyOS Scan" launcher and icon. `sudo apt remove reyos-scan` removes all of that; your reports and quarantine stay in `~/.local/share/reyos/security`.
